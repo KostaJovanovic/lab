@@ -1,0 +1,483 @@
+/* Analyser - video module
+   Handles video files: playback, container/codec detection, frame rate,
+   frame capture (routed to photo analysis), audio track extraction
+   (waveform + spectrogram via audio module). */
+
+import { makeSpectrogramPanel } from './audio.js';
+import { renderPhoto } from './photo.js';
+
+// ---------- helpers ----------
+
+function el(tag, attrs = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const k in attrs) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k === 'html') e.innerHTML = attrs[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const c of (Array.isArray(children) ? children : [children])) {
+    if (c == null) continue;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+function row(label, value) {
+  return el('tr', {}, [
+    el('th', {}, label),
+    el('td', {}, value == null || value === '' ? '-' : String(value))
+  ]);
+}
+
+function fmtBytes(n) {
+  if (n == null) return '-';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+
+function aspectRatio(w, h) {
+  if (!w || !h) return '-';
+  const d = gcd(w, h);
+  return `${w / d}:${h / d}  (${(w / h).toFixed(4)})`;
+}
+
+function formatDuration(sec) {
+  if (!isFinite(sec)) return '-';
+  if (sec < 60) return sec.toFixed(2) + 's';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + s.toFixed(0).padStart(2, '0');
+  return m + ':' + s.toFixed(1).padStart(4, '0');
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  if (d instanceof Date) return d.toISOString().replace('T', ' ').replace(/\..*$/, '');
+  return String(d);
+}
+
+async function sha256Hex(file) {
+  if (!crypto.subtle) return null;
+  const buf = await file.arrayBuffer();
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+// ---------- container detection from magic bytes ----------
+
+async function peekVideoContainer(file) {
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const ascii = (s, l) => String.fromCharCode(...head.slice(s, s + l));
+
+  if (ascii(4, 4) === 'ftyp') {
+    const brand = ascii(8, 4).trim();
+    const names = {
+      'isom': 'MP4', 'iso2': 'MP4', 'mp41': 'MP4', 'mp42': 'MP4',
+      'M4V': 'M4V', 'qt': 'QuickTime MOV',
+      'avc1': 'MP4 (H.264)', 'hvc1': 'MP4 (H.265)',
+      '3gp4': '3GP', '3gp5': '3GP', '3g2a': '3G2'
+    };
+    return { container: names[brand] || 'MP4 / MOV', brand };
+  }
+  if (head[0] === 0x1A && head[1] === 0x45 && head[2] === 0xDF && head[3] === 0xA3)
+    return { container: 'Matroska / WebM' };
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'AVI ')
+    return { container: 'AVI' };
+  if (ascii(0, 3) === 'FLV')
+    return { container: 'FLV' };
+  if (head[0] === 0x47)
+    return { container: 'MPEG-TS' };
+  if (head[0] === 0x00 && head[1] === 0x00 && head[2] === 0x01 && head[3] === 0xBA)
+    return { container: 'MPEG-PS' };
+  if (ascii(0, 4) === 'OggS')
+    return { container: 'OGG (Theora)' };
+  if (head[0] === 0x30 && head[1] === 0x26 && head[2] === 0xB2 && head[3] === 0x75)
+    return { container: 'WMV / ASF' };
+  return { container: 'unknown' };
+}
+
+// ---------- frame rate detection via requestVideoFrameCallback ----------
+
+function roundFps(raw) {
+  const standard = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120, 240];
+  let closest = raw, minDiff = Infinity;
+  for (const s of standard) {
+    const d = Math.abs(raw - s);
+    if (d < minDiff) { minDiff = d; closest = s; }
+  }
+  return minDiff < 0.5 ? closest : Math.round(raw * 100) / 100;
+}
+
+async function detectFps(url) {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return null;
+
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.src = url;
+
+  try {
+    await new Promise((resolve, reject) => {
+      v.oncanplay = resolve;
+      v.onerror = reject;
+      setTimeout(reject, 8000);
+    });
+  } catch (_) {
+    v.removeAttribute('src');
+    v.load();
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    const times = [];
+    let done = false;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+      if (times.length < 2) { resolve(null); return; }
+      let total = 0;
+      for (let i = 1; i < times.length; i++) total += times[i] - times[i - 1];
+      const avg = total / (times.length - 1);
+      resolve(avg > 0 ? roundFps(1 / avg) : null);
+    }
+
+    function onFrame(_now, meta) {
+      times.push(meta.mediaTime);
+      if (times.length >= 20 || (times.length > 2 && meta.mediaTime > 1)) { finish(); return; }
+      v.requestVideoFrameCallback(onFrame);
+    }
+
+    v.requestVideoFrameCallback(onFrame);
+    v.play().catch(() => finish());
+    setTimeout(finish, 5000);
+  });
+}
+
+// ---------- audio helpers ----------
+
+function getMono(audioBuffer) {
+  const n = audioBuffer.length;
+  const out = new Float32Array(n);
+  for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+    const data = audioBuffer.getChannelData(c);
+    for (let i = 0; i < n; i++) out[i] += data[i];
+  }
+  const k = 1 / audioBuffer.numberOfChannels;
+  for (let i = 0; i < n; i++) out[i] *= k;
+  return out;
+}
+
+function computeStats(samples) {
+  let peak = 0, sumSq = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const a = Math.abs(samples[i]);
+    if (a > peak) peak = a;
+    sumSq += samples[i] * samples[i];
+  }
+  const rms = Math.sqrt(sumSq / samples.length);
+  return {
+    peak, rms,
+    peakDb: 20 * Math.log10(peak + 1e-12),
+    rmsDb: 20 * Math.log10(rms + 1e-12)
+  };
+}
+
+function renderWaveform(canvas, samples) {
+  const c = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  c.fillStyle = '#1a1a1a';
+  c.fillRect(0, 0, w, h);
+  c.strokeStyle = '#445f74';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, h / 2); c.lineTo(w, h / 2); c.stroke();
+  if (!samples.length) return;
+  const spp = samples.length / w;
+  c.fillStyle = '#80a4ba';
+  for (let x = 0; x < w; x++) {
+    const s = Math.floor(x * spp), e = Math.floor((x + 1) * spp);
+    let mn = 1, mx = -1;
+    for (let i = s; i < e && i < samples.length; i++) {
+      if (samples[i] < mn) mn = samples[i];
+      if (samples[i] > mx) mx = samples[i];
+    }
+    const y1 = ((1 - mx) / 2) * h, y2 = ((1 - mn) / 2) * h;
+    c.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+  }
+  c.strokeStyle = '#C8DCE8';
+  c.strokeRect(0, 0, w, h);
+}
+
+// ---------- main render ----------
+
+export async function renderVideo(file, resultsEl) {
+  resultsEl.hidden = false;
+  resultsEl.innerHTML = '';
+  resultsEl.appendChild(el('div', { class: 'anr-info' }, `Loading "${file.name}"…`));
+  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  let header = {};
+  try { header = await peekVideoContainer(file); } catch (_) {}
+
+  const url = URL.createObjectURL(file);
+
+  const probe = document.createElement('video');
+  probe.preload = 'auto';
+  probe.muted = true;
+  probe.playsInline = true;
+
+  try {
+    await new Promise((resolve, reject) => {
+      probe.onloadeddata = resolve;
+      probe.onerror = () => reject(new Error('format not supported'));
+      probe.src = url;
+    });
+  } catch (_) {
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(el('div', { class: 'anr-error' },
+      'Could not load this video. Format may not be supported by your browser.'));
+    return;
+  }
+
+  const vw = probe.videoWidth;
+  const vh = probe.videoHeight;
+  const dur = probe.duration;
+
+  resultsEl.innerHTML = '';
+
+  // ---- Thumbnail in section-meta ----
+  const previewSlot = document.getElementById('videoPreview');
+  if (previewSlot && vw && vh) {
+    previewSlot.innerHTML = '';
+    const cv = document.createElement('canvas');
+    const scale = Math.min(1, 400 / Math.max(vw, vh));
+    cv.width = Math.round(vw * scale);
+    cv.height = Math.round(vh * scale);
+    cv.getContext('2d').drawImage(probe, 0, 0, cv.width, cv.height);
+    const thumb = el('div', { class: 'section-meta-preview' });
+    thumb.appendChild(el('img', { src: cv.toDataURL('image/jpeg', 0.85), alt: file.name }));
+    thumb.appendChild(el('p', { class: 'section-meta-preview-caption' },
+      `${vw} × ${vh} · ${formatDuration(dur)} · ${fmtBytes(file.size)}`));
+    previewSlot.appendChild(thumb);
+  }
+
+  probe.pause();
+  probe.removeAttribute('src');
+  probe.load();
+
+  // ---- Player ----
+  const playerCard = el('div', { class: 'anr-card' });
+  playerCard.appendChild(el('h3', {}, 'Player'));
+  const playerEl = el('video', { controls: '', src: url });
+  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
+  playerCard.appendChild(playerEl);
+  resultsEl.appendChild(playerCard);
+
+  // ---- File info ----
+  const infoCard = el('div', { class: 'anr-card' });
+  infoCard.appendChild(el('h3', {}, 'File info'));
+  const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Name', file.name));
+  tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
+  tbl.appendChild(row('MIME', file.type || '-'));
+  if (header.container)
+    tbl.appendChild(row('Container', header.container + (header.brand ? '  (' + header.brand + ')' : '')));
+  tbl.appendChild(row('Resolution', vw && vh ? `${vw} × ${vh} px` : '-'));
+  tbl.appendChild(row('Aspect ratio', aspectRatio(vw, vh)));
+  tbl.appendChild(row('Duration', isFinite(dur) ? formatDuration(dur) : '-'));
+  const bitrate = isFinite(dur) && dur > 0
+    ? (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)'
+    : '-';
+  tbl.appendChild(row('Bitrate (total)', bitrate));
+  const fpsRow = row('Frame rate', 'detecting…');
+  tbl.appendChild(fpsRow);
+  if (vw && vh) {
+    const mp = ((vw * vh) / 1_000_000).toFixed(2);
+    tbl.appendChild(row('Frame size', mp + ' MP'));
+  }
+  infoCard.appendChild(tbl);
+  resultsEl.appendChild(infoCard);
+
+  detectFps(url).then((fps) => {
+    fpsRow.querySelector('td').textContent = fps != null ? fps + ' fps' : 'N/A';
+  });
+
+  // ---- Metadata via exifr ----
+  let exif = null;
+  try {
+    if (window.exifr) {
+      exif = await window.exifr.parse(file, {
+        tiff: true, exif: true, gps: true, xmp: true,
+        mergeOutput: true, translateValues: true, translateKeys: true,
+        reviveValues: true, sanitize: true, silentErrors: true
+      });
+    }
+  } catch (_) {}
+
+  if (exif) {
+    const metaRows = [];
+    if (exif.Make)             metaRows.push(['Make', exif.Make]);
+    if (exif.Model)            metaRows.push(['Model', exif.Model]);
+    if (exif.Software)         metaRows.push(['Software', exif.Software]);
+    if (exif.DateTimeOriginal) metaRows.push(['Taken', fmtDate(exif.DateTimeOriginal)]);
+    if (exif.CreateDate)       metaRows.push(['Created', fmtDate(exif.CreateDate)]);
+    if (exif.ModifyDate)       metaRows.push(['Modified', fmtDate(exif.ModifyDate)]);
+    if (exif.ImageDescription || exif.description)
+      metaRows.push(['Description', exif.ImageDescription || exif.description]);
+    if (exif.Copyright || exif.rights)
+      metaRows.push(['Copyright', exif.Copyright || exif.rights]);
+
+    if (metaRows.length) {
+      const metaCard = el('div', { class: 'anr-card' });
+      metaCard.appendChild(el('h3', {}, 'Metadata'));
+      const mt = el('table', { class: 'anr-readout' });
+      for (const [k, v] of metaRows) mt.appendChild(row(k, v));
+      metaCard.appendChild(mt);
+      resultsEl.appendChild(metaCard);
+    }
+
+    if (exif.latitude != null && exif.longitude != null) {
+      const gpsCard = el('div', { class: 'anr-card' });
+      gpsCard.appendChild(el('h3', {}, 'GPS'));
+      const gt = el('table', { class: 'anr-readout' });
+      gt.appendChild(row('Latitude', exif.latitude.toFixed(6) + '°'));
+      gt.appendChild(row('Longitude', exif.longitude.toFixed(6) + '°'));
+      if (exif.GPSAltitude != null)
+        gt.appendChild(row('Altitude', (+exif.GPSAltitude).toFixed(1) + ' m'));
+      gpsCard.appendChild(gt);
+      gpsCard.appendChild(el('p', {}, [
+        '> open in ',
+        el('a', {
+          href: `https://www.openstreetmap.org/?mlat=${exif.latitude}&mlon=${exif.longitude}#map=15/${exif.latitude}/${exif.longitude}`,
+          target: '_blank'
+        }, 'OpenStreetMap'),
+        ' / ',
+        el('a', {
+          href: `https://www.google.com/maps?q=${exif.latitude},${exif.longitude}`,
+          target: '_blank'
+        }, 'Google Maps')
+      ]));
+      resultsEl.appendChild(gpsCard);
+    }
+  }
+
+  // ---- Frame capture ----
+  if (vw && vh) {
+    const captureCard = el('div', { class: 'anr-card' });
+    captureCard.appendChild(el('h3', {}, 'Frame capture'));
+    captureCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:12px !important;' },
+      'Seek the video to any point, then capture for full photo analysis'));
+    const captureBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Capture current frame');
+    captureCard.appendChild(el('div', { class: 'anr-btn-row' }, [captureBtn]));
+    const captureOut = el('div');
+    captureCard.appendChild(captureOut);
+    resultsEl.appendChild(captureCard);
+
+    captureBtn.addEventListener('click', async () => {
+      captureBtn.disabled = true;
+      captureBtn.textContent = 'Capturing…';
+      const cv = document.createElement('canvas');
+      cv.width = vw; cv.height = vh;
+      cv.getContext('2d').drawImage(playerEl, 0, 0, vw, vh);
+      const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+      const ts = playerEl.currentTime;
+      const frameFile = new File([blob], `frame_${ts.toFixed(3)}s.png`, { type: 'image/png' });
+
+      captureOut.innerHTML = '';
+      captureOut.appendChild(el('img', {
+        src: URL.createObjectURL(blob),
+        alt: 'Captured frame',
+        style: 'max-width:100%; max-height:180px; margin-top:10px; border:1px solid var(--hairline); display:block;'
+      }));
+      captureOut.appendChild(el('p', { class: 'anr-hint' },
+        `Captured at ${formatDuration(ts)} — photo analysis in section 01`));
+      captureBtn.disabled = false;
+      captureBtn.textContent = 'Capture current frame';
+      const photoResults = document.getElementById('photoResults');
+      if (photoResults) renderPhoto(frameFile, photoResults);
+    });
+  }
+
+  // ---- Audio track extraction ----
+  const audioCard = el('div', { class: 'anr-card' });
+  audioCard.appendChild(el('h3', {}, 'Audio track'));
+  const audioStatus = el('p', { class: 'anr-info' }, 'Decoding audio track…');
+  audioCard.appendChild(audioStatus);
+  resultsEl.appendChild(audioCard);
+
+  try {
+    const ac = getAudioCtx();
+    const buf = await file.arrayBuffer();
+    const audioBuf = await ac.decodeAudioData(buf.slice(0));
+
+    audioStatus.remove();
+
+    const mono = getMono(audioBuf);
+    const stats = computeStats(mono);
+
+    const at = el('table', { class: 'anr-readout' });
+    at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
+    at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
+    at.appendChild(row('Channels', audioBuf.numberOfChannels));
+    at.appendChild(row('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)'));
+    at.appendChild(row('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)'));
+    at.appendChild(row('Samples', mono.length.toLocaleString()));
+    audioCard.appendChild(at);
+
+    const waveCanvas = el('canvas', { class: 'anr-waveform' });
+    waveCanvas.width = 1024; waveCanvas.height = 80;
+    audioCard.appendChild(waveCanvas);
+    renderWaveform(waveCanvas, mono);
+
+    const basename = (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio';
+    resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuf.sampleRate, { basename }));
+  } catch (_) {
+    audioStatus.remove();
+    audioCard.appendChild(el('p', { class: 'anr-hint' },
+      'No audio track found, or format not supported by this browser.'));
+  }
+
+  // ---- SHA-256 ----
+  if (file.size <= 500 * 1024 * 1024) {
+    const hashCard = el('div', { class: 'anr-card' });
+    hashCard.appendChild(el('h3', {}, 'Integrity'));
+    const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' }, 'computing SHA-256…');
+    hashCard.appendChild(hashOut);
+    resultsEl.appendChild(hashCard);
+    sha256Hex(file).then((h) => {
+      hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable';
+    });
+  }
+}
+
+// ---------- setup ----------
+export function initVideo({ dropEl, inputEl, resultsEl, onFile }) {
+  const handle = onFile || ((file) => renderVideo(file, resultsEl));
+  inputEl.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) handle(file);
+    inputEl.value = '';
+  });
+  ['dragenter', 'dragover'].forEach((ev) =>
+    dropEl.addEventListener(ev, () => dropEl.classList.add('is-dragover'))
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    dropEl.addEventListener(ev, () => dropEl.classList.remove('is-dragover'))
+  );
+}

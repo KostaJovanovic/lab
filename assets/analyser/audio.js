@@ -69,12 +69,78 @@ async function peekContainer(file) {
   if (ascii(0, 4) === 'OggS') return { container: 'OGG' };
   // ID3-tagged MP3
   if (ascii(0, 3) === 'ID3') return { container: 'MP3', codec: 'MPEG Layer 3' };
+  // AAC ADTS — 12-bit sync 0xFFF, layer=0
+  if (head[0] === 0xFF && (head[1] & 0xF0) === 0xF0 && (head[1] & 0x06) === 0x00)
+    return { container: 'AAC', codec: 'AAC (ADTS)' };
   // Raw MPEG frame (FF Ex/Fx)
   if (head[0] === 0xFF && (head[1] & 0xE0) === 0xE0) return { container: 'MP3', codec: 'MPEG audio' };
   // MP4/M4A
   if (ascii(4, 4) === 'ftyp') return { container: 'MP4/M4A', codec: ascii(8, 4).trim() };
   // Opus in OGG handled above
   return { container: 'unknown' };
+}
+
+// --- AAC ADTS → M4A container (browser compat) ---
+function adtsToM4a(arrayBuffer) {
+  const src = new Uint8Array(arrayBuffer);
+  const RATES = [96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350];
+  const frameData = [], frameSizes = [];
+  let profile, freqIdx, chanCfg, i = 0;
+  if (src.length > 10 && src[0] === 0x49 && src[1] === 0x44 && src[2] === 0x33)
+    i = 10 + (((src[6]&0x7F)<<21)|((src[7]&0x7F)<<14)|((src[8]&0x7F)<<7)|(src[9]&0x7F));
+  while (i + 7 <= src.length) {
+    if (src[i] !== 0xFF || (src[i+1] & 0xF6) !== 0xF0) { i++; continue; }
+    profile = ((src[i+2]>>6)&3)+1; freqIdx = (src[i+2]>>2)&0xF;
+    chanCfg = ((src[i+2]&1)<<2)|((src[i+3]>>6)&3);
+    if (freqIdx >= 13) { i++; continue; }
+    const len = ((src[i+3]&3)<<11)|(src[i+4]<<3)|((src[i+5]>>5)&7);
+    if (len < 7 || i + len > src.length) break;
+    const hdr = (src[i+1]&1) ? 7 : 9;
+    frameData.push(src.slice(i+hdr, i+len)); frameSizes.push(len-hdr);
+    i += len;
+  }
+  if (!frameSizes.length) return null;
+  const rate = RATES[freqIdx]||44100, ch = chanCfg||2, N = frameSizes.length;
+  let rawSize = 0; for (const s of frameSizes) rawSize += s;
+  const stszBox = 20+N*4, moov = 540+N*4, total = 568+N*4+rawSize, chunkOff = 568+N*4;
+  const out = new Uint8Array(total), dv = new DataView(out.buffer);
+  let o = 0;
+  const w4 = v => { dv.setUint32(o,v); o+=4; };
+  const w2 = v => { dv.setUint16(o,v); o+=2; };
+  const w1 = v => { out[o++]=v; };
+  const ws = s => { for(let j=0;j<s.length;j++) out[o++]=s.charCodeAt(j); };
+  const sk = n => { o+=n; };
+  const bx = (t,s) => { w4(s); ws(t); };
+  bx('ftyp',20); ws('M4A '); w4(0); ws('isom');
+  bx('moov',moov);
+  bx('mvhd',108); sk(4); sk(8); w4(rate); w4(N*1024);
+  w4(0x00010000); w2(0x0100); sk(10);
+  w4(0x00010000); sk(12); w4(0x00010000); sk(12); w4(0x40000000);
+  sk(24); w4(2);
+  bx('trak',424+N*4);
+  bx('tkhd',92); sk(3); w1(3); sk(8); w4(1); sk(4); w4(N*1024); sk(8); sk(4);
+  w2(0x0100); sk(2);
+  w4(0x00010000); sk(12); w4(0x00010000); sk(12); w4(0x40000000); sk(8);
+  bx('mdia',324+N*4);
+  bx('mdhd',32); sk(4); sk(8); w4(rate); w4(N*1024); w2(0x55C4); sk(2);
+  bx('hdlr',33); sk(4); sk(4); ws('soun'); sk(12); w1(0);
+  bx('minf',251+N*4);
+  bx('smhd',16); sk(8);
+  bx('dinf',36); bx('dref',28); sk(4); w4(1); bx('url ',12); sk(3); w1(1);
+  bx('stbl',191+N*4);
+  bx('stsd',91); sk(4); w4(1);
+  bx('mp4a',75); sk(6); w2(1); sk(8); w2(ch); w2(16); sk(4); w4(rate<<16);
+  bx('esds',39); sk(4);
+  w1(0x03); w1(25); w2(1); w1(0);
+  w1(0x04); w1(17); w1(0x40); w1(0x15); sk(3); w4(0); w4(0);
+  w1(0x05); w1(2); w1((profile<<3)|(freqIdx>>1)); w1(((freqIdx&1)<<7)|(chanCfg<<3));
+  w1(0x06); w1(1); w1(0x02);
+  bx('stts',24); sk(4); w4(1); w4(N); w4(1024);
+  bx('stsc',28); sk(4); w4(1); w4(1); w4(N); w4(1);
+  bx('stsz',stszBox); sk(4); w4(0); w4(N); for(const s of frameSizes) w4(s);
+  bx('stco',20); sk(4); w4(1); w4(chunkOff);
+  bx('mdat',8+rawSize); for(const f of frameData){ out.set(f,o); o+=f.length; }
+  return out.buffer;
 }
 
 // --- Decode helpers ---
@@ -98,16 +164,49 @@ function getMono(audioBuffer) {
 }
 
 function computeStats(samples) {
-  let peak = 0, sumSq = 0;
+  let peak = 0, sumSq = 0, clipped = 0;
   for (let i = 0; i < samples.length; i++) {
     const a = Math.abs(samples[i]);
     if (a > peak) peak = a;
     sumSq += samples[i] * samples[i];
+    if (a >= 0.999) clipped++;
   }
   const rms = Math.sqrt(sumSq / samples.length);
   const peakDb = 20 * Math.log10(peak + 1e-12);
   const rmsDb  = 20 * Math.log10(rms  + 1e-12);
-  return { peak, rms, peakDb, rmsDb };
+  return { peak, rms, peakDb, rmsDb, clipped };
+}
+
+function computeCentroid(samples, sampleRate) {
+  const N = 4096;
+  const frames = Math.floor(samples.length / N);
+  if (frames === 0) return null;
+  let totalCentroid = 0;
+  for (let f = 0; f < frames; f++) {
+    const re = new Float32Array(N), im = new Float32Array(N);
+    for (let i = 0; i < N; i++) re[i] = samples[f * N + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+    for (let s = 1; s < N; s <<= 1) {
+      for (let k = 0; k < N; k += s << 1) {
+        for (let j = 0; j < s; j++) {
+          const a = -Math.PI * j / s;
+          const wr = Math.cos(a), wi = Math.sin(a);
+          const tr = re[k + j + s] * wr - im[k + j + s] * wi;
+          const ti = re[k + j + s] * wi + im[k + j + s] * wr;
+          re[k + j + s] = re[k + j] - tr; im[k + j + s] = im[k + j] - ti;
+          re[k + j] += tr; im[k + j] += ti;
+        }
+      }
+    }
+    let num = 0, den = 0;
+    for (let i = 0; i < N / 2; i++) {
+      const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+      const freq = (i * sampleRate) / N;
+      num += freq * mag;
+      den += mag;
+    }
+    if (den > 0) totalCentroid += num / den;
+  }
+  return totalCentroid / frames;
 }
 
 // --- Waveform render (downsampled min/max per pixel) ---
@@ -125,19 +224,43 @@ function renderWaveform(canvas, samples) {
 
   if (!samples.length) return;
   const samplesPerPx = samples.length / w;
-  ctxC.fillStyle = '#80a4ba';
+  const clipRegions = [];
   for (let x = 0; x < w; x++) {
     const start = Math.floor(x * samplesPerPx);
     const end   = Math.floor((x + 1) * samplesPerPx);
-    let mn = 1, mx = -1;
+    let mn = 1, mx = -1, clip = false;
     for (let i = start; i < end && i < samples.length; i++) {
       const v = samples[i];
       if (v < mn) mn = v;
       if (v > mx) mx = v;
+      if (Math.abs(v) >= 0.999) clip = true;
     }
     const y1 = ((1 - mx) / 2) * h;
     const y2 = ((1 - mn) / 2) * h;
-    ctxC.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+    const bh = Math.max(1, y2 - y1);
+    if (clip) {
+      clipRegions.push({ x, y: y1, h: bh });
+      ctxC.fillStyle = '#444';
+      ctxC.fillRect(x, y1, 1, bh);
+    } else {
+      ctxC.fillStyle = '#80a4ba';
+      ctxC.fillRect(x, y1, 1, bh);
+    }
+  }
+  if (clipRegions.length) {
+    ctxC.save();
+    ctxC.beginPath();
+    for (const r of clipRegions) ctxC.rect(r.x, r.y, 1, r.h);
+    ctxC.clip();
+    const stripe = 6;
+    ctxC.lineWidth = 2;
+    for (let d = -h; d < w + h; d += stripe * 2) {
+      ctxC.strokeStyle = '#fff';
+      ctxC.beginPath(); ctxC.moveTo(d, 0); ctxC.lineTo(d + h, h); ctxC.stroke();
+      ctxC.strokeStyle = '#222';
+      ctxC.beginPath(); ctxC.moveTo(d + stripe, 0); ctxC.lineTo(d + stripe + h, h); ctxC.stroke();
+    }
+    ctxC.restore();
   }
   ctxC.strokeStyle = '#C8DCE8';
   ctxC.strokeRect(0, 0, w, h);
@@ -175,7 +298,7 @@ function buildTimeAxis(axisEl, durationSec) {
 }
 
 // --- Spectrogram UI panel (shared for file + recording) ---
-function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
+export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   const card = el('div', { class: 'anr-card anr-spec-card' });
   card.appendChild(el('h3', {}, 'Spectrogram'));
 
@@ -335,13 +458,27 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   let header = {};
   try { header = await peekContainer(file); } catch (e) { /* ignore */ }
 
+  let playbackFile = file;
   let audioBuffer;
-  try {
-    audioBuffer = await decodeFile(file);
-  } catch (e) {
-    resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not decode this file. Format may not be supported by your browser.'));
-    return;
+
+  if (header.container === 'AAC') {
+    try {
+      const wrapped = adtsToM4a(await file.arrayBuffer());
+      if (wrapped) {
+        playbackFile = new File([wrapped], file.name.replace(/\.[^.]+$/, '.m4a'), { type: 'audio/mp4' });
+        audioBuffer = await ctx().decodeAudioData(wrapped.slice(0));
+      }
+    } catch (_) {}
+  }
+
+  if (!audioBuffer) {
+    try {
+      audioBuffer = await decodeFile(file);
+    } catch (e) {
+      resultsEl.innerHTML = '';
+      resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not decode this file. Format may not be supported by your browser.'));
+      return;
+    }
   }
 
   resultsEl.innerHTML = '';
@@ -352,7 +489,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   // ---- File info card ----
   const infoCard = el('div', { class: 'anr-card' });
   infoCard.appendChild(el('h3', {}, 'File info'));
-  const audioEl = el('audio', { controls: '', src: URL.createObjectURL(file), style: 'width:100%; margin-bottom:8px;' });
+  const audioEl = el('audio', { controls: '', src: URL.createObjectURL(playbackFile), style: 'width:100%; margin-bottom:8px;' });
   infoCard.appendChild(audioEl);
 
   const tbl = el('table', { class: 'anr-readout' });
@@ -368,6 +505,17 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   if (header.bitrate)   tbl.appendChild(row('Bitrate',       (header.bitrate / 1000).toFixed(0) + ' kbps'));
   tbl.appendChild(row('Peak',           stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)'));
   tbl.appendChild(row('RMS',            stats.rms.toFixed(3)  + '  (' + stats.rmsDb.toFixed(1)  + ' dBFS)'));
+  if (stats.clipped > 0) {
+    const pct = ((stats.clipped / mono.length) * 100).toFixed(3);
+    tbl.appendChild(row('Clipping', stats.clipped.toLocaleString() + ' samples  (' + pct + '%)'));
+  } else {
+    tbl.appendChild(row('Clipping', 'None'));
+  }
+  const centroid = computeCentroid(mono, audioBuffer.sampleRate);
+  if (centroid != null) {
+    const label = centroid < 1500 ? 'warm' : centroid < 4000 ? 'neutral' : 'bright';
+    tbl.appendChild(row('Spectral centroid', Math.round(centroid).toLocaleString() + ' Hz  (' + label + ')'));
+  }
   tbl.appendChild(row('Total samples',  mono.length.toLocaleString()));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);

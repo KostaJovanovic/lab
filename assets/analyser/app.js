@@ -1,11 +1,12 @@
 /* Analyser - entry point
-   - Boots photo + audio modules
+   - Boots photo + audio + video modules
    - Acts as the page-wide drop target (until the first file lands)
-   - Classifies dropped files into photo / audio / unknown
+   - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
 import { initPhoto, renderPhoto } from './photo.js';
 import { initAudio, renderAudio } from './audio.js';
+import { initVideo, renderVideo } from './video.js';
 
 function $(id) { return document.getElementById(id); }
 
@@ -52,6 +53,10 @@ const AUDIO_EXTS = new Set([
   'mp3','wav','wave','m4a','m4b','aac','flac','ogg','oga','opus',
   'aiff','aif','aifc','wma','weba','amr','ac3','dts','mka','mid','midi'
 ]);
+const VIDEO_EXTS = new Set([
+  'mp4','m4v','mov','avi','mkv','webm','wmv','flv',
+  '3gp','3g2','mpg','mpeg','mts','m2ts','ts','vob','ogv'
+]);
 
 function fileExt(name) {
   const m = (name || '').match(/\.([^.]+)$/);
@@ -62,9 +67,11 @@ function classifyFile(file) {
   const t = (file.type || '').toLowerCase();
   if (t.startsWith('image/')) return 'photo';
   if (t.startsWith('audio/')) return 'audio';
+  if (t.startsWith('video/')) return 'video';
   const ext = fileExt(file.name);
   if (PHOTO_EXTS.has(ext)) return 'photo';
   if (AUDIO_EXTS.has(ext)) return 'audio';
+  if (VIDEO_EXTS.has(ext)) return 'video';
   return 'unknown';
 }
 
@@ -187,6 +194,7 @@ function boot() {
 
   const photoResults   = $('photoResults');
   const audioResults   = $('audioResults');
+  const videoResults   = $('videoResults');
   const unknownResults = $('unknownResults');
   const pageDropEl     = $('pageDrop');
 
@@ -198,9 +206,22 @@ function boot() {
     firstFileLoaded = true;
     if (pageDropEl) pageDropEl.hidden = true;
     const kind = classifyFile(file);
-    if (kind === 'photo')      renderPhoto(file, photoResults);
-    else if (kind === 'audio') renderAudio(file, audioResults);
-    else                       renderUnknown(file, unknownResults);
+
+    const navMap = { photo: '#photo', audio: '#audio', video: '#video' };
+    const href = navMap[kind];
+    if (href) {
+      const link = document.querySelector('.site-nav a[href="' + href + '"]');
+      if (link) {
+        link.classList.remove('is-flash');
+        void link.offsetWidth;
+        link.classList.add('is-flash');
+      }
+    }
+
+    if (kind === 'photo')       renderPhoto(file, photoResults);
+    else if (kind === 'audio')  renderAudio(file, audioResults);
+    else if (kind === 'video')  renderVideo(file, videoResults);
+    else                        renderUnknown(file, unknownResults);
   }
 
   initPhoto({
@@ -216,6 +237,13 @@ function boot() {
     recordBtn: $('audioRecord'),
     liveBtn:   $('audioLive'),
     resultsEl: audioResults,
+    onFile:    handleFile
+  });
+
+  initVideo({
+    dropEl:    $('videoDrop'),
+    inputEl:   $('videoInput'),
+    resultsEl: videoResults,
     onFile:    handleFile
   });
 
@@ -246,8 +274,37 @@ function boot() {
     e.preventDefault();
     dragCounter = 0;
     if (pageDropEl) pageDropEl.hidden = true;
-    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files) for (const file of files) handleFile(file);
+  });
+
+  // ----- Dark mode toggle -----
+  const saved = localStorage.getItem('anr-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  const darkBtn = document.createElement('button');
+  darkBtn.type = 'button';
+  darkBtn.className = 'dark-toggle';
+  darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark';
+  darkBtn.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('anr-theme', next);
+    darkBtn.textContent = next === 'dark' ? 'Light' : 'Dark';
+  });
+  const nav = document.querySelector('.site-nav');
+  if (nav) nav.appendChild(darkBtn);
+
+  // ----- Clipboard paste (Ctrl+V) -----
+  window.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) handleFile(file);
+      }
+    }
   });
 
   // ----- Scroll-spy for the sticky nav -----

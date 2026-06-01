@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Analyser</title>
-  <meta name="description" content="Photo and sound analysis. Everything runs locally in your browser.">
+  <meta name="description" content="Photo, sound, and video analysis. Everything runs locally in your browser.">
   <meta name="theme-color" content="#ffffff">
   <link rel="icon" href="assets/icon.png">
   <link rel="apple-touch-icon" href="assets/icon.png">
@@ -20,16 +20,16 @@
   <div class="page-drop-inner">
     <span class="page-drop-icon" aria-hidden="true">+</span>
     <strong>Drop anywhere</strong>
-    <p>Photo, sound, or anything else &mdash; I&rsquo;ll figure it out</p>
+    <p>Photo, sound, video, or anything else &mdash; I&rsquo;ll figure it out</p>
   </div>
 </div>
 
 <header class="site-header">
   <div class="grid">
     <div class="site-mark">
-      <span class="site-kicker">A &mdash; 01 / 03</span>
+      <span class="site-kicker">A &mdash; 01 / 04</span>
       <h1 class="site-title">Analyser</h1>
-      <p class="site-sub">A small forensic tool for photos and sound. Drop a file. Everything is read in your browser; nothing is uploaded.</p>
+      <p class="site-sub">A small forensic tool for photos, sound, and video. Drop a file. Everything is read in your browser; nothing is uploaded.</p>
     </div>
     <div class="site-meta">
       <dl>
@@ -44,7 +44,8 @@
 <nav class="site-nav" aria-label="Primary">
   <a href="#photo" class="nav-link is-active"><span class="nav-num">01</span><span>Photo</span></a>
   <a href="#audio" class="nav-link"><span class="nav-num">02</span><span>Sound</span></a>
-  <a href="#about" class="nav-link"><span class="nav-num">03</span><span>About</span></a>
+  <a href="#video" class="nav-link"><span class="nav-num">03</span><span>Video</span></a>
+  <a href="#about" class="nav-link"><span class="nav-num">04</span><span>About</span></a>
 </nav>
 
 <main class="site-main">
@@ -73,6 +74,16 @@
           <button type="button" id="audioRecord" class="anr-btn"><span class="anr-rec-dot" aria-hidden="true">&#9679;</span> Record</button>
           <button type="button" id="audioLive"   class="anr-btn">Live spectrogram</button>
         </div>
+      </div>
+
+      <div class="anr-dropzone quickdrop-zone" id="videoDrop" data-kind="video">
+        <label class="anr-dropzone-inner" for="videoInput">
+          <span class="anr-drop-icon" aria-hidden="true">+</span>
+          <strong>Drop a video</strong>
+          <p>or <span class="anr-pick-link">tap to pick</span></p>
+          <input type="file" accept="video/*" id="videoInput" hidden>
+          <p class="anr-hint">MP4 &middot; MOV &middot; WEBM &middot; MKV &middot; AVI</p>
+        </label>
       </div>
     </div>
   </section>
@@ -112,10 +123,26 @@
     </div>
   </section>
 
-  <section id="about" class="section">
+  <section id="video" class="section">
     <div class="grid">
       <aside class="section-meta">
         <span class="section-num">03</span>
+        <span class="section-kicker">Video</span>
+        <div id="videoPreview" class="section-meta-slot section-meta-preview-slot"></div>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">Decode every frame and frequency in a video.</h2>
+        <p class="section-lede">Container and codec detection, resolution, frame rate, bitrate. Capture any frame for full photo analysis. Extract the audio track for waveform and spectrogram.</p>
+
+        <div id="videoResults" class="anr-results" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">04</span>
         <span class="section-kicker">About</span>
       </aside>
       <div class="section-content">
@@ -134,6 +161,12 @@
 
           <dt>Audio</dt>
           <dd>Native Web Audio API plus a hand-written radix-2 FFT.</dd>
+
+          <dt>Video</dt>
+          <dd>HTML5 video for playback and frame capture. Audio extracted via Web Audio API for spectrogram.</dd>
+
+          <dt>HEIC</dt>
+          <dd><a href="https://github.com/nichenqin/heic2any" target="_blank" rel="noopener">heic2any</a> &mdash; converts HEIC/HEIF to JPEG in your browser. Loaded only when needed.</dd>
 
           <dt>Install</dt>
           <dd>Add to home screen for an offline PWA.</dd>

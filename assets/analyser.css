@@ -806,8 +806,12 @@ details[open] summary::after { content: "\2212"; }
 }
 .quickdrop-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--gap);
+}
+@media (max-width: 600px) {
+  .quickdrop-grid { grid-template-columns: 1fr 1fr; }
+  .quickdrop-grid > :nth-child(3) { grid-column: 1 / -1; }
 }
 .quickdrop-zone { margin: 0 !important; }
 .quickdrop-zone .anr-dropzone-inner {
@@ -1015,6 +1019,97 @@ details[open] summary::after { content: "\2212"; }
   overflow-x: auto;
   margin: 14px 0;
   line-height: 1.55;
+}
+
+/* ---------- NAV FLASH (E6) ---------- */
+@keyframes anr-nav-flash {
+  0%   { background: var(--accent); color: var(--accent-fg); }
+  100% { background: transparent;   color: var(--fg); }
+}
+.nav-link.is-flash {
+  animation: anr-nav-flash 0.6s ease-out;
+}
+.nav-link.is-active.is-flash {
+  animation: none;
+}
+
+/* ---------- COLOR PICKER TOOLTIP (A7) ---------- */
+.anr-picker-tooltip {
+  position: absolute;
+  z-index: 10;
+  background: var(--fg);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.anr-picker-tooltip[hidden] { display: none; }
+.anr-picker-tooltip.is-copied::after {
+  content: " copied";
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+.anr-picker-swatch {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 1px solid rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+
+/* ---------- FOCUS MAP OVERLAY ---------- */
+.anr-focus-overlay {
+  position: absolute;
+  top: 6px; left: 6px;
+  width: calc(100% - 12px);
+  max-height: clamp(160px, 28vh, 260px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.anr-focus-overlay[hidden] { display: none; }
+
+/* ---------- DARK MODE (E1) ---------- */
+:root[data-theme="dark"] {
+  --bg:        #0a0a0a;
+  --fg:        #e8e8e8;
+  --muted:     #888;
+  --hairline:  #333;
+  --rule:      #262626;
+  --surface:   #141414;
+  --accent:    #ff3347;
+  --accent-fg: #ffffff;
+}
+:root[data-theme="dark"] .page-drop {
+  background: rgba(10, 10, 10, 0.95);
+}
+:root[data-theme="dark"] .anr-swatch span {
+  background: var(--bg);
+}
+
+.dark-toggle {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--fg);
+  cursor: pointer;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.dark-toggle:hover {
+  background: var(--fg);
+  color: var(--bg);
 }
 
 /* ---------- MOBILE TOUCH-TARGET POLISH ---------- */

@@ -10,6 +10,7 @@
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
 const LEAFLET_CSS   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+const HEIC2ANY_URL  = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
 
 const TESSERACT_LANGS = [
   ['eng', 'English'],
@@ -205,6 +206,93 @@ function buildRawDump(exif) {
   return rows;
 }
 
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let h = 0, s = 0, l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (mx === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return Math.round(h * 360) + '°,' + Math.round(s * 100) + '%,' + Math.round(l * 100) + '%';
+}
+
+// ---------- sharpness (Laplacian variance) ----------
+function computeSharpness(imgData) {
+  const w = imgData.width, h = imgData.height, d = imgData.data;
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  let sum = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const lap = -4 * gray[y * w + x]
+        + gray[(y - 1) * w + x] + gray[(y + 1) * w + x]
+        + gray[y * w + x - 1]   + gray[y * w + x + 1];
+      sum += lap * lap;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+function sharpnessLabel(v) {
+  if (v > 800) return 'very sharp';
+  if (v > 300) return 'sharp';
+  if (v > 100) return 'normal';
+  if (v > 30)  return 'soft';
+  return 'blurry';
+}
+
+function detectFocusRegion(imgData, gridSize) {
+  const w = imgData.width, h = imgData.height, d = imgData.data;
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gray[i] = 0.299 * d[i*4] + 0.587 * d[i*4+1] + 0.114 * d[i*4+2];
+  const cols = Math.ceil(w / gridSize), rows = Math.ceil(h / gridSize);
+  const grid = new Float32Array(cols * rows);
+  let maxVar = 0, maxIdx = 0;
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      let sum = 0, n = 0;
+      const x0 = gx * gridSize, y0 = gy * gridSize;
+      const x1 = Math.min(x0 + gridSize, w - 1), y1 = Math.min(y0 + gridSize, h - 1);
+      for (let y = Math.max(1, y0); y < y1; y++) {
+        for (let x = Math.max(1, x0); x < x1; x++) {
+          const lap = -4*gray[y*w+x] + gray[(y-1)*w+x] + gray[(y+1)*w+x] + gray[y*w+x-1] + gray[y*w+x+1];
+          sum += lap * lap; n++;
+        }
+      }
+      const v = n > 0 ? sum / n : 0;
+      grid[gy * cols + gx] = v;
+      if (v > maxVar) { maxVar = v; maxIdx = gy * cols + gx; }
+    }
+  }
+  return { grid, cols, rows, gridSize, maxIdx, maxVar,
+    focusX: (maxIdx % cols) * gridSize + gridSize / 2,
+    focusY: Math.floor(maxIdx / cols) * gridSize + gridSize / 2 };
+}
+
+// ---------- color statistics ----------
+function computeColorStats(imgData) {
+  const d = imgData.data, total = imgData.width * imgData.height;
+  let rSum = 0, gSum = 0, bSum = 0, shadows = 0, midtones = 0, highlights = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    rSum += d[i]; gSum += d[i + 1]; bSum += d[i + 2];
+    const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    if (lum < 64) shadows++;
+    else if (lum < 192) midtones++;
+    else highlights++;
+  }
+  return {
+    avgR: Math.round(rSum / total), avgG: Math.round(gSum / total), avgB: Math.round(bSum / total),
+    shadows: ((shadows / total) * 100).toFixed(1),
+    midtones: ((midtones / total) * 100).toFixed(1),
+    highlights: ((highlights / total) * 100).toFixed(1)
+  };
+}
+
 // ---------- histogram + palette ----------
 function getPixelData(img) {
   const MAX = 240;
@@ -325,6 +413,20 @@ function loadScript(src) {
     s.onload = resolve; s.onerror = reject;
     document.head.appendChild(s);
   });
+}
+
+const HEIC_EXTS = new Set(['heic', 'heif', 'heics', 'heifs']);
+
+function fileExt(name) {
+  const m = (name || '').match(/\.([^.]+)$/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+async function convertHeic(file) {
+  await loadScript(HEIC2ANY_URL);
+  const blob = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  const out = Array.isArray(blob) ? blob[0] : blob;
+  return new File([out], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
 }
 
 async function makeMap(container, lat, lon, label) {
@@ -590,12 +692,26 @@ export async function renderPhoto(file, resultsEl) {
   resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   let imgInfo;
+  let convertedFile = null;
   try {
     imgInfo = await loadImageFromFile(file);
   } catch (e) {
-    resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not load this image. The format may not be supported by your browser (HEIC/HEIF often need a converter).'));
-    return;
+    if (HEIC_EXTS.has(fileExt(file.name))) {
+      resultsEl.innerHTML = '';
+      resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Converting HEIC/HEIF to JPEG…'));
+      try {
+        convertedFile = await convertHeic(file);
+        imgInfo = await loadImageFromFile(convertedFile);
+      } catch (e2) {
+        resultsEl.innerHTML = '';
+        resultsEl.appendChild(el('div', { class: 'anr-error' }, 'HEIC conversion failed: ' + (e2 && e2.message ? e2.message : e2)));
+        return;
+      }
+    } else {
+      resultsEl.innerHTML = '';
+      resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not load this image. The format may not be supported by your browser.'));
+      return;
+    }
   }
   const { img, url } = imgInfo;
 
@@ -611,14 +727,17 @@ export async function renderPhoto(file, resultsEl) {
     console.warn('exifr error:', e);
   }
 
-  // Compute pixel-derived stuff in parallel
   const pixData = getPixelData(img);
   const hist = computeHistogram(pixData);
   const palette = dominantColors(pixData, 8);
+  const sharpness = computeSharpness(pixData);
+  const colorStats = computeColorStats(pixData);
+  const blockSize = Math.max(4, Math.round(Math.min(pixData.width, pixData.height) / 12));
+  const focus = detectFocusRegion(pixData, blockSize);
 
   resultsEl.innerHTML = '';
 
-  // ---- Preview thumb in section-meta column (click to open lightbox) ----
+  // ---- Preview thumb in section-meta column (click to open lightbox + color picker) ----
   const previewSlot = document.getElementById('photoPreview');
   if (previewSlot) {
     previewSlot.innerHTML = '';
@@ -629,6 +748,72 @@ export async function renderPhoto(file, resultsEl) {
     thumb.appendChild(thumbImg);
     thumb.appendChild(el('p', { class: 'section-meta-preview-caption' },
       `${img.naturalWidth} × ${img.naturalHeight} · ${fmtBytes(file.size)}`));
+
+    const pickerCanvas = document.createElement('canvas');
+    pickerCanvas.width = img.naturalWidth;
+    pickerCanvas.height = img.naturalHeight;
+    pickerCanvas.getContext('2d').drawImage(img, 0, 0);
+
+    const tooltip = el('div', { class: 'anr-picker-tooltip' });
+    tooltip.hidden = true;
+    thumb.appendChild(tooltip);
+    thumb.style.position = 'relative';
+
+    thumbImg.style.cursor = 'crosshair';
+    thumbImg.addEventListener('mousemove', (e) => {
+      const rect = thumbImg.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) / rect.width;
+      const sy = (e.clientY - rect.top)  / rect.height;
+      const px = Math.min(pickerCanvas.width - 1, Math.max(0, Math.floor(sx * pickerCanvas.width)));
+      const py = Math.min(pickerCanvas.height - 1, Math.max(0, Math.floor(sy * pickerCanvas.height)));
+      const [r, g, b] = pickerCanvas.getContext('2d').getImageData(px, py, 1, 1).data;
+      const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+      const hsl = rgbToHsl(r, g, b);
+      tooltip.innerHTML = '';
+      tooltip.appendChild(el('span', { class: 'anr-picker-swatch', style: 'background:' + hex }));
+      tooltip.appendChild(document.createTextNode(hex + '  rgb(' + r + ',' + g + ',' + b + ')  hsl(' + hsl + ')'));
+      tooltip.hidden = false;
+      tooltip.style.left = (sx * 100) + '%';
+      tooltip.style.top = Math.max(0, e.clientY - rect.top - 32) + 'px';
+    });
+    thumbImg.addEventListener('mouseleave', () => { tooltip.hidden = true; });
+    thumbImg.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = thumbImg.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) / rect.width;
+      const sy = (e.clientY - rect.top)  / rect.height;
+      const px = Math.min(pickerCanvas.width - 1, Math.max(0, Math.floor(sx * pickerCanvas.width)));
+      const py = Math.min(pickerCanvas.height - 1, Math.max(0, Math.floor(sy * pickerCanvas.height)));
+      const [r, g, b] = pickerCanvas.getContext('2d').getImageData(px, py, 1, 1).data;
+      const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+      navigator.clipboard.writeText(hex).catch(() => {});
+      tooltip.classList.add('is-copied');
+      setTimeout(() => tooltip.classList.remove('is-copied'), 800);
+    });
+
+    const focusCv = document.createElement('canvas');
+    focusCv.width = focus.cols; focusCv.height = focus.rows;
+    const fCtx = focusCv.getContext('2d');
+    const fImg = fCtx.createImageData(focus.cols, focus.rows);
+    for (let i = 0; i < focus.grid.length; i++) {
+      const t = Math.min(1, focus.grid[i] / (focus.maxVar * 0.8));
+      fImg.data[i*4] = Math.round(t * 255);
+      fImg.data[i*4+1] = Math.round(t * 80);
+      fImg.data[i*4+2] = Math.round((1 - t) * 40);
+      fImg.data[i*4+3] = Math.round(t * 120);
+    }
+    fCtx.putImageData(fImg, 0, 0);
+    const focusOverlay = el('img', { class: 'anr-focus-overlay', src: focusCv.toDataURL(), alt: 'Focus heatmap' });
+    focusOverlay.hidden = true;
+    thumb.appendChild(focusOverlay);
+
+    const focusToggle = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:6px; width:100%; font-size:11px;' }, 'Show focus map');
+    focusToggle.addEventListener('click', () => {
+      focusOverlay.hidden = !focusOverlay.hidden;
+      focusToggle.textContent = focusOverlay.hidden ? 'Show focus map' : 'Hide focus map';
+    });
+    thumb.appendChild(focusToggle);
+
     previewSlot.appendChild(thumb);
   }
 
@@ -646,10 +831,31 @@ export async function renderPhoto(file, resultsEl) {
   tbl.appendChild(row('Dimensions',    `${w} × ${h} px`));
   tbl.appendChild(row('Aspect ratio',  aspectRatio(w, h)));
   tbl.appendChild(row('Megapixels',    mp + ' MP'));
+  tbl.appendChild(row('Sharpness',    sharpness.toFixed(1) + '  (' + sharpnessLabel(sharpness) + ')'));
+  const fpx = Math.round(focus.focusX / pixData.width * w);
+  const fpy = Math.round(focus.focusY / pixData.height * h);
+  tbl.appendChild(row('Focus point',  fpx + ', ' + fpy + '  (estimated)'));
+  const avgHex = '#' + [colorStats.avgR, colorStats.avgG, colorStats.avgB].map((v) => v.toString(16).padStart(2, '0')).join('');
+  tbl.appendChild(row('Average colour', avgHex + '  (R' + colorStats.avgR + ' G' + colorStats.avgG + ' B' + colorStats.avgB + ')'));
+  tbl.appendChild(row('Tonal split',   colorStats.shadows + '% shadows · ' + colorStats.midtones + '% midtones · ' + colorStats.highlights + '% highlights'));
   if (exif && exif.Orientation != null) {
     tbl.appendChild(row('Orientation', (ORIENTATIONS[exif.Orientation] || exif.Orientation)));
   }
+  if (convertedFile) {
+    tbl.appendChild(row('Converted', 'HEIC → JPEG'));
+  }
   infoCard.appendChild(tbl);
+
+  if (convertedFile) {
+    const dlBtn = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:12px;' }, 'Download as JPEG');
+    dlBtn.addEventListener('click', () => {
+      const a = el('a', { href: URL.createObjectURL(convertedFile), download: convertedFile.name });
+      document.body.appendChild(a); a.click();
+      setTimeout(() => a.remove(), 500);
+    });
+    infoCard.appendChild(dlBtn);
+  }
+
   resultsEl.appendChild(infoCard);
 
   // ---- EXIF sections ----
