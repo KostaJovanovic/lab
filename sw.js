@@ -1,20 +1,23 @@
 /* Analyser - service worker
    Precache the app shell; stale-while-revalidate the rest. */
 
-const VERSION = 'analyser-v5';
+const VERSION = 'analyser-v6';
 const SHELL = [
   './',
   './index.html',
   './manifest.json',
   './assets/analyser.css',
+  './assets/fonts.css',
   './assets/analyser/app.js',
   './assets/analyser/photo.js',
   './assets/analyser/audio.js',
   './assets/analyser/video.js',
   './assets/analyser/spectrogram.js',
+  './assets/analyser/pdf.js',
+  './assets/analyser/archive.js',
+  './assets/favicon.svg',
   './assets/icon.png',
-  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',
-  'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap'
+  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js'
 ];
 
 self.addEventListener('install', (e) => {

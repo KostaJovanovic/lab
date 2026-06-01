@@ -689,6 +689,56 @@ function makeOcrCard(file) {
   return card;
 }
 
+// ---------- LSB steganography planes ----------
+function renderLsbPlanes(img, container) {
+  const MAX_W = 400;
+  const scale = Math.min(1, MAX_W / img.naturalWidth);
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+
+  // Draw source image scaled down
+  const srcCv = document.createElement('canvas');
+  srcCv.width = w; srcCv.height = h;
+  const srcCtx = srcCv.getContext('2d', { willReadFrequently: true });
+  srcCtx.drawImage(img, 0, 0, w, h);
+  const srcData = srcCtx.getImageData(0, 0, w, h).data;
+
+  const channels = [
+    { label: 'R', offset: 0 },
+    { label: 'G', offset: 1 },
+    { label: 'B', offset: 2 }
+  ];
+
+  const wrap = el('div', { style: 'display:flex; gap:12px; flex-wrap:wrap;' });
+
+  for (const ch of channels) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.style.maxWidth = '100%';
+    cv.style.imageRendering = 'pixelated';
+    const ctx = cv.getContext('2d');
+    const out = ctx.createImageData(w, h);
+    const od = out.data;
+
+    for (let i = 0; i < w * h; i++) {
+      const v = (srcData[i * 4 + ch.offset] & 1) * 255;
+      od[i * 4]     = v;
+      od[i * 4 + 1] = v;
+      od[i * 4 + 2] = v;
+      od[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+
+    const col = el('div', { style: 'flex:1; min-width:100px; text-align:center;' }, [
+      el('div', { style: 'font-weight:600; margin-bottom:4px; font-size:13px;' }, ch.label),
+      cv
+    ]);
+    wrap.appendChild(col);
+  }
+
+  container.appendChild(wrap);
+}
+
 // ---------- lightbox (singleton, lazy) ----------
 let lightboxEl = null;
 function ensureLightbox() {
@@ -1011,6 +1061,14 @@ export async function renderPhoto(file, resultsEl) {
   sha256Hex(file).then((h) => {
     shaRow.querySelector('td').textContent = h || 'unavailable';
   });
+
+  // ---- LSB steganography analysis ----
+  const lsbCard = el('div', { class: 'anr-card' });
+  lsbCard.appendChild(el('h3', {}, 'LSB Analysis'));
+  renderLsbPlanes(img, lsbCard);
+  lsbCard.appendChild(el('p', { style: 'margin:8px 0 0; font-size:12px; opacity:0.7;' },
+    'Least significant bit plane — patterns may indicate hidden data'));
+  resultsEl.appendChild(lsbCard);
 
   const raw = buildRawDump(exif);
   if (raw && raw.length) {

@@ -356,6 +356,195 @@ function detectPitch(samples, sampleRate) {
   return { frequency, note, cents };
 }
 
+// --- BPM / Tempo detection (onset detection + autocorrelation) ---
+function detectBPM(samples, sampleRate) {
+  const N = 1024;                    // FFT window size
+  const hop = N / 2;                 // 50 % overlap
+  const halfN = N / 2;
+  const numFrames = Math.floor((samples.length - N) / hop);
+  if (numFrames < 4) return null;
+
+  // Compute magnitude spectra for each frame
+  const mags = [];
+  for (let f = 0; f < numFrames; f++) {
+    const off = f * hop;
+    const re = new Float32Array(N);
+    const im = new Float32Array(N);
+    // Hann window + copy
+    for (let i = 0; i < N; i++) {
+      re[i] = samples[off + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+    }
+    // In-place radix-2 FFT (same pattern as computeCentroid)
+    for (let s = 1; s < N; s <<= 1) {
+      for (let k = 0; k < N; k += s << 1) {
+        for (let j = 0; j < s; j++) {
+          const a = -Math.PI * j / s;
+          const wr = Math.cos(a), wi = Math.sin(a);
+          const tr = re[k + j + s] * wr - im[k + j + s] * wi;
+          const ti = re[k + j + s] * wi + im[k + j + s] * wr;
+          re[k + j + s] = re[k + j] - tr;
+          im[k + j + s] = im[k + j] - ti;
+          re[k + j] += tr;
+          im[k + j] += ti;
+        }
+      }
+    }
+    const mag = new Float32Array(halfN);
+    for (let i = 0; i < halfN; i++) {
+      mag[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+    }
+    mags.push(mag);
+  }
+
+  // Spectral flux: sum of positive magnitude differences between consecutive frames
+  const flux = new Float32Array(numFrames);
+  for (let f = 1; f < numFrames; f++) {
+    let sum = 0;
+    for (let i = 0; i < halfN; i++) {
+      const diff = mags[f][i] - mags[f - 1][i];
+      if (diff > 0) sum += diff;
+    }
+    flux[f] = sum;
+  }
+
+  // Adaptive peak picking: onset if flux > local mean * 1.5
+  const medianW = 8;
+  const onsets = new Float32Array(numFrames);
+  for (let f = medianW; f < numFrames - medianW; f++) {
+    let localMean = 0;
+    for (let j = f - medianW; j <= f + medianW; j++) localMean += flux[j];
+    localMean /= (2 * medianW + 1);
+    onsets[f] = (flux[f] > localMean * 1.5 && flux[f] > 0) ? flux[f] : 0;
+  }
+
+  // Autocorrelation of the onset signal to find dominant period
+  // Search between 60 and 200 BPM
+  const framesPerSec = sampleRate / hop;
+  const minLag = Math.floor(framesPerSec * 60 / 200); // 200 BPM
+  const maxLag = Math.ceil(framesPerSec * 60 / 60);   // 60 BPM
+  if (maxLag >= numFrames) return null;
+
+  let bestLag = minLag;
+  let bestCorr = -Infinity;
+  for (let lag = minLag; lag <= maxLag && lag < numFrames; lag++) {
+    let corr = 0;
+    const len = numFrames - lag;
+    for (let i = 0; i < len; i++) {
+      corr += onsets[i] * onsets[i + lag];
+    }
+    if (corr > bestCorr) {
+      bestCorr = corr;
+      bestLag = lag;
+    }
+  }
+
+  // Parabolic interpolation around the peak for sub-frame accuracy
+  let refinedLag = bestLag;
+  if (bestLag > minLag && bestLag < maxLag) {
+    let corrPrev = 0, corrNext = 0;
+    const len = numFrames - bestLag;
+    for (let i = 0; i < len; i++) {
+      if (i + bestLag - 1 >= 0 && i + bestLag - 1 < numFrames)
+        corrPrev += onsets[i] * onsets[i + bestLag - 1];
+      if (i + bestLag + 1 < numFrames)
+        corrNext += onsets[i] * onsets[i + bestLag + 1];
+    }
+    const denom = corrPrev - 2 * bestCorr + corrNext;
+    if (Math.abs(denom) > 1e-12) {
+      const shift = 0.5 * (corrPrev - corrNext) / denom;
+      if (Math.abs(shift) < 1) refinedLag = bestLag + shift;
+    }
+  }
+
+  const periodSec = refinedLag / framesPerSec;
+  const bpm = 60 / periodSec;
+
+  // Clamp to reasonable range
+  if (bpm < 60 || bpm > 200 || !isFinite(bpm)) return null;
+  return Math.round(bpm);
+}
+
+// --- Stereo analysis: phase correlation, width, vectorscope ---
+function computeStereoStats(left, right) {
+  let sumLR = 0, sumLL = 0, sumRR = 0;
+  let sumMid = 0, sumSide = 0;
+  const n = Math.min(left.length, right.length);
+  for (let i = 0; i < n; i++) {
+    sumLR += left[i] * right[i];
+    sumLL += left[i] * left[i];
+    sumRR += right[i] * right[i];
+    const mid  = (left[i] + right[i]) * 0.5;
+    const side = (left[i] - right[i]) * 0.5;
+    sumMid  += mid * mid;
+    sumSide += side * side;
+  }
+  const denom = Math.sqrt(sumLL * sumRR);
+  const correlation = denom > 1e-12 ? sumLR / denom : 0;
+  const width = 1 - Math.abs(correlation);
+  const midLevel  = Math.sqrt(sumMid / n);
+  const sideLevel = Math.sqrt(sumSide / n);
+  return { correlation, width, midLevel, sideLevel };
+}
+
+function renderVectorscope(canvas, left, right) {
+  const size = canvas.width;
+  const ctxC = canvas.getContext('2d');
+  ctxC.fillStyle = '#1a1a1a';
+  ctxC.fillRect(0, 0, size, size);
+
+  // Draw guides: centre cross + diagonal axes
+  const cx = size / 2, cy = size / 2;
+  ctxC.strokeStyle = '#333';
+  ctxC.lineWidth = 1;
+  // Horizontal and vertical (mono = vertical, hard-pan = horizontal after rotation)
+  ctxC.beginPath();
+  ctxC.moveTo(cx, 0); ctxC.lineTo(cx, size);
+  ctxC.moveTo(0, cy); ctxC.lineTo(size, cy);
+  ctxC.stroke();
+
+  // Labels
+  ctxC.fillStyle = '#666';
+  ctxC.font = '10px monospace';
+  ctxC.textAlign = 'center';
+  ctxC.fillText('M', cx, 10);
+  ctxC.fillText('S', size - 8, cy + 4);
+  ctxC.fillText('L', cx - 6, 10);
+  ctxC.textAlign = 'left';
+  ctxC.fillText('R', cx + 3, 10);
+
+  const n = Math.min(left.length, right.length);
+  if (n === 0) return;
+
+  // Downsample to max ~40k dots for performance
+  const maxDots = 40000;
+  const step = Math.max(1, Math.floor(n / maxDots));
+  const scale = size * 0.42; // leave a small margin
+
+  // Use ImageData for efficient semi-transparent dot rendering
+  const imgData = ctxC.getImageData(0, 0, size, size);
+  const data = imgData.data;
+
+  for (let i = 0; i < n; i += step) {
+    const l = left[i], r = right[i];
+    // 45-degree rotation: mid on Y (vertical), side on X (horizontal)
+    const mid  = (l + r) * 0.5;
+    const side = (l - r) * 0.5;
+    const px = Math.round(cx + side * scale);
+    const py = Math.round(cy - mid * scale);
+    if (px < 0 || px >= size || py < 0 || py >= size) continue;
+    const idx = (py * size + px) * 4;
+    // Additive blending for density visualisation
+    data[idx]     = Math.min(255, data[idx]     + 12);  // R
+    data[idx + 1] = Math.min(255, data[idx + 1] + 28);  // G
+    data[idx + 2] = Math.min(255, data[idx + 2] + 18);  // B
+    data[idx + 3] = 255;
+  }
+
+  ctxC.putImageData(imgData, 0, 0);
+  ctxC.strokeStyle = '#C8DCE8';
+  ctxC.strokeRect(0, 0, size, size);
+}
+
 // --- Waveform render (downsampled min/max per pixel) ---
 function renderWaveform(canvas, samples) {
   const ctxC = canvas.getContext('2d');
@@ -672,6 +861,8 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   } else {
     tbl.appendChild(row('Pitch', 'N/A'));
   }
+  const bpm = detectBPM(mono, audioBuffer.sampleRate);
+  tbl.appendChild(row('BPM', bpm != null ? bpm + ' BPM' : 'N/A'));
   tbl.appendChild(row('Total samples',  mono.length.toLocaleString()));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
@@ -868,6 +1059,38 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   // ---- Spectrogram ----
   const basename = (file.name || 'spectrogram').replace(/\.[^/.]+$/, '');
   resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename }));
+
+  // ---- Stereo Width / Vectorscope card (stereo files only) ----
+  if (audioBuffer.numberOfChannels >= 2) {
+    const left  = audioBuffer.getChannelData(0);
+    const right = audioBuffer.getChannelData(1);
+    const stereo = computeStereoStats(left, right);
+
+    const stereoCard = el('div', { class: 'anr-card' });
+    stereoCard.appendChild(el('h3', {}, 'Stereo analysis'));
+
+    const stereoTbl = el('table', { class: 'anr-readout' });
+    const corrPct  = (stereo.correlation * 100).toFixed(1);
+    const corrHint = stereo.correlation > 0.8 ? 'mono-like'
+                   : stereo.correlation < -0.2 ? 'out of phase'
+                   : stereo.correlation < 0.3 ? 'wide' : 'normal';
+    stereoTbl.appendChild(row('Phase correlation', stereo.correlation.toFixed(3) + '  (' + corrPct + '%, ' + corrHint + ')'));
+    stereoTbl.appendChild(row('Stereo width',      stereo.width.toFixed(3)));
+    stereoTbl.appendChild(row('Mid level',         stereo.midLevel.toFixed(4)));
+    stereoTbl.appendChild(row('Side level',        stereo.sideLevel.toFixed(4)));
+    const msRatio = stereo.midLevel > 1e-12
+      ? (stereo.sideLevel / stereo.midLevel).toFixed(3)
+      : '-';
+    stereoTbl.appendChild(row('Side / Mid ratio',  msRatio));
+    stereoCard.appendChild(stereoTbl);
+
+    // Vectorscope canvas
+    const vsCanvas = el('canvas', { width: '200', height: '200', style: 'display:block; margin:8px auto 0;' });
+    stereoCard.appendChild(vsCanvas);
+    renderVectorscope(vsCanvas, left, right);
+
+    resultsEl.appendChild(stereoCard);
+  }
 }
 
 // --- Recording UI ---

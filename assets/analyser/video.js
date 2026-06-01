@@ -170,6 +170,70 @@ async function detectFps(url) {
   });
 }
 
+// ---------- scene change detection ----------
+
+async function detectSceneChanges(video, threshold) {
+  if (!isFinite(video.duration) || video.duration <= 0) return [];
+
+  const dur = video.duration;
+  const tw = 160, th = 90;
+
+  // Decide sample interval: aim for ~2 samples/sec for short clips, cap at
+  // reasonable totals for long videos (max ~600 samples = 5 min at 0.5s).
+  const interval = dur < 120 ? 0.5 : Math.max(0.5, dur / 600);
+  const sampleCount = Math.floor(dur / interval);
+  if (sampleCount < 2) return [];
+
+  const cmpCanvas = document.createElement('canvas');
+  cmpCanvas.width = tw;
+  cmpCanvas.height = th;
+  const cmpCtx = cmpCanvas.getContext('2d', { willReadFrequently: true });
+
+  const thumbCanvas = document.createElement('canvas');
+  thumbCanvas.width = tw;
+  thumbCanvas.height = th;
+  const thumbCtx = thumbCanvas.getContext('2d');
+
+  let prevData = null;
+  const changes = [];
+
+  for (let i = 0; i <= sampleCount; i++) {
+    const t = Math.min(i * interval, dur - 0.05);
+    video.currentTime = t;
+    await new Promise(r => { video.onseeked = r; });
+
+    cmpCtx.drawImage(video, 0, 0, tw, th);
+    const frame = cmpCtx.getImageData(0, 0, tw, th);
+
+    if (prevData) {
+      let sum = 0;
+      const px = tw * th;
+      const d = frame.data;
+      const p = prevData.data;
+      for (let j = 0; j < px; j++) {
+        const off = j * 4;
+        sum += Math.abs(d[off]     - p[off]);
+        sum += Math.abs(d[off + 1] - p[off + 1]);
+        sum += Math.abs(d[off + 2] - p[off + 2]);
+      }
+      const meanDiff = sum / (px * 3);
+
+      if (meanDiff > threshold) {
+        thumbCtx.drawImage(video, 0, 0, tw, th);
+        changes.push({
+          time: t,
+          diff: meanDiff,
+          thumbnail: thumbCanvas.toDataURL('image/jpeg', 0.8)
+        });
+      }
+    }
+
+    prevData = frame;
+  }
+
+  return changes;
+}
+
 // ---------- audio helpers ----------
 
 function getMono(audioBuffer) {
@@ -508,6 +572,79 @@ export async function renderVideo(file, resultsEl) {
     sheetCard.appendChild(el('div', { class: 'anr-btn-row' }, [sheetBtn]));
     sheetCard.appendChild(sheetOut);
     resultsEl.appendChild(sheetCard);
+
+    // ---- Scene change detection ----
+    const sceneCard = el('div', { class: 'anr-card' });
+    sceneCard.appendChild(el('h3', {}, 'Scene changes'));
+    sceneCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:12px !important;' },
+      'Detect scene changes by comparing consecutive frames (pixel difference)'));
+    const sceneBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Detect scene changes');
+    const sceneOut = el('div');
+
+    sceneBtn.addEventListener('click', async () => {
+      sceneBtn.disabled = true;
+      sceneBtn.textContent = 'Analysing…';
+
+      const changes = await detectSceneChanges(playerEl, 35);
+
+      sceneOut.innerHTML = '';
+
+      const countLabel = el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
+        changes.length
+          ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected'
+          : 'No scene changes detected');
+      sceneOut.appendChild(countLabel);
+
+      if (changes.length && isFinite(dur) && dur > 0) {
+        // Timeline bar with markers
+        const timeline = el('div', {
+          style: 'position:relative; height:24px; background:#1a1a1a; border:1px solid var(--hairline); border-radius:3px; margin-bottom:14px;'
+        });
+        for (const sc of changes) {
+          const pct = (sc.time / dur) * 100;
+          const marker = el('div', {
+            style: 'position:absolute; top:2px; bottom:2px; width:2px; background:#e60023; border-radius:1px; left:' + pct + '%;',
+            title: formatDuration(sc.time)
+          });
+          marker.addEventListener('click', () => {
+            playerEl.currentTime = sc.time;
+            playerEl.pause();
+          });
+          marker.style.cursor = 'pointer';
+          timeline.appendChild(marker);
+        }
+        sceneOut.appendChild(timeline);
+
+        // Thumbnail grid
+        const grid = el('div', {
+          style: 'display:flex; flex-wrap:wrap; gap:8px;'
+        });
+        for (const sc of changes) {
+          const wrap = el('div', {
+            style: 'cursor:pointer; text-align:center;',
+            onclick: () => { playerEl.currentTime = sc.time; playerEl.pause(); }
+          });
+          wrap.appendChild(el('img', {
+            src: sc.thumbnail,
+            alt: 'Scene change at ' + formatDuration(sc.time),
+            style: 'width:160px; height:90px; object-fit:cover; display:block; border:1px solid var(--hairline); border-radius:2px;'
+          }));
+          wrap.appendChild(el('span', {
+            class: 'anr-hint',
+            style: 'font-size:11px; font-variant-numeric:tabular-nums;'
+          }, formatDuration(sc.time)));
+          grid.appendChild(wrap);
+        }
+        sceneOut.appendChild(grid);
+      }
+
+      sceneBtn.disabled = false;
+      sceneBtn.textContent = 'Detect scene changes';
+    });
+
+    sceneCard.appendChild(el('div', { class: 'anr-btn-row' }, [sceneBtn]));
+    sceneCard.appendChild(sceneOut);
+    resultsEl.appendChild(sceneCard);
   }
 
   // ---- Audio track extraction ----
