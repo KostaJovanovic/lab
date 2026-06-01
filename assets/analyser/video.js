@@ -287,6 +287,38 @@ export async function renderVideo(file, resultsEl) {
   const playerEl = el('video', { controls: '', src: url });
   playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
   playerCard.appendChild(playerEl);
+
+  // ---- Frame-by-frame navigation ----
+  const frameTimeLabel = el('span', { class: 'anr-hint', style: 'min-width:90px; text-align:center; font-variant-numeric:tabular-nums;' }, '0:00.000');
+
+  function updateFrameTimeLabel() {
+    const t = playerEl.currentTime;
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    frameTimeLabel.textContent = m + ':' + s.toFixed(3).padStart(6, '0');
+  }
+
+  playerEl.addEventListener('timeupdate', updateFrameTimeLabel);
+
+  const prevFrameBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+    playerEl.pause();
+    playerEl.currentTime = Math.max(0, playerEl.currentTime - 1 / 30);
+  }}, '← Prev frame');
+
+  const nextFrameBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      playerEl.requestVideoFrameCallback(() => {
+        playerEl.pause();
+        updateFrameTimeLabel();
+      });
+      playerEl.play();
+    } else {
+      playerEl.currentTime = Math.min(playerEl.duration, playerEl.currentTime + 1 / 30);
+    }
+  }}, 'Next frame →');
+
+  playerCard.appendChild(el('div', { class: 'anr-btn-row' }, [prevFrameBtn, frameTimeLabel, nextFrameBtn]));
+
   resultsEl.appendChild(playerCard);
 
   // ---- File info ----
@@ -412,6 +444,70 @@ export async function renderVideo(file, resultsEl) {
       const photoResults = document.getElementById('photoResults');
       if (photoResults) renderPhoto(frameFile, photoResults);
     });
+
+    // ---- Contact sheet / thumbnail grid ----
+    const sheetCard = el('div', { class: 'anr-card' });
+    sheetCard.appendChild(el('h3', {}, 'Contact sheet'));
+    sheetCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:12px !important;' },
+      '4×4 grid of 16 evenly-spaced thumbnails from the video'));
+    const sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
+    const sheetOut = el('div');
+
+    sheetBtn.addEventListener('click', async () => {
+      sheetBtn.disabled = true;
+      sheetBtn.textContent = 'Generating…';
+
+      const cols = 4, rows = 4, total = cols * rows;
+      const thumbW = Math.round(vw * (320 / Math.max(vw, vh)));
+      const thumbH = Math.round(vh * (320 / Math.max(vw, vh)));
+      const pad = 4;
+      const gridW = cols * thumbW + (cols + 1) * pad;
+      const gridH = rows * thumbH + (rows + 1) * pad;
+
+      const gridCanvas = document.createElement('canvas');
+      gridCanvas.width = gridW;
+      gridCanvas.height = gridH;
+      const ctx = gridCanvas.getContext('2d');
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, gridW, gridH);
+
+      const safeDur = Math.max(0, dur - 0.1);
+
+      for (let i = 0; i < total; i++) {
+        const t = total > 1 ? (safeDur * i) / (total - 1) : 0;
+        playerEl.currentTime = t;
+        await new Promise(r => { playerEl.onseeked = r; });
+
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+        const x = pad + c * (thumbW + pad);
+        const y = pad + r * (thumbH + pad);
+        ctx.drawImage(playerEl, x, y, thumbW, thumbH);
+      }
+
+      sheetOut.innerHTML = '';
+      const img = el('img', {
+        src: gridCanvas.toDataURL('image/png'),
+        alt: 'Contact sheet',
+        style: 'max-width:100%; margin-top:10px; border:1px solid var(--hairline); display:block;'
+      });
+      sheetOut.appendChild(img);
+
+      const saveBtn = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:8px;', onclick: () => {
+        const a = document.createElement('a');
+        a.href = gridCanvas.toDataURL('image/png');
+        a.download = (file.name || 'video').replace(/\.[^/.]+$/, '') + '_contact_sheet.png';
+        a.click();
+      }}, 'Save as PNG');
+      sheetOut.appendChild(saveBtn);
+
+      sheetBtn.disabled = false;
+      sheetBtn.textContent = 'Generate contact sheet';
+    });
+
+    sheetCard.appendChild(el('div', { class: 'anr-btn-row' }, [sheetBtn]));
+    sheetCard.appendChild(sheetOut);
+    resultsEl.appendChild(sheetCard);
   }
 
   // ---- Audio track extraction ----

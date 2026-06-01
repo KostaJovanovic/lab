@@ -7,6 +7,7 @@
    - On-device OCR via lazy-loaded Tesseract.js with language picker
    - SHA-256 file hash */
 
+const JSQR_URL      = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
 const LEAFLET_CSS   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -291,6 +292,52 @@ function computeColorStats(imgData) {
     midtones: ((midtones / total) * 100).toFixed(1),
     highlights: ((highlights / total) * 100).toFixed(1)
   };
+}
+
+// ---------- perceptual hash (pHash) ----------
+function computePHash(img) {
+  const S = 32;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  cv.getContext('2d').drawImage(img, 0, 0, S, S);
+  const d = cv.getContext('2d').getImageData(0, 0, S, S).data;
+  const gray = new Float64Array(S * S);
+  for (let i = 0; i < S * S; i++) gray[i] = 0.299 * d[i*4] + 0.587 * d[i*4+1] + 0.114 * d[i*4+2];
+  const dct = new Float64Array(S * S);
+  for (let y = 0; y < S; y++)
+    for (let u = 0; u < S; u++) {
+      let s = 0;
+      for (let x = 0; x < S; x++) s += gray[y*S+x] * Math.cos(Math.PI * u * (2*x+1) / (2*S));
+      dct[y*S+u] = s;
+    }
+  const dct2 = new Float64Array(S * S);
+  for (let u = 0; u < S; u++)
+    for (let v = 0; v < S; v++) {
+      let s = 0;
+      for (let y = 0; y < S; y++) s += dct[y*S+u] * Math.cos(Math.PI * v * (2*y+1) / (2*S));
+      dct2[v*S+u] = s;
+    }
+  const vals = [];
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) vals.push(dct2[y*S+x]);
+  const sorted = [...vals].sort((a, b) => a - b);
+  const med = sorted[32];
+  let hex = '';
+  for (let i = 0; i < 64; i += 4)
+    hex += ((vals[i]>med?8:0)|(vals[i+1]>med?4:0)|(vals[i+2]>med?2:0)|(vals[i+3]>med?1:0)).toString(16);
+  return hex;
+}
+
+// ---------- QR code detection ----------
+async function detectQrCode(img) {
+  await loadScript(JSQR_URL);
+  if (!window.jsQR) return null;
+  const MAX = 800;
+  const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(img, 0, 0, w, h);
+  return window.jsQR(cv.getContext('2d').getImageData(0, 0, w, h).data, w, h);
 }
 
 // ---------- histogram + palette ----------
@@ -929,6 +976,21 @@ export async function renderPhoto(file, resultsEl) {
   palCard.appendChild(palDiv);
   resultsEl.appendChild(palCard);
 
+  // ---- QR code detection (async) ----
+  const qrPlaceholder = el('div');
+  resultsEl.appendChild(qrPlaceholder);
+  detectQrCode(img).then((qr) => {
+    if (!qr || !qr.data) { qrPlaceholder.remove(); return; }
+    const qrCard = el('div', { class: 'anr-card' });
+    qrCard.appendChild(el('h3', {}, 'QR code detected'));
+    const qt = el('table', { class: 'anr-readout' });
+    qt.appendChild(row('Data', qr.data));
+    if (qr.data.startsWith('http'))
+      qt.appendChild(row('Link', el('a', { href: qr.data, target: '_blank', rel: 'noopener' }, qr.data)));
+    qrCard.appendChild(qt);
+    qrPlaceholder.replaceWith(qrCard);
+  }).catch(() => { qrPlaceholder.remove(); });
+
   // ---- OCR in section-meta column ----
   const ocrSlot = document.getElementById('photoOcrSlot');
   if (ocrSlot) {
@@ -939,11 +1001,15 @@ export async function renderPhoto(file, resultsEl) {
   // ---- Hash + raw EXIF dump (collapsible) ----
   const hashCard = el('div', { class: 'anr-card' });
   hashCard.appendChild(el('h3', {}, 'Integrity'));
-  const hashRow = el('p', { class: 'anr-hint' }, 'computing SHA-256...');
-  hashCard.appendChild(hashRow);
+  const phash = computePHash(img);
+  const hashTbl = el('table', { class: 'anr-readout' });
+  hashTbl.appendChild(row('pHash', phash));
+  const shaRow = row('SHA-256', 'computing…');
+  hashTbl.appendChild(shaRow);
+  hashCard.appendChild(hashTbl);
   resultsEl.appendChild(hashCard);
   sha256Hex(file).then((h) => {
-    hashRow.textContent = h ? ('SHA-256: ' + h) : 'SHA-256 unavailable in this browser';
+    shaRow.querySelector('td').textContent = h || 'unavailable';
   });
 
   const raw = buildRawDump(exif);

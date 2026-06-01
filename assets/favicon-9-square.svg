@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#ffffff"/>
+  <g stroke="#0a0a0a" stroke-width="2.5" stroke-linecap="square" fill="none">
+    <!-- top-left + -->
+    <line x1="6" y1="12" x2="18" y2="12"/>
+    <line x1="12" y1="6" x2="12" y2="18"/>
+    <!-- top-right + -->
+    <line x1="46" y1="12" x2="58" y2="12"/>
+    <line x1="52" y1="6" x2="52" y2="18"/>
+    <!-- bottom-left + -->
+    <line x1="6" y1="52" x2="18" y2="52"/>
+    <line x1="12" y1="46" x2="12" y2="58"/>
+    <!-- bottom-right + -->
+    <line x1="46" y1="52" x2="58" y2="52"/>
+    <line x1="52" y1="46" x2="52" y2="58"/>
+    <!-- connecting lines with bigger gaps -->
+    <line x1="25" y1="12" x2="39" y2="12"/>
+    <line x1="25" y1="52" x2="39" y2="52"/>
+    <line x1="12" y1="25" x2="12" y2="39"/>
+    <line x1="52" y1="25" x2="52" y2="39"/>
+  </g>
+  <circle cx="32" cy="32" r="4" fill="#e60023"/>
+</svg>

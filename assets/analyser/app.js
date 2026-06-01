@@ -164,12 +164,267 @@ async function renderUnknown(file, resultsEl) {
   const hashOut = el('p', { class: 'anr-hint', style: 'word-break: break-all; font-size: 12px; margin: 4px 0 0;' }, 'computing…');
   card.appendChild(hashOut);
 
-  // If it looks like text, show a small preview
-  if (guess === 'plain text' || guess === 'XML document') {
+  // If it looks like text, JSON, or XML, show enhanced previews
+  const ext = fileExt(file.name);
+  const isJsonExt = ext === 'json';
+  const isXmlExt = ext === 'xml' || ext === 'svg' || ext === 'html' || ext === 'htm';
+  const isMarkdown = ext === 'md' || ext === 'markdown';
+
+  // Detect JSON by peeking at first non-whitespace character
+  let isJsonContent = false;
+  if (guess === 'plain text' && !isJsonExt) {
+    const peekText = await file.slice(0, 256).text().catch(() => '');
+    const trimmed = peekText.trimStart();
+    if (trimmed.length > 0 && (trimmed[0] === '{' || trimmed[0] === '[')) {
+      isJsonContent = true;
+    }
+  }
+
+  const showJson = isJsonExt || isJsonContent;
+  const showXml = guess === 'XML document' || (isXmlExt && guess === 'plain text');
+  const showPlainText = (guess === 'plain text' && !showJson && !showXml) || guess === 'XML document';
+
+  if (showPlainText && !showXml) {
+    // --- Plain text preview + stats ---
     card.appendChild(el('div', { class: 'anr-readout-section' }, 'Text preview (first 2 kB)'));
     const previewOut = el('pre', { class: 'anr-ocr-text' }, '');
     card.appendChild(previewOut);
     file.slice(0, 2048).text().then((txt) => { previewOut.textContent = txt; }).catch(() => {});
+
+    // Text statistics
+    try {
+      const fullText = await file.slice(0, 1024 * 1024).text();
+      const charCount = fullText.length;
+      const words = fullText.trim().length === 0 ? [] : fullText.trim().split(/\s+/);
+      const wordCount = words.length;
+      const lines = fullText.split(/\n/);
+      const lineCount = lines.length;
+      const paragraphs = fullText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+      const paragraphCount = paragraphs.length;
+      const readingTime = Math.ceil(wordCount / 200);
+      const detectedFormat = isMarkdown ? 'Markdown' : 'Plain text';
+
+      card.appendChild(el('div', { class: 'anr-readout-section' }, 'Text statistics'));
+      const statsTbl = el('table', { class: 'anr-readout' });
+      statsTbl.appendChild(row('Format', detectedFormat));
+      statsTbl.appendChild(row('Characters', charCount.toLocaleString()));
+      statsTbl.appendChild(row('Words', wordCount.toLocaleString()));
+      statsTbl.appendChild(row('Lines', lineCount.toLocaleString()));
+      statsTbl.appendChild(row('Paragraphs', paragraphCount.toLocaleString()));
+      statsTbl.appendChild(row('Est. reading time', readingTime + ' min'));
+      card.appendChild(statsTbl);
+    } catch (_) {}
+  }
+
+  if (showJson) {
+    // --- JSON pretty printer ---
+    try {
+      const jsonText = await file.slice(0, 500 * 1024).text();
+      let parsed;
+      let parseError = null;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        parseError = e;
+      }
+
+      if (parseError) {
+        card.appendChild(el('div', { class: 'anr-readout-section' }, 'JSON (parse error)'));
+        card.appendChild(el('p', { class: 'anr-hint', style: 'color: #e55; margin: 4px 0;' },
+          'JSON parse error: ' + parseError.message));
+        const rawPre = el('pre', { class: 'anr-ocr-text' }, '');
+        rawPre.textContent = jsonText.slice(0, 4096);
+        card.appendChild(rawPre);
+      } else {
+        // Compute JSON stats
+        function jsonStats(val, depth) {
+          let keys = 0, maxD = depth, arrays = [];
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            const ks = Object.keys(val);
+            keys += ks.length;
+            for (const k of ks) {
+              const s = jsonStats(val[k], depth + 1);
+              keys += s.keys; maxD = Math.max(maxD, s.maxDepth);
+              arrays = arrays.concat(s.arrays);
+            }
+          } else if (Array.isArray(val)) {
+            arrays.push(val.length);
+            for (const item of val) {
+              const s = jsonStats(item, depth + 1);
+              keys += s.keys; maxD = Math.max(maxD, s.maxDepth);
+              arrays = arrays.concat(s.arrays);
+            }
+          }
+          return { keys, maxDepth: maxD, arrays };
+        }
+        const stats = jsonStats(parsed, 0);
+
+        // Syntax-highlight JSON
+        function highlightJson(val, indent) {
+          const sp = '  '.repeat(indent);
+          if (val === null) return '<span style="color:#e89a2e;font-weight:bold">null</span>';
+          if (typeof val === 'boolean') return '<span style="color:#e89a2e;font-weight:bold">' + val + '</span>';
+          if (typeof val === 'number') return '<span style="color:#5b9fd6">' + val + '</span>';
+          if (typeof val === 'string') {
+            const escaped = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return '<span style="color:#5a9e5a">"' + escaped + '"</span>';
+          }
+          if (Array.isArray(val)) {
+            if (val.length === 0) return '[]';
+            let out = '[\n';
+            for (let i = 0; i < val.length; i++) {
+              out += sp + '  ' + highlightJson(val[i], indent + 1);
+              if (i < val.length - 1) out += ',';
+              out += '\n';
+            }
+            out += sp + ']';
+            return out;
+          }
+          if (typeof val === 'object') {
+            const ks = Object.keys(val);
+            if (ks.length === 0) return '{}';
+            let out = '{\n';
+            for (let i = 0; i < ks.length; i++) {
+              const keyEscaped = ks[i].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+              out += sp + '  <span style="font-weight:bold">"' + keyEscaped + '"</span>: ';
+              out += highlightJson(val[ks[i]], indent + 1);
+              if (i < ks.length - 1) out += ',';
+              out += '\n';
+            }
+            out += sp + '}';
+            return out;
+          }
+          return String(val);
+        }
+
+        const details = el('details', { open: '' });
+        const summary = el('summary', { style: 'cursor:pointer;font-weight:bold;margin:8px 0;' }, 'JSON — formatted view');
+        details.appendChild(summary);
+
+        card.appendChild(el('div', { class: 'anr-readout-section' }, 'JSON statistics'));
+        const jsTbl = el('table', { class: 'anr-readout' });
+        jsTbl.appendChild(row('Total keys', stats.keys.toLocaleString()));
+        jsTbl.appendChild(row('Max depth', stats.maxDepth));
+        if (stats.arrays.length > 0) {
+          jsTbl.appendChild(row('Arrays', stats.arrays.length + ' (lengths: ' + stats.arrays.join(', ') + ')'));
+        }
+        card.appendChild(jsTbl);
+
+        const jsonPre = el('pre', { class: 'anr-ocr-text', html: highlightJson(parsed, 0) });
+        jsonPre.style.maxHeight = '500px';
+        jsonPre.style.overflow = 'auto';
+        details.appendChild(jsonPre);
+        card.appendChild(details);
+      }
+    } catch (_) {}
+  }
+
+  if (showXml || (guess === 'XML document' && !showJson)) {
+    // --- XML pretty printer ---
+    try {
+      const xmlText = await file.slice(0, 500 * 1024).text();
+
+      card.appendChild(el('div', { class: 'anr-readout-section' }, 'Text preview (first 2 kB)'));
+      const previewOut = el('pre', { class: 'anr-ocr-text' }, '');
+      previewOut.textContent = xmlText.slice(0, 2048);
+      card.appendChild(previewOut);
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'application/xml');
+      const parseErr = doc.querySelector('parsererror');
+
+      if (parseErr) {
+        card.appendChild(el('div', { class: 'anr-readout-section' }, 'XML (parse error)'));
+        card.appendChild(el('p', { class: 'anr-hint', style: 'color: #e55; margin: 4px 0;' },
+          'XML parse error — showing raw text above'));
+      } else {
+        // Count elements and max depth
+        function xmlStats(node, depth) {
+          let count = 0, maxD = depth;
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            count = 1;
+            for (const child of node.childNodes) {
+              const s = xmlStats(child, depth + 1);
+              count += s.count;
+              maxD = Math.max(maxD, s.maxDepth);
+            }
+          }
+          return { count, maxDepth: maxD };
+        }
+        const xstats = xmlStats(doc.documentElement, 0);
+
+        card.appendChild(el('div', { class: 'anr-readout-section' }, 'XML statistics'));
+        const xmlTbl = el('table', { class: 'anr-readout' });
+        xmlTbl.appendChild(row('Elements', xstats.count.toLocaleString()));
+        xmlTbl.appendChild(row('Max depth', xstats.maxDepth));
+        card.appendChild(xmlTbl);
+
+        // Format and syntax-highlight XML
+        function formatXml(node, indent) {
+          const sp = '  '.repeat(indent);
+          if (node.nodeType === Node.TEXT_NODE) {
+            const t = node.textContent.trim();
+            if (!t) return '';
+            const esc = t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return sp + esc + '\n';
+          }
+          if (node.nodeType === Node.COMMENT_NODE) {
+            const esc = node.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return sp + '<span style="color:#888">&lt;!-- ' + esc + ' --&gt;</span>\n';
+          }
+          if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
+            const esc = node.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return sp + '<span style="color:#888">&lt;?' + node.nodeName + ' ' + esc + '?&gt;</span>\n';
+          }
+          if (node.nodeType !== Node.ELEMENT_NODE) return '';
+          const tagName = node.nodeName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          let attrs = '';
+          for (const a of node.attributes) {
+            const aName = a.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const aVal = a.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            attrs += ' <span style="color:#e89a2e">' + aName + '</span>=<span style="color:#5a9e5a">"' + aVal + '"</span>';
+          }
+          const children = Array.from(node.childNodes);
+          const meaningful = children.filter(c =>
+            c.nodeType === Node.ELEMENT_NODE ||
+            (c.nodeType === Node.TEXT_NODE && c.textContent.trim()) ||
+            c.nodeType === Node.COMMENT_NODE
+          );
+          if (meaningful.length === 0) {
+            return sp + '&lt;<span style="color:#5b9fd6;font-weight:bold">' + tagName + '</span>' + attrs + ' /&gt;\n';
+          }
+          // Single text child: inline
+          if (meaningful.length === 1 && meaningful[0].nodeType === Node.TEXT_NODE) {
+            const txt = meaningful[0].textContent.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return sp + '&lt;<span style="color:#5b9fd6;font-weight:bold">' + tagName + '</span>' + attrs + '&gt;' +
+              txt + '&lt;/<span style="color:#5b9fd6;font-weight:bold">' + tagName + '</span>&gt;\n';
+          }
+          let out = sp + '&lt;<span style="color:#5b9fd6;font-weight:bold">' + tagName + '</span>' + attrs + '&gt;\n';
+          for (const child of children) {
+            out += formatXml(child, indent + 1);
+          }
+          out += sp + '&lt;/<span style="color:#5b9fd6;font-weight:bold">' + tagName + '</span>&gt;\n';
+          return out;
+        }
+
+        let formattedXml = '';
+        // Include XML declaration if present
+        for (const child of doc.childNodes) {
+          if (child.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
+            formattedXml += formatXml(child, 0);
+          }
+        }
+        formattedXml += formatXml(doc.documentElement, 0);
+
+        const xmlDetails = el('details', { open: '' });
+        xmlDetails.appendChild(el('summary', { style: 'cursor:pointer;font-weight:bold;margin:8px 0;' }, 'XML — formatted view'));
+        const xmlPre = el('pre', { class: 'anr-ocr-text', html: formattedXml });
+        xmlPre.style.maxHeight = '500px';
+        xmlPre.style.overflow = 'auto';
+        xmlDetails.appendChild(xmlPre);
+        card.appendChild(xmlDetails);
+      }
+    } catch (_) {}
   }
 
   resultsEl.appendChild(card);
@@ -281,19 +536,17 @@ function boot() {
   // ----- Dark mode toggle -----
   const saved = localStorage.getItem('anr-theme');
   if (saved) document.documentElement.setAttribute('data-theme', saved);
-  const darkBtn = document.createElement('button');
-  darkBtn.type = 'button';
-  darkBtn.className = 'dark-toggle';
-  darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark';
-  darkBtn.addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const next = isDark ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('anr-theme', next);
-    darkBtn.textContent = next === 'dark' ? 'Light' : 'Dark';
-  });
-  const nav = document.querySelector('.site-nav');
-  if (nav) nav.appendChild(darkBtn);
+  const darkBtn = $('darkToggle');
+  if (darkBtn) {
+    darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Disable' : 'Enable';
+    darkBtn.addEventListener('click', () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('anr-theme', next);
+      darkBtn.textContent = next === 'dark' ? 'Disable' : 'Enable';
+    });
+  }
 
   // ----- Clipboard paste (Ctrl+V) -----
   window.addEventListener('paste', (e) => {

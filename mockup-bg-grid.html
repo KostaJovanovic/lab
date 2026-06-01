@@ -3,18 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analyser</title>
-  <meta name="description" content="Photo, sound, and video analysis. Everything runs locally in your browser.">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="assets/icon.png">
-  <link rel="manifest" href="manifest.json">
+  <title>Analyser — Grid BG Mockup</title>
+  <link rel="icon" href="assets/icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="assets/analyser.css">
+  <style>
+    html {
+      background-color: var(--bg);
+    }
+    body {
+      background: transparent;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: -72px;
+      z-index: -1;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cline x1='0' y1='24' x2='15' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='33' y1='24' x2='48' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='0' x2='24' y2='15' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='33' x2='24' y2='48' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='19' y1='24' x2='29' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='19' x2='24' y2='29' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3C/svg%3E");
+      background-size: 72px 72px;
+      animation: bg-drift 24s linear infinite;
+      will-change: transform;
+      pointer-events: none;
+    }
+    @keyframes bg-drift {
+      from { transform: translate3d(0, 0, 0); }
+      to   { transform: translate3d(72px, 72px, 0); }
+    }
+    :root[data-theme="dark"] body::before {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cline x1='0' y1='24' x2='15' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='33' y1='24' x2='48' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='0' x2='24' y2='15' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='33' x2='24' y2='48' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='19' y1='24' x2='29' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='19' x2='24' y2='29' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3C/svg%3E");
+    }
+  </style>
 </head>
 <body>
+
+<div class="mockup-label" style="position:fixed;top:12px;right:12px;z-index:9999;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:var(--muted);background:var(--bg);padding:6px 12px;border:1px solid var(--rule);">Mockup: Grid + Crosses</div>
 
 <div id="pageDrop" class="page-drop" hidden aria-hidden="true">
   <div class="page-drop-inner">
@@ -49,7 +73,6 @@
 </nav>
 
 <main class="site-main">
-
   <section class="quickdrop" aria-label="Pick a file to analyse">
     <div class="quickdrop-grid">
       <div class="anr-dropzone quickdrop-zone" id="photoDrop" data-kind="photo">
@@ -61,7 +84,6 @@
           <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; WEBP &middot; RAW</p>
         </label>
       </div>
-
       <div class="anr-dropzone quickdrop-zone" id="audioDrop" data-kind="audio">
         <label class="anr-dropzone-inner" for="audioInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
@@ -72,10 +94,9 @@
         </label>
         <div class="anr-audio-modes">
           <button type="button" id="audioRecord" class="anr-btn"><span class="anr-rec-dot" aria-hidden="true">&#9679;</span> Record</button>
-          <button type="button" id="audioLive"   class="anr-btn">Live spectrogram</button>
+          <button type="button" id="audioLive" class="anr-btn">Live spectrogram</button>
         </div>
       </div>
-
       <div class="anr-dropzone quickdrop-zone" id="videoDrop" data-kind="video">
         <label class="anr-dropzone-inner" for="videoInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
@@ -88,93 +109,42 @@
     </div>
   </section>
 
-  <div id="unknownResults" class="anr-results anr-unknown-results" hidden></div>
-
   <section id="photo" class="section">
     <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">01</span>
-        <span class="section-kicker">Photo</span>
-        <div id="photoPreview"  class="section-meta-slot section-meta-preview-slot"></div>
-        <div id="photoOcrSlot"  class="section-meta-slot"></div>
-        <div id="photoHistSlot" class="section-meta-slot"></div>
-      </aside>
+      <aside class="section-meta"><span class="section-num">01</span><span class="section-kicker">Photo</span></aside>
       <div class="section-content">
         <h2 class="section-head">Read every byte of metadata a camera left behind.</h2>
         <p class="section-lede">JPEG, HEIC, PNG, WEBP, RAW. EXIF, IPTC, XMP, ICC. Dimensions, exact aspect ratio, RGB histogram, dominant palette, GPS map, on-device OCR.</p>
-
-        <div id="photoResults" class="anr-results" hidden></div>
       </div>
     </div>
   </section>
-
   <section id="audio" class="section">
     <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">02</span>
-        <span class="section-kicker">Sound</span>
-      </aside>
+      <aside class="section-meta"><span class="section-num">02</span><span class="section-kicker">Sound</span></aside>
       <div class="section-content">
         <h2 class="section-head">Inspect the spectrum of any audio source.</h2>
-        <p class="section-lede">Open a file, record from the mic, or visualise it live. Linear or logarithmic axis, adjustable FFT size and window, choice of colourmap, save as PNG, fullscreen.</p>
-
-        <div id="audioResults" class="anr-results" hidden></div>
+        <p class="section-lede">Open a file, record from the mic, or visualise it live.</p>
       </div>
     </div>
   </section>
-
   <section id="video" class="section">
     <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">03</span>
-        <span class="section-kicker">Video</span>
-        <div id="videoPreview" class="section-meta-slot section-meta-preview-slot"></div>
-      </aside>
+      <aside class="section-meta"><span class="section-num">03</span><span class="section-kicker">Video</span></aside>
       <div class="section-content">
         <h2 class="section-head">Decode every frame and frequency in a video.</h2>
-        <p class="section-lede">Container and codec detection, resolution, frame rate, bitrate. Capture any frame for full photo analysis. Extract the audio track for waveform and spectrogram.</p>
-
-        <div id="videoResults" class="anr-results" hidden></div>
+        <p class="section-lede">Container and codec detection, resolution, frame rate, bitrate.</p>
       </div>
     </div>
   </section>
-
   <section id="about" class="section">
     <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">04</span>
-        <span class="section-kicker">About</span>
-      </aside>
+      <aside class="section-meta"><span class="section-num">04</span><span class="section-kicker">About</span></aside>
       <div class="section-content">
         <h2 class="section-head">Everything runs in your browser.</h2>
         <p class="section-lede">Files are read on your device. No upload, no analytics, no servers in the loop.</p>
-
-        <dl class="anr-defs">
-          <dt>Metadata</dt>
-          <dd><a href="https://github.com/MikeKovarik/exifr" target="_blank" rel="noopener">exifr</a> &mdash; EXIF &middot; IPTC &middot; XMP &middot; ICC.</dd>
-
-          <dt>OCR</dt>
-          <dd><a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">tesseract.js</a> &mdash; auto runs English + Serbian (Latin&nbsp;+ Cyrillic). Picker for other languages.</dd>
-
-          <dt>Map</dt>
-          <dd><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> with OpenStreetMap tiles. Loaded only if the photo has GPS.</dd>
-
-          <dt>Audio</dt>
-          <dd>Native Web Audio API plus a hand-written radix-2 FFT.</dd>
-
-          <dt>Video</dt>
-          <dd>HTML5 video for playback and frame capture. Audio extracted via Web Audio API for spectrogram.</dd>
-
-          <dt>HEIC</dt>
-          <dd><a href="https://github.com/nichenqin/heic2any" target="_blank" rel="noopener">heic2any</a> &mdash; converts HEIC/HEIF to JPEG in your browser. Loaded only when needed.</dd>
-
-          <dt>Install</dt>
-          <dd>Add to home screen for an offline PWA.</dd>
-        </dl>
       </div>
     </div>
   </section>
-
 </main>
 
 <footer class="site-footer">
@@ -184,19 +154,17 @@
   </div>
 </footer>
 
-<noscript>
-  <div class="anr-error" style="margin: 24px;">This page needs JavaScript to read your files.</div>
-</noscript>
-
-<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-<script type="module" src="assets/analyser/app.js"></script>
 <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW failed:', e); });
-    });
-  }
+  const btn = document.getElementById('darkToggle');
+  btn.addEventListener('click', () => {
+    if (document.documentElement.getAttribute('data-theme') === 'dark') {
+      document.documentElement.removeAttribute('data-theme');
+      btn.textContent = 'Enable';
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      btn.textContent = 'Disable';
+    }
+  });
 </script>
-
 </body>
 </html>

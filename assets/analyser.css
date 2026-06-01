@@ -31,17 +31,37 @@
 }
 
 * { box-sizing: border-box; }
+html { background: var(--bg); }
 html, body {
   margin: 0; padding: 0;
-  background: var(--bg); color: var(--fg);
+  color: var(--fg);
 }
 body {
+  background: transparent;
   font-family: var(--font-sans);
   font-size: var(--t-body);
   line-height: 1.45;
   font-feature-settings: "ss01", "cv11", "tnum";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: -72px;
+  z-index: -1;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cline x1='0' y1='24' x2='15' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='33' y1='24' x2='48' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='0' x2='24' y2='15' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='33' x2='24' y2='48' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='19' y1='24' x2='29' y2='24' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3Cline x1='24' y1='19' x2='24' y2='29' stroke='%23000' stroke-opacity='0.07' stroke-width='0.75'/%3E%3C/svg%3E");
+  background-size: 72px 72px;
+  animation: bg-drift 24s linear infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+@keyframes bg-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(72px, 72px, 0); }
+}
+:root[data-theme="dark"] body::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cline x1='0' y1='24' x2='15' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='33' y1='24' x2='48' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='0' x2='24' y2='15' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='33' x2='24' y2='48' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='19' y1='24' x2='29' y2='24' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3Cline x1='24' y1='19' x2='24' y2='29' stroke='%23fff' stroke-opacity='0.12' stroke-width='0.75'/%3E%3C/svg%3E");
 }
 
 h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
@@ -272,6 +292,8 @@ button { font-family: inherit; }
   margin-top: 14px !important;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .anr-audio-modes {
@@ -379,7 +401,8 @@ button { font-family: inherit; }
   padding: 9px 12px 9px 0;
   vertical-align: top;
   border-bottom: 1px solid var(--rule);
-  word-break: break-word;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .anr-readout th {
   font-weight: 400;
@@ -1097,14 +1120,13 @@ details[open] summary::after { content: "\2212"; }
 .dark-toggle {
   font-family: var(--font-mono);
   font-size: var(--t-tiny);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 6px 12px;
+  padding: 3px 8px;
   background: transparent;
   border: 1px solid var(--hairline);
   color: var(--fg);
   cursor: pointer;
-  margin-left: auto;
   white-space: nowrap;
 }
 .dark-toggle:hover {

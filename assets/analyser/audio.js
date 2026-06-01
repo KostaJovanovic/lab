@@ -209,6 +209,153 @@ function computeCentroid(samples, sampleRate) {
   return totalCentroid / frames;
 }
 
+// --- LUFS integrated loudness (K-weighted) ---
+function computeLufs(samples, sampleRate) {
+  // Apply K-weighting: Stage 1 - high shelf +4 dB at 1681 Hz
+  // Stage 2 - high-pass at 38 Hz
+  // Both implemented as biquad filters on the sample array
+
+  function applyBiquad(x, b0, b1, b2, a1, a2) {
+    const y = new Float32Array(x.length);
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const xi = x[i];
+      const yi = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      y[i] = yi;
+      x2 = x1; x1 = xi;
+      y2 = y1; y1 = yi;
+    }
+    return y;
+  }
+
+  // Stage 1: High shelf at 1681 Hz, +4 dB gain
+  // Using RBJ cookbook high-shelf formula
+  const shelfF0 = 1681.974450955533;
+  const shelfG  = 3.999843853973347; // dB
+  const shelfQ  = 0.7071752369554196;
+  const A1  = Math.pow(10, shelfG / 40);
+  const w1  = 2 * Math.PI * shelfF0 / sampleRate;
+  const sin1 = Math.sin(w1), cos1 = Math.cos(w1);
+  const alpha1 = sin1 / (2 * shelfQ);
+  const a0_s = (A1 + 1) - (A1 - 1) * cos1 + 2 * Math.sqrt(A1) * alpha1;
+  const hs_b0 = (A1 * ((A1 + 1) + (A1 - 1) * cos1 + 2 * Math.sqrt(A1) * alpha1)) / a0_s;
+  const hs_b1 = (-2 * A1 * ((A1 - 1) + (A1 + 1) * cos1)) / a0_s;
+  const hs_b2 = (A1 * ((A1 + 1) + (A1 - 1) * cos1 - 2 * Math.sqrt(A1) * alpha1)) / a0_s;
+  const hs_a1 = (2 * ((A1 - 1) - (A1 + 1) * cos1)) / a0_s;
+  const hs_a2 = ((A1 + 1) - (A1 - 1) * cos1 - 2 * Math.sqrt(A1) * alpha1) / a0_s;
+
+  // Stage 2: High-pass at 38 Hz (Butterworth, Q = 0.5)
+  const hpF0 = 38.13547087602444;
+  const hpQ  = 0.5003270373238773;
+  const w2  = 2 * Math.PI * hpF0 / sampleRate;
+  const sin2 = Math.sin(w2), cos2 = Math.cos(w2);
+  const alpha2 = sin2 / (2 * hpQ);
+  const a0_h = 1 + alpha2;
+  const hp_b0 = ((1 + cos2) / 2) / a0_h;
+  const hp_b1 = (-(1 + cos2)) / a0_h;
+  const hp_b2 = ((1 + cos2) / 2) / a0_h;
+  const hp_a1 = (-2 * cos2) / a0_h;
+  const hp_a2 = (1 - alpha2) / a0_h;
+
+  // Apply filters
+  const stage1 = applyBiquad(samples, hs_b0, hs_b1, hs_b2, hs_a1, hs_a2);
+  const filtered = applyBiquad(stage1, hp_b0, hp_b1, hp_b2, hp_a1, hp_a2);
+
+  // Mean square of filtered signal
+  let sumSq = 0;
+  for (let i = 0; i < filtered.length; i++) {
+    sumSq += filtered[i] * filtered[i];
+  }
+  const meanSquare = sumSq / filtered.length;
+
+  // Convert to LUFS
+  const lufs = -0.691 + 10 * Math.log10(meanSquare + 1e-30);
+  return lufs;
+}
+
+// --- Pitch detection (YIN autocorrelation) ---
+function detectPitch(samples, sampleRate) {
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const W = 4096;
+  const threshold = 0.15;
+
+  // Take a window from the middle of the audio
+  const mid = Math.floor(samples.length / 2);
+  const start = Math.max(0, mid - Math.floor(W / 2));
+  const end = Math.min(samples.length, start + W);
+  const len = end - start;
+  if (len < W / 2) return null;
+
+  const buf = samples.subarray(start, end);
+  const halfLen = Math.floor(len / 2);
+
+  // Step 1: Difference function
+  const d = new Float32Array(halfLen);
+  for (let tau = 0; tau < halfLen; tau++) {
+    let sum = 0;
+    for (let j = 0; j < halfLen; j++) {
+      const diff = buf[j] - buf[j + tau];
+      sum += diff * diff;
+    }
+    d[tau] = sum;
+  }
+
+  // Step 2: Cumulative mean normalized difference function
+  const dPrime = new Float32Array(halfLen);
+  dPrime[0] = 1;
+  let runningSum = 0;
+  for (let tau = 1; tau < halfLen; tau++) {
+    runningSum += d[tau];
+    dPrime[tau] = d[tau] * tau / runningSum;
+  }
+
+  // Step 3: Find the first minimum below threshold
+  // Start from tau corresponding to ~20 Hz max period down to high freq
+  const minTau = Math.max(2, Math.floor(sampleRate / 2000)); // up to 2000 Hz
+  const maxTau = Math.min(halfLen - 1, Math.floor(sampleRate / 20)); // down to 20 Hz
+  let bestTau = -1;
+
+  for (let tau = minTau; tau < maxTau; tau++) {
+    if (dPrime[tau] < threshold) {
+      // Find the local minimum in this dip
+      while (tau + 1 < maxTau && dPrime[tau + 1] < dPrime[tau]) {
+        tau++;
+      }
+      bestTau = tau;
+      break;
+    }
+  }
+
+  if (bestTau < 0) return null;
+
+  // Step 4: Parabolic interpolation for sub-sample accuracy
+  let betterTau = bestTau;
+  if (bestTau > 0 && bestTau < halfLen - 1) {
+    const s0 = dPrime[bestTau - 1];
+    const s1 = dPrime[bestTau];
+    const s2 = dPrime[bestTau + 1];
+    const shift = (s0 - s2) / (2 * (s0 - 2 * s1 + s2));
+    if (Math.abs(shift) < 1) {
+      betterTau = bestTau + shift;
+    }
+  }
+
+  const frequency = sampleRate / betterTau;
+
+  // Sanity check
+  if (frequency < 20 || frequency > 5000 || !isFinite(frequency)) return null;
+
+  // Convert to note name and cents
+  const semitone = 12 * Math.log2(frequency / 440) + 69;
+  const roundedSemitone = Math.round(semitone);
+  const cents = Math.round((semitone - roundedSemitone) * 100);
+  const noteIndex = ((roundedSemitone % 12) + 12) % 12;
+  const octave = Math.floor(roundedSemitone / 12) - 1;
+  const note = NOTE_NAMES[noteIndex] + octave;
+
+  return { frequency, note, cents };
+}
+
 // --- Waveform render (downsampled min/max per pixel) ---
 function renderWaveform(canvas, samples) {
   const ctxC = canvas.getContext('2d');
@@ -505,6 +652,8 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   if (header.bitrate)   tbl.appendChild(row('Bitrate',       (header.bitrate / 1000).toFixed(0) + ' kbps'));
   tbl.appendChild(row('Peak',           stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)'));
   tbl.appendChild(row('RMS',            stats.rms.toFixed(3)  + '  (' + stats.rmsDb.toFixed(1)  + ' dBFS)'));
+  const lufsValue = computeLufs(mono, audioBuffer.sampleRate);
+  tbl.appendChild(row('Loudness',       (isFinite(lufsValue) ? lufsValue.toFixed(1) + ' LUFS' : '-')));
   if (stats.clipped > 0) {
     const pct = ((stats.clipped / mono.length) * 100).toFixed(3);
     tbl.appendChild(row('Clipping', stats.clipped.toLocaleString() + ' samples  (' + pct + '%)'));
@@ -515,6 +664,13 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   if (centroid != null) {
     const label = centroid < 1500 ? 'warm' : centroid < 4000 ? 'neutral' : 'bright';
     tbl.appendChild(row('Spectral centroid', Math.round(centroid).toLocaleString() + ' Hz  (' + label + ')'));
+  }
+  const pitchResult = detectPitch(mono, audioBuffer.sampleRate);
+  if (pitchResult) {
+    const centsStr = pitchResult.cents >= 0 ? '+' + pitchResult.cents : String(pitchResult.cents);
+    tbl.appendChild(row('Pitch', pitchResult.note + '  (' + pitchResult.frequency.toFixed(1) + ' Hz, ' + centsStr + ' cents)'));
+  } else {
+    tbl.appendChild(row('Pitch', 'N/A'));
   }
   tbl.appendChild(row('Total samples',  mono.length.toLocaleString()));
   infoCard.appendChild(tbl);
@@ -527,6 +683,186 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   waveCanvas.width = 1024; waveCanvas.height = 80;
   waveCard.appendChild(waveCanvas);
   renderWaveform(waveCanvas, mono);
+
+  // --- Interactive waveform: region selection, zoom, WAV export ---
+  let selStart = null, selEnd = null;
+  let isSelecting = false;
+  let zoomStart = 0, zoomEnd = mono.length;
+
+  // Overlay canvas for selection highlight
+  const overlayCanvas = el('canvas', { class: 'anr-waveform', style: 'position:absolute; top:0; left:0; pointer-events:none;' });
+  overlayCanvas.width = waveCanvas.width;
+  overlayCanvas.height = waveCanvas.height;
+
+  // Wrap the waveform canvas in a relative container
+  const waveWrap = el('div', { style: 'position:relative; display:inline-block; width:100%;' });
+  waveWrap.appendChild(waveCanvas);
+  waveWrap.appendChild(overlayCanvas);
+  // Replace the canvas in the card with the wrapper
+  waveCard.replaceChild(waveWrap, waveCard.querySelector('.anr-waveform'));
+
+  // Selection info + buttons container (shown when selection exists)
+  const selInfo = el('div', { class: 'anr-controls', style: 'display:none; flex-wrap:wrap; gap:8px; margin-top:6px; align-items:center;' });
+  const selLabel = el('span', { style: 'font-size:0.85em; opacity:0.8;' }, '');
+  const zoomBtn = el('button', { type: 'button', class: 'anr-btn', style: 'font-size:0.82em; padding:3px 10px;' }, 'Zoom');
+  const resetZoomBtn = el('button', { type: 'button', class: 'anr-btn', style: 'font-size:0.82em; padding:3px 10px; display:none;' }, 'Reset zoom');
+  const exportBtn = el('button', { type: 'button', class: 'anr-btn', style: 'font-size:0.82em; padding:3px 10px;' }, 'Export WAV');
+  selInfo.appendChild(selLabel);
+  selInfo.appendChild(zoomBtn);
+  selInfo.appendChild(resetZoomBtn);
+  selInfo.appendChild(exportBtn);
+  waveCard.appendChild(selInfo);
+
+  function drawOverlay() {
+    const octx = overlayCanvas.getContext('2d');
+    octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    if (selStart == null || selEnd == null) return;
+    const visLen = zoomEnd - zoomStart;
+    const x1 = ((Math.min(selStart, selEnd) - zoomStart) / visLen) * overlayCanvas.width;
+    const x2 = ((Math.max(selStart, selEnd) - zoomStart) / visLen) * overlayCanvas.width;
+    octx.fillStyle = 'rgba(100, 180, 255, 0.3)';
+    octx.fillRect(x1, 0, x2 - x1, overlayCanvas.height);
+    octx.strokeStyle = 'rgba(100, 180, 255, 0.7)';
+    octx.lineWidth = 1;
+    octx.strokeRect(x1, 0, x2 - x1, overlayCanvas.height);
+  }
+
+  function updateSelInfo() {
+    if (selStart == null || selEnd == null || selStart === selEnd) {
+      selInfo.style.display = 'none';
+      return;
+    }
+    selInfo.style.display = 'flex';
+    const s = Math.min(selStart, selEnd);
+    const e = Math.max(selStart, selEnd);
+    const selSamples = mono.subarray(s, e);
+    const dur = (e - s) / audioBuffer.sampleRate;
+    const selStats = computeStats(selSamples);
+    selLabel.textContent = 'Selection: ' + dur.toFixed(3) + ' s, '
+      + (e - s).toLocaleString() + ' samples | Peak: '
+      + selStats.peak.toFixed(3) + ' (' + selStats.peakDb.toFixed(1) + ' dBFS) | RMS: '
+      + selStats.rms.toFixed(3) + ' (' + selStats.rmsDb.toFixed(1) + ' dBFS)';
+  }
+
+  function xToSample(x) {
+    const rect = waveCanvas.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+    const visLen = zoomEnd - zoomStart;
+    return Math.round(zoomStart + frac * visLen);
+  }
+
+  waveCanvas.style.cursor = 'crosshair';
+  waveCanvas.addEventListener('mousedown', (e) => {
+    isSelecting = true;
+    selStart = xToSample(e.clientX);
+    selEnd = selStart;
+    drawOverlay();
+    updateSelInfo();
+    e.preventDefault();
+  });
+
+  waveCanvas.addEventListener('mousemove', (e) => {
+    if (!isSelecting) return;
+    selEnd = xToSample(e.clientX);
+    drawOverlay();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isSelecting) return;
+    isSelecting = false;
+    if (selStart != null && selEnd != null && selStart !== selEnd) {
+      // Normalize order
+      if (selStart > selEnd) { const tmp = selStart; selStart = selEnd; selEnd = tmp; }
+      updateSelInfo();
+    }
+    drawOverlay();
+  });
+
+  function redrawWaveform() {
+    const visibleSamples = mono.subarray(zoomStart, zoomEnd);
+    renderWaveform(waveCanvas, visibleSamples);
+    overlayCanvas.width = waveCanvas.width;
+    overlayCanvas.height = waveCanvas.height;
+    drawOverlay();
+  }
+
+  zoomBtn.addEventListener('click', () => {
+    if (selStart == null || selEnd == null || selStart === selEnd) return;
+    const s = Math.min(selStart, selEnd);
+    const e = Math.max(selStart, selEnd);
+    zoomStart = s;
+    zoomEnd = e;
+    selStart = null;
+    selEnd = null;
+    redrawWaveform();
+    updateSelInfo();
+    resetZoomBtn.style.display = '';
+  });
+
+  resetZoomBtn.addEventListener('click', () => {
+    zoomStart = 0;
+    zoomEnd = mono.length;
+    selStart = null;
+    selEnd = null;
+    redrawWaveform();
+    updateSelInfo();
+    resetZoomBtn.style.display = 'none';
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (selStart == null || selEnd == null || selStart === selEnd) return;
+    const s = Math.min(selStart, selEnd);
+    const e = Math.max(selStart, selEnd);
+    const selSamples = mono.subarray(s, e);
+    const numSamples = selSamples.length;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = audioBuffer.sampleRate * blockAlign;
+    const dataSize = numSamples * blockAlign;
+    const bufferSize = 44 + dataSize;
+    const buffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(buffer);
+
+    // RIFF header
+    let offset = 0;
+    const writeStr = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset++, s.charCodeAt(i)); };
+    writeStr('RIFF');
+    view.setUint32(offset, 36 + dataSize, true); offset += 4;
+    writeStr('WAVE');
+
+    // fmt chunk
+    writeStr('fmt ');
+    view.setUint32(offset, 16, true); offset += 4;          // chunk size
+    view.setUint16(offset, 1, true); offset += 2;           // PCM format
+    view.setUint16(offset, numChannels, true); offset += 2;
+    view.setUint32(offset, audioBuffer.sampleRate, true); offset += 4;
+    view.setUint32(offset, byteRate, true); offset += 4;
+    view.setUint16(offset, blockAlign, true); offset += 2;
+    view.setUint16(offset, bitsPerSample, true); offset += 2;
+
+    // data chunk
+    writeStr('data');
+    view.setUint32(offset, dataSize, true); offset += 4;
+
+    // Convert Float32 to Int16
+    for (let i = 0; i < numSamples; i++) {
+      let sample = selSamples[i];
+      sample = Math.max(-1, Math.min(1, sample));
+      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, intSample, true);
+      offset += 2;
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: (file.name || 'selection').replace(/\.[^.]+$/, '') + '_selection.wav' });
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+  });
+
   resultsEl.appendChild(waveCard);
 
   // ---- Spectrogram ----
