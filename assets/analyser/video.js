@@ -294,7 +294,7 @@ export async function renderVideo(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Loading "${file.name}"…`));
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  { const s = resultsEl.closest('.section') || resultsEl; window.scrollTo({ top: s.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
 
   let header = {};
   try { header = await peekVideoContainer(file); } catch (_) {}

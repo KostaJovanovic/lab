@@ -135,7 +135,7 @@ function guessFormat(b) {
 async function renderSvg(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: resultsEl.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Inspecting SVG "${file.name}"…`));
 
   let svgText;
@@ -240,14 +240,18 @@ async function renderSvg(file, resultsEl) {
     colorCard.appendChild(el('h3', {}, 'Color palette'));
     const swatchWrap = el('div', { style: 'display: flex; flex-wrap: wrap; gap: 6px;' });
     for (const c of colors) {
+      const label = el('div', { style: 'font-size: 10px; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;' }, c);
       const swatch = el('div', {
-        style: `width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--c-border, #ccc); background: ${c};`,
-        title: c
+        style: `width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--c-border, #ccc); background: ${c}; cursor: pointer;`,
+        title: c + ' — click to copy',
+        onclick: () => {
+          navigator.clipboard.writeText(c).then(() => {
+            label.textContent = 'copied';
+            setTimeout(() => { label.textContent = c; }, 800);
+          });
+        }
       });
-      const item = el('div', { style: 'text-align: center;' }, [
-        swatch,
-        el('div', { style: 'font-size: 10px; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;' }, c)
-      ]);
+      const item = el('div', { style: 'text-align: center;' }, [swatch, label]);
       swatchWrap.appendChild(item);
     }
     colorCard.appendChild(swatchWrap);
@@ -280,7 +284,7 @@ async function renderSvg(file, resultsEl) {
 async function renderCsv(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: resultsEl.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Parsing "${file.name}"…`));
 
   let text;
@@ -471,7 +475,7 @@ async function renderCsv(file, resultsEl) {
 async function renderUnknown(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: resultsEl.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Inspecting "${file.name}"…`));
 
   let headBytes;
@@ -848,14 +852,37 @@ function boot() {
       }
     }
 
-    if (kind === 'photo')       renderPhoto(file, photoResults);
-    else if (kind === 'audio')  renderAudio(file, audioResults);
-    else if (kind === 'video')  renderVideo(file, videoResults);
-    else if (kind === 'pdf')    renderPdf(file, unknownResults);
-    else if (kind === 'zip')    renderArchive(file, unknownResults);
-    else if (kind === 'svg')    renderSvg(file, unknownResults);
-    else if (kind === 'csv')    renderCsv(file, unknownResults);
-    else                        renderUnknown(file, unknownResults);
+    function markNav(selector) {
+      const el = document.querySelector('.site-nav a[href="' + selector + '"]');
+      if (el) el.classList.add('has-data');
+    }
+
+    if (kind === 'photo') {
+      markNav('#photo');
+      renderPhoto(file, photoResults);
+    } else if (kind === 'audio') {
+      markNav('#audio');
+      renderAudio(file, audioResults);
+    } else if (kind === 'video') {
+      markNav('#video');
+      markNav('#audio');
+      renderVideo(file, videoResults);
+    } else if (kind === 'pdf') {
+      markNav('#about');
+      renderPdf(file, unknownResults);
+    } else if (kind === 'zip') {
+      markNav('#about');
+      renderArchive(file, unknownResults);
+    } else if (kind === 'svg') {
+      markNav('#about');
+      renderSvg(file, unknownResults);
+    } else if (kind === 'csv') {
+      markNav('#about');
+      renderCsv(file, unknownResults);
+    } else {
+      markNav('#about');
+      renderUnknown(file, unknownResults);
+    }
   }
 
   initPhoto({

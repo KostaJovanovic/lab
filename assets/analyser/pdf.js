@@ -64,7 +64,7 @@ function fmtDate(d) {
 export async function renderPdf(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: resultsEl.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Loading PDF library…`));
 
   let lib;

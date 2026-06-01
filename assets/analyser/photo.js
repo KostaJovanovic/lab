@@ -463,6 +463,7 @@ function loadScript(src) {
 }
 
 const HEIC_EXTS = new Set(['heic', 'heif', 'heics', 'heifs']);
+const RAW_EXTS = new Set(['arw', 'cr2', 'cr3', 'nef', 'dng', 'raf', 'rw2', 'orf', 'pef', 'sr2', 'srw', 'x3f', 'raw']);
 
 function fileExt(name) {
   const m = (name || '').match(/\.([^.]+)$/);
@@ -474,6 +475,14 @@ async function convertHeic(file) {
   const blob = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
   const out = Array.isArray(blob) ? blob[0] : blob;
   return new File([out], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+}
+
+async function extractRawPreview(file) {
+  if (!window.exifr) throw new Error('exifr not loaded');
+  const buf = await file.arrayBuffer();
+  const thumb = await exifr.thumbnailBuffer(buf);
+  if (!thumb) throw new Error('No embedded preview found');
+  return new File([thumb], file.name.replace(/\.[^.]+$/, '_preview.jpg'), { type: 'image/jpeg' });
 }
 
 async function makeMap(container, lat, lon, label) {
@@ -585,7 +594,9 @@ function makeOcrCard(file) {
 
   const langSel = el('select', {});
   langSel.appendChild(el('option', { value: 'auto' },        'Auto: English then Serbian'));
-  langSel.appendChild(el('option', { value: 'srp+srp_latn' }, 'Serbian only (Latin + Cyrillic)'));
+  langSel.appendChild(el('option', { value: 'srp+srp_latn' }, 'Serbian (Latin + Cyrillic)'));
+  langSel.appendChild(el('option', { value: 'srp_latn' },     'Serbian Latin only'));
+  langSel.appendChild(el('option', { value: 'srp' },          'Serbian Cyrillic only'));
   langSel.appendChild(el('option', { value: 'eng' },          'English only'));
   for (const [code, name] of TESSERACT_LANGS) {
     if (code === 'eng' || code === 'srp' || code === 'srp_latn') continue;
@@ -604,11 +615,18 @@ function makeOcrCard(file) {
   card.appendChild(controlsRow);
 
   const progressWrap  = el('div', { class: 'anr-progress', style: 'display:none' });
-  const progressFill  = el('div', { class: 'anr-progress-fill' });
+  const progressBar   = el('div', { class: 'anr-progress-bar' }, '[                    ]');
   const progressLabel = el('div', { class: 'anr-progress-label' }, '');
-  progressWrap.appendChild(progressFill);
+  progressWrap.appendChild(progressBar);
   progressWrap.appendChild(progressLabel);
   card.appendChild(progressWrap);
+
+  function setBar(frac) {
+    const ch = parseFloat(getComputedStyle(progressBar).fontSize) * 0.6 || 8;
+    const total = Math.max(10, Math.floor((progressBar.parentElement.clientWidth - ch * 2) / ch));
+    const filled = Math.round(Math.max(0, Math.min(1, frac)) * total);
+    progressBar.innerHTML = '[<span class="anr-bar-fill">' + '/'.repeat(filled) + '</span>' + ' '.repeat(total - filled) + ']';
+  }
 
   const out = el('pre', { class: 'anr-ocr-text' });
   card.appendChild(out);
@@ -630,15 +648,17 @@ function makeOcrCard(file) {
     langSel.disabled = true;
     out.textContent = '';
     progressWrap.style.display = '';
-    progressFill.style.width = '0%';
+    setBar(0);
     progressLabel.textContent = 'starting…';
     syncSkipBtn();
 
     const setProgress = (m, which) => {
       if (m && m.progress != null) {
-        progressFill.style.width = (m.progress * 100).toFixed(0) + '%';
+        const status = m.status || 'working';
+        const isRecognising = status === 'recognizing text';
+        setBar(isRecognising ? m.progress : 0);
         progressLabel.textContent =
-          (which ? which + ' ' : '') + (m.status || 'working') + '  ' + (m.progress * 100).toFixed(0) + '%';
+          (which ? which + ' ' : '') + status + '  ' + (m.progress * 100).toFixed(0) + '%';
       }
     };
     const setPhase = (s) => { progressLabel.textContent = s; };
@@ -661,7 +681,7 @@ function makeOcrCard(file) {
         out.textContent = (r.data && r.data.text) || '(no text)';
         await worker.terminate();
       }
-      progressFill.style.width = '100%';
+      setBar(1);
       if (!progressLabel.textContent || /\d/.test(progressLabel.textContent)) progressLabel.textContent = 'done';
     } catch (e) {
       out.textContent = '[OCR failed: ' + (e && e.message ? e.message : e) + ']';
@@ -729,6 +749,11 @@ function renderLsbPlanes(img, container) {
     }
     ctx.putImageData(out, 0, 0);
 
+    cv.style.cursor = 'zoom-in';
+    cv.addEventListener('click', () => {
+      openLightbox(cv.toDataURL('image/png'), 'LSB ' + ch.label + ' plane', 'LSB bit plane: ' + ch.label);
+    });
+
     const col = el('div', { style: 'flex:1; min-width:100px; text-align:center;' }, [
       el('div', { style: 'font-weight:600; margin-bottom:4px; font-size:13px;' }, ch.label),
       cv
@@ -751,13 +776,30 @@ function ensureLightbox() {
   closeBtn.className = 'lightbox-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = 'Close';
+  const wrap = document.createElement('div');
+  wrap.className = 'lightbox-img-wrap';
   const img = document.createElement('img');
   img.alt = '';
+  const mapOverlay = document.createElement('img');
+  mapOverlay.className = 'lightbox-focus-map';
+  mapOverlay.hidden = true;
+  const dot = document.createElement('div');
+  dot.className = 'lightbox-focus-dot';
+  dot.hidden = true;
+  wrap.appendChild(img);
+  wrap.appendChild(mapOverlay);
+  wrap.appendChild(dot);
+  const toolbar = document.createElement('div');
+  toolbar.className = 'lightbox-toolbar';
   const meta = document.createElement('p');
   meta.className = 'lightbox-meta';
+  const center = document.createElement('div');
+  center.className = 'lightbox-center';
+  center.appendChild(wrap);
+  center.appendChild(toolbar);
+  center.appendChild(meta);
   lightboxEl.appendChild(closeBtn);
-  lightboxEl.appendChild(img);
-  lightboxEl.appendChild(meta);
+  lightboxEl.appendChild(center);
   lightboxEl.addEventListener('click', (e) => {
     if (e.target === lightboxEl || e.target === closeBtn) closeLightbox();
   });
@@ -767,11 +809,49 @@ function ensureLightbox() {
   document.body.appendChild(lightboxEl);
   return lightboxEl;
 }
-function openLightbox(src, alt, metaText) {
+function sizeWrap(wrap, w, h) {
+  const maxW = window.innerWidth * 0.9;
+  const maxH = window.innerHeight * 0.85;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  wrap.style.width = Math.round(w * scale) + 'px';
+  wrap.style.height = Math.round(h * scale) + 'px';
+}
+function openLightbox(src, alt, metaText, focusOpts) {
   const lb = ensureLightbox();
-  lb.querySelector('img').src = src;
-  lb.querySelector('img').alt = alt || '';
+  const wrap = lb.querySelector('.lightbox-img-wrap');
+  const lbImg = wrap.querySelector('img:first-child');
+  const mapOverlay = wrap.querySelector('.lightbox-focus-map');
+  const dot = wrap.querySelector('.lightbox-focus-dot');
+  const toolbar = lb.querySelector('.lightbox-toolbar');
+  toolbar.innerHTML = '';
+  lbImg.src = src;
+  lbImg.alt = alt || '';
+  lbImg.onload = () => { sizeWrap(wrap, lbImg.naturalWidth, lbImg.naturalHeight); };
+  if (lbImg.complete && lbImg.naturalWidth) sizeWrap(wrap, lbImg.naturalWidth, lbImg.naturalHeight);
+  mapOverlay.hidden = true;
+  mapOverlay.src = '';
+  dot.hidden = true;
   lb.querySelector('.lightbox-meta').textContent = metaText || '';
+  if (focusOpts) {
+    const mapSrc = focusOpts.focusCv.toDataURL();
+    mapOverlay.src = mapSrc;
+    dot.style.left = focusOpts.fpX + '%';
+    dot.style.top = focusOpts.fpY + '%';
+    const mapBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Focus map');
+    mapBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      mapOverlay.hidden = !mapOverlay.hidden;
+      mapBtn.classList.toggle('is-active', !mapOverlay.hidden);
+    });
+    const ptBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Probable focus point');
+    ptBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dot.hidden = !dot.hidden;
+      ptBtn.classList.toggle('is-active', !dot.hidden);
+    });
+    toolbar.appendChild(mapBtn);
+    toolbar.appendChild(ptBtn);
+  }
   lb.hidden = false;
   document.body.style.overflow = 'hidden';
 }
@@ -786,14 +866,16 @@ export async function renderPhoto(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Loading "${file.name}"...`));
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const section = resultsEl.closest('.section') || resultsEl;
+  window.scrollTo({ top: section.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
 
   let imgInfo;
   let convertedFile = null;
   try {
     imgInfo = await loadImageFromFile(file);
   } catch (e) {
-    if (HEIC_EXTS.has(fileExt(file.name))) {
+    const ext = fileExt(file.name);
+    if (HEIC_EXTS.has(ext)) {
       resultsEl.innerHTML = '';
       resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Converting HEIC/HEIF to JPEG…'));
       try {
@@ -802,6 +884,17 @@ export async function renderPhoto(file, resultsEl) {
       } catch (e2) {
         resultsEl.innerHTML = '';
         resultsEl.appendChild(el('div', { class: 'anr-error' }, 'HEIC conversion failed: ' + (e2 && e2.message ? e2.message : e2)));
+        return;
+      }
+    } else if (RAW_EXTS.has(ext)) {
+      resultsEl.innerHTML = '';
+      resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Extracting embedded preview from RAW…'));
+      try {
+        convertedFile = await extractRawPreview(file);
+        imgInfo = await loadImageFromFile(convertedFile);
+      } catch (e2) {
+        resultsEl.innerHTML = '';
+        resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not extract preview from RAW file: ' + (e2 && e2.message ? e2.message : e2)));
         return;
       }
     } else {
@@ -829,7 +922,7 @@ export async function renderPhoto(file, resultsEl) {
   const palette = dominantColors(pixData, 8);
   const sharpness = computeSharpness(pixData);
   const colorStats = computeColorStats(pixData);
-  const blockSize = Math.max(4, Math.round(Math.min(pixData.width, pixData.height) / 12));
+  const blockSize = Math.max(4, Math.round(Math.min(pixData.width, pixData.height) / 48));
   const focus = detectFocusRegion(pixData, blockSize);
 
   resultsEl.innerHTML = '';
@@ -841,8 +934,14 @@ export async function renderPhoto(file, resultsEl) {
     const thumb = el('div', { class: 'section-meta-preview' });
     const thumbImg = el('img', { src: url, alt: file.name, title: 'Click to enlarge' });
     const lightboxCaption = `${img.naturalWidth} × ${img.naturalHeight}  ·  ${fmtBytes(file.size)}  ·  ${file.name}`;
-    thumbImg.addEventListener('click', () => openLightbox(url, file.name, lightboxCaption));
-    thumb.appendChild(thumbImg);
+    thumbImg.addEventListener('click', () => {
+      const fpPctX = (focus.focusX / pixData.width * 100).toFixed(2);
+      const fpPctY = (focus.focusY / pixData.height * 100).toFixed(2);
+      openLightbox(url, file.name, lightboxCaption, { focusCv, fpX: parseFloat(fpPctX), fpY: parseFloat(fpPctY) });
+    });
+    const imgWrap = el('div', { class: 'anr-preview-img-wrap' });
+    imgWrap.appendChild(thumbImg);
+    thumb.appendChild(imgWrap);
     thumb.appendChild(el('p', { class: 'section-meta-preview-caption' },
       `${img.naturalWidth} × ${img.naturalHeight} · ${fmtBytes(file.size)}`));
 
@@ -853,8 +952,7 @@ export async function renderPhoto(file, resultsEl) {
 
     const tooltip = el('div', { class: 'anr-picker-tooltip' });
     tooltip.hidden = true;
-    thumb.appendChild(tooltip);
-    thumb.style.position = 'relative';
+    imgWrap.appendChild(tooltip);
 
     thumbImg.style.cursor = 'crosshair';
     thumbImg.addEventListener('mousemove', (e) => {
@@ -897,19 +995,9 @@ export async function renderPhoto(file, resultsEl) {
       fImg.data[i*4] = Math.round(t * 255);
       fImg.data[i*4+1] = Math.round(t * 80);
       fImg.data[i*4+2] = Math.round((1 - t) * 40);
-      fImg.data[i*4+3] = Math.round(t * 120);
+      fImg.data[i*4+3] = Math.round(t * 200);
     }
     fCtx.putImageData(fImg, 0, 0);
-    const focusOverlay = el('img', { class: 'anr-focus-overlay', src: focusCv.toDataURL(), alt: 'Focus heatmap' });
-    focusOverlay.hidden = true;
-    thumb.appendChild(focusOverlay);
-
-    const focusToggle = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:6px; width:100%; font-size:11px;' }, 'Show focus map');
-    focusToggle.addEventListener('click', () => {
-      focusOverlay.hidden = !focusOverlay.hidden;
-      focusToggle.textContent = focusOverlay.hidden ? 'Show focus map' : 'Hide focus map';
-    });
-    thumb.appendChild(focusToggle);
 
     previewSlot.appendChild(thumb);
   }
@@ -939,7 +1027,8 @@ export async function renderPhoto(file, resultsEl) {
     tbl.appendChild(row('Orientation', (ORIENTATIONS[exif.Orientation] || exif.Orientation)));
   }
   if (convertedFile) {
-    tbl.appendChild(row('Converted', 'HEIC → JPEG'));
+    const ext = fileExt(file.name).toUpperCase();
+    tbl.appendChild(row('Converted', ext + ' → JPEG (embedded preview)'));
   }
   infoCard.appendChild(tbl);
 
@@ -1007,6 +1096,10 @@ export async function renderPhoto(file, resultsEl) {
     histCard.appendChild(el('h3', {}, 'Histogram'));
     const histCanvas = el('canvas', { class: 'anr-histogram' });
     histCanvas.width = 1024; histCanvas.height = 200;
+    histCanvas.style.cursor = 'zoom-in';
+    histCanvas.addEventListener('click', () => {
+      openLightbox(histCanvas.toDataURL('image/png'), 'RGB Histogram', 'RGB Histogram');
+    });
     histCard.appendChild(histCanvas);
     renderHistogram(histCanvas, hist);
     histSlot.appendChild(histCard);
@@ -1018,9 +1111,20 @@ export async function renderPhoto(file, resultsEl) {
   const palDiv = el('div', { class: 'anr-palette' });
   const totalPx = pixData.width * pixData.height;
   for (const c of palette) {
-    const sw = el('div', { class: 'anr-swatch', title: toHex(c) + '  ' + ((c.count / totalPx) * 100).toFixed(1) + '%' });
-    sw.style.background = toHex(c);
-    sw.appendChild(el('span', {}, toHex(c)));
+    const hex = toHex(c);
+    const sw = el('div', {
+      class: 'anr-swatch',
+      title: hex + '  ' + ((c.count / totalPx) * 100).toFixed(1) + '% — click to copy',
+      style: 'cursor:pointer;',
+      onclick: () => {
+        navigator.clipboard.writeText(hex).then(() => {
+          const label = sw.querySelector('span');
+          if (label) { label.textContent = 'copied'; setTimeout(() => { label.textContent = hex; }, 800); }
+        });
+      }
+    });
+    sw.style.background = hex;
+    sw.appendChild(el('span', {}, hex));
     palDiv.appendChild(sw);
   }
   palCard.appendChild(palDiv);

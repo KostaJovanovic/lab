@@ -789,7 +789,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Decoding "${file.name}"...`));
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  { const s = resultsEl.closest('.section') || resultsEl; window.scrollTo({ top: s.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
 
   let header = {};
   try { header = await peekContainer(file); } catch (e) { /* ignore */ }
@@ -885,12 +885,10 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   overlayCanvas.width = waveCanvas.width;
   overlayCanvas.height = waveCanvas.height;
 
-  // Wrap the waveform canvas in a relative container
   const waveWrap = el('div', { style: 'position:relative; display:inline-block; width:100%;' });
+  waveCard.replaceChild(waveWrap, waveCanvas);
   waveWrap.appendChild(waveCanvas);
   waveWrap.appendChild(overlayCanvas);
-  // Replace the canvas in the card with the wrapper
-  waveCard.replaceChild(waveWrap, waveCard.querySelector('.anr-waveform'));
 
   // Selection info + buttons container (shown when selection exists)
   const selInfo = el('div', { class: 'anr-controls', style: 'display:none; flex-wrap:wrap; gap:8px; margin-top:6px; align-items:center;' });
@@ -1056,6 +1054,43 @@ export async function renderAudio(file, resultsEl, opts = {}) {
 
   resultsEl.appendChild(waveCard);
 
+  // ---- Amplitude histogram ----
+  const histCard = el('div', { class: 'anr-card' });
+  histCard.appendChild(el('h3', {}, 'Histogram'));
+  const histCanvas = el('canvas', { class: 'anr-histogram' });
+  histCanvas.width = 1024; histCanvas.height = 200;
+  histCard.appendChild(histCanvas);
+  {
+    const bins = 256;
+    const counts = new Uint32Array(bins);
+    for (let i = 0; i < mono.length; i++) {
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((mono[i] + 1) * 0.5 * bins)));
+      counts[idx]++;
+    }
+    let maxCount = 0;
+    for (let i = 0; i < bins; i++) if (counts[i] > maxCount) maxCount = counts[i];
+    const hctx = histCanvas.getContext('2d');
+    const cw = histCanvas.width, ch = histCanvas.height;
+    hctx.fillStyle = '#0a0a0a';
+    hctx.fillRect(0, 0, cw, ch);
+    const barW = cw / bins;
+    for (let i = 0; i < bins; i++) {
+      const h = maxCount > 0 ? (counts[i] / maxCount) * ch : 0;
+      const t = i / bins;
+      const g = Math.round(180 + t * 75);
+      hctx.fillStyle = `rgb(${g},${g},${g})`;
+      hctx.fillRect(i * barW, ch - h, barW, h);
+    }
+    hctx.strokeStyle = '#e60023';
+    hctx.lineWidth = 1;
+    const center = Math.floor(bins / 2) * barW;
+    hctx.beginPath();
+    hctx.moveTo(center, 0);
+    hctx.lineTo(center, ch);
+    hctx.stroke();
+  }
+  resultsEl.appendChild(histCard);
+
   // ---- Spectrogram ----
   const basename = (file.name || 'spectrogram').replace(/\.[^/.]+$/, '');
   resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename }));
@@ -1113,7 +1148,7 @@ async function startRecording(resultsEl, recordBtn) {
 
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  { const s = resultsEl.closest('.section') || resultsEl; window.scrollTo({ top: s.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
   const liveCard = el('div', { class: 'anr-card' });
   liveCard.appendChild(el('h3', {}, 'Recording...'));
   const timer = el('p', { class: 'anr-hint' }, '0.0 s');
@@ -1170,7 +1205,7 @@ async function startLive(resultsEl, liveBtn) {
 
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  { const s = resultsEl.closest('.section') || resultsEl; window.scrollTo({ top: s.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
 
   // --- card / controls ---
   const card = el('div', { class: 'anr-card anr-spec-card' });
