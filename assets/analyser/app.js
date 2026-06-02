@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 29;
+const COMMIT_COUNT = 30;
 const VERSION_OFFSET = 25;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -687,6 +687,9 @@ function boot() {
       './assets/analyser/pdf.js', './assets/analyser/archive.js', './assets/analyser/svg.js',
       './assets/analyser/csv.js', './assets/analyser/unknown.js', './assets/analyser/proprietary.js',
       './assets/analyser/folder.js', './assets/analyser/navigate.js',
+      './assets/analyser/photo-convert.js', './assets/analyser/audio-player.js', './assets/analyser/video-avi.js',
+      './assets/analyser/docx.js', './assets/analyser/xlsx.js', './assets/analyser/epub.js',
+      './assets/analyser/pptx.js', './assets/analyser/stl.js', './assets/analyser/zip.js',
       './assets/favicon.svg', './assets/icon.png', './assets/icon-192.png', './assets/icon-512.png',
       './assets/vendor/exifr.umd.js',
       './assets/fonts/geist-latin.woff2', './assets/fonts/geist-latin-ext.woff2',
@@ -698,6 +701,13 @@ function boot() {
       './assets/vendor/imagemagick/index.mjs',
       './assets/vendor/imagemagick/magick.wasm',
       './assets/vendor/ffmpeg/ffmpeg.js',
+      './assets/vendor/ffmpeg/index.js',
+      './assets/vendor/ffmpeg/classes.js',
+      './assets/vendor/ffmpeg/const.js',
+      './assets/vendor/ffmpeg/errors.js',
+      './assets/vendor/ffmpeg/types.js',
+      './assets/vendor/ffmpeg/utils.js',
+      './assets/vendor/ffmpeg/worker.js',
       './assets/vendor/ffmpeg/ffmpeg-core.js',
       './assets/vendor/ffmpeg/ffmpeg-core.wasm',
       './assets/vendor/ffmpeg/ffmpeg-util.js'
@@ -707,6 +717,10 @@ function boot() {
       './assets/vendor/tesseract/tesseract.min.js',
       TESS_WORKER,
       TESS_DATA + '/eng.traineddata.gz',
+      TESS_DATA + '/tesseract-core-simd-lstm.wasm.js',
+      TESS_DATA + '/tesseract-core-simd-lstm.wasm',
+      TESS_DATA + '/tesseract-core-lstm.wasm.js',
+      TESS_DATA + '/tesseract-core-lstm.wasm',
       './assets/vendor/leaflet/leaflet.css',
       './assets/vendor/leaflet/leaflet.js',
       './assets/vendor/heic2any.min.js',
@@ -798,20 +812,55 @@ function boot() {
     deferredPrompt = null;
   });
 
-  // ----- Offline clear -----
+  // ----- Clear all site data (keeps only the dark-mode preference) -----
   const clearBtn = document.getElementById('offlineClear');
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
-      await caches.delete('analyser-offline');
+      clearBtn.textContent = 'Clearing…';
+      // 1. Preserve the dark-mode state, then wipe localStorage + sessionStorage.
+      const theme = localStorage.getItem('anr-theme');
+      const themeTs = localStorage.getItem('anr-theme:ts');
+      try { localStorage.clear(); } catch (_) {}
+      try { sessionStorage.clear(); } catch (_) {}
+      if (theme !== null) {
+        try {
+          localStorage.setItem('anr-theme', theme);
+          if (themeTs !== null) localStorage.setItem('anr-theme:ts', themeTs);
+        } catch (_) {}
+      }
+      // 2. Delete every Cache Storage bucket (offline tiers + the SW app shell).
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      } catch (_) {}
+      // 3. Drop any IndexedDB databases.
+      try {
+        if (indexedDB.databases) {
+          const dbs = await indexedDB.databases();
+          await Promise.all(dbs.map(d => d.name && new Promise(res => {
+            const req = indexedDB.deleteDatabase(d.name);
+            req.onsuccess = req.onerror = req.onblocked = () => res();
+          })));
+        }
+      } catch (_) {}
+      // 4. Unregister the service worker (it re-registers on the next load).
+      try {
+        if (navigator.serviceWorker) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+      } catch (_) {}
+      // Reset the offline-tier buttons to their default state.
       document.querySelectorAll('.offline-btn').forEach(b => {
         b.classList.remove('is-done', 'is-active');
-        b.querySelector('.offline-bar').hidden = true;
+        const bar = b.querySelector('.offline-bar');
+        if (bar) bar.hidden = true;
         const tier = b.dataset.tier;
-        const sizes = { essentials: '~47 MB', everything: '~57 MB', complete: '~190 MB' };
+        const sizes = { essentials: '~46 MB', everything: '~72 MB', complete: '~290 MB' };
         b.querySelector('.offline-size').textContent = sizes[tier];
       });
-      clearBtn.textContent = 'Cache cleared ✓';
-      setTimeout(() => { clearBtn.textContent = 'Clear offline cache'; }, 3000);
+      clearBtn.textContent = 'All data cleared ✓';
+      setTimeout(() => { clearBtn.textContent = 'Clear all site data'; }, 3000);
     });
   }
 

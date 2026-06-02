@@ -103,6 +103,18 @@ export function sha256Row(file) {
   return hashRow;
 }
 
+// Standard "Integrity" card: a heading + readout table whose last row is the
+// (async) SHA-256. Pass extraRows as [[label, value], …] to prepend rows.
+export function integrityCard(file, extraRows = []) {
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Integrity'));
+  const tbl = el('table', { class: 'anr-readout' });
+  for (const [label, value] of extraRows) tbl.appendChild(row(label, value));
+  tbl.appendChild(sha256Row(file));
+  card.appendChild(tbl);
+  return card;
+}
+
 // Build a collapsible directory tree from a nested object. Directories are
 // rendered as <details>/<summary> nodes (closed by default, children rendered
 // lazily on first expand); files as plain rows. Shared by folder.js and

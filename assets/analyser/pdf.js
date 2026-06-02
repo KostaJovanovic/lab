@@ -404,7 +404,8 @@ export async function renderPdf(file, resultsEl) {
           const cv = await renderPageHiRes(pageNum);
           const worker = await window.Tesseract.createWorker('eng', undefined, {
             workerPath: 'assets/vendor/tesseract/worker.min.js',
-            langPath: 'assets/vendor/tesseract'
+            langPath: 'assets/vendor/tesseract',
+            corePath: 'assets/vendor/tesseract'
           });
           const result = await worker.recognize(cv);
           await worker.terminate();
@@ -621,7 +622,8 @@ export async function renderPdf(file, resultsEl) {
         await page.render({ canvasContext: cv.getContext('2d'), viewport: scaled }).promise;
         const worker = await T.createWorker('eng', undefined, {
           workerPath: 'assets/vendor/tesseract/worker.min.js',
-          langPath: 'assets/vendor/tesseract'
+          langPath: 'assets/vendor/tesseract',
+          corePath: 'assets/vendor/tesseract'
         });
         const result = await worker.recognize(cv);
         await worker.terminate();

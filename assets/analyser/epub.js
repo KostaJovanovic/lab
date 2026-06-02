@@ -2,7 +2,7 @@
    Reads .epub (zipped XHTML eBook): metadata, cover, and chapter-by-chapter
    reading with navigation. */
 
-import { el, row, fmtBytes, sha256Row } from './util.js';
+import { el, row, fmtBytes, integrityCard } from './util.js';
 import { openZip } from './zip.js';
 
 function parseXml(text) {
@@ -165,11 +165,5 @@ export async function renderEpub(file, resultsEl) {
   if (spine.length) showChapter(0);
   else readerCard.appendChild(el('p', { class: 'anr-hint' }, 'No readable chapters found.'));
 
-  // ---- Integrity ----
-  const hashCard = el('div', { class: 'anr-card' });
-  hashCard.appendChild(el('h3', {}, 'Integrity'));
-  const hashTbl = el('table', { class: 'anr-readout' });
-  hashTbl.appendChild(sha256Row(file));
-  hashCard.appendChild(hashTbl);
-  resultsEl.appendChild(hashCard);
+  resultsEl.appendChild(integrityCard(file));
 }

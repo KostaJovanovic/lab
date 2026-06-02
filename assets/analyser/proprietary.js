@@ -4,6 +4,7 @@
    full format parsers. */
 
 import { el, row, fmtBytes, sha256Row } from './util.js';
+import { openZip } from './zip.js';
 
 // ---------- format database ----------
 const FORMATS = {
@@ -793,51 +794,10 @@ function parseIndd(buf) {
 // ---------- ZIP-based doc metadata (DOCX, XLSX, PPTX, EPUB, ODF) ----------
 async function parseZipMeta(file, ext) {
   try {
-    const size = Math.min(file.size, 131072);
-    const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
-    const view = new DataView(buf.buffer);
-    if (buf[0] !== 0x50 || buf[1] !== 0x4B) return null;
-    const entries = [];
-    let pos = 0;
-    while (pos + 30 < buf.length) {
-      if (buf[pos] !== 0x50 || buf[pos + 1] !== 0x4B || buf[pos + 2] !== 0x03 || buf[pos + 3] !== 0x04) break;
-      const method = view.getUint16(pos + 8, true);
-      const compSize = view.getUint32(pos + 18, true);
-      const uncompSize = view.getUint32(pos + 22, true);
-      const nameLen = view.getUint16(pos + 26, true);
-      const extraLen = view.getUint16(pos + 28, true);
-      const name = ascii(buf, pos + 30, nameLen);
-      const dataStart = pos + 30 + nameLen + extraLen;
-      entries.push({ name, method, compSize, uncompSize, dataStart });
-      pos = dataStart + compSize;
-    }
-    const readEntry = async (entry) => {
-      const raw = buf.slice(entry.dataStart, entry.dataStart + entry.compSize);
-      if (entry.method === 0) return new TextDecoder().decode(raw);
-      if (entry.method === 8 && typeof DecompressionStream !== 'undefined') {
-        const ds = new DecompressionStream('deflate-raw');
-        const writer = ds.writable.getWriter();
-        writer.write(raw);
-        writer.close();
-        const reader = ds.readable.getReader();
-        const chunks = [];
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-        }
-        const total = chunks.reduce((s, c) => s + c.length, 0);
-        const out = new Uint8Array(total);
-        let off = 0;
-        for (const c of chunks) { out.set(c, off); off += c.length; }
-        return new TextDecoder().decode(out);
-      }
-      return null;
-    };
+    const zip = await openZip(file, 131072);
     const fields = {};
-    const coreEntry = entries.find(e => e.name === 'docProps/core.xml');
-    if (coreEntry) {
-      const xml = await readEntry(coreEntry);
+    if (zip.has('docProps/core.xml')) {
+      const xml = await zip.text('docProps/core.xml');
       if (xml) {
         const grab = (tag) => { const m = xml.match(new RegExp('<(?:dc:|cp:)?' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
         const creator = grab('creator');
@@ -854,9 +814,8 @@ async function parseZipMeta(file, ext) {
         if (revision) fields['Revision'] = revision;
       }
     }
-    const appEntry = entries.find(e => e.name === 'docProps/app.xml');
-    if (appEntry) {
-      const xml = await readEntry(appEntry);
+    if (zip.has('docProps/app.xml')) {
+      const xml = await zip.text('docProps/app.xml');
       if (xml) {
         const grab = (tag) => { const m = xml.match(new RegExp('<' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
         const app = grab('Application');
@@ -870,11 +829,11 @@ async function parseZipMeta(file, ext) {
         if (slides) fields['Slides'] = slides;
       }
     }
-    // EPUB: META-INF/container.xml -> content.opf
+    // EPUB: content.opf carries Dublin Core metadata
     if (ext === 'epub') {
-      const opfEntry = entries.find(e => e.name.endsWith('.opf'));
+      const opfEntry = zip.match(/\.opf$/)[0];
       if (opfEntry) {
-        const xml = await readEntry(opfEntry);
+        const xml = await zip.text(opfEntry.name);
         if (xml) {
           const grab = (tag) => { const m = xml.match(new RegExp('<dc:' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
           const title = grab('title');
@@ -891,9 +850,8 @@ async function parseZipMeta(file, ext) {
       }
     }
     // ODF (ODT/ODS/ODP): meta.xml
-    const metaEntry = entries.find(e => e.name === 'meta.xml');
-    if (metaEntry) {
-      const xml = await readEntry(metaEntry);
+    if (zip.has('meta.xml')) {
+      const xml = await zip.text('meta.xml');
       if (xml) {
         const grab = (tag) => { const m = xml.match(new RegExp('<meta:' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
         const gen = grab('generator');

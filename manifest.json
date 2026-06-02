@@ -1,13 +1,13 @@
 {
-  "name": "Analyser ~ Kosta's Corner",
+  "name": "Analyser — Local File & Metadata Viewer",
   "short_name": "Analyser",
-  "description": "Drop a photo or sound file and see what's inside. Runs entirely on your phone.",
+  "description": "Drop a photo, audio, video, PDF, or any of 200+ file types and inspect every byte of metadata. Runs entirely in your browser — nothing is uploaded.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#B3BAB3",
-  "theme_color": "#445f74",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

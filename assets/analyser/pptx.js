@@ -2,7 +2,7 @@
    Reads .pptx (Office Open XML presentation) and renders each slide as a card
    with its text (title + body) and any embedded images, in presentation order. */
 
-import { el, row, fmtBytes, sha256Row } from './util.js';
+import { el, row, fmtBytes, integrityCard } from './util.js';
 import { openZip } from './zip.js';
 
 const EMU_PER_PX = 9525; // 914400 EMU/inch ÷ 96 px/inch
@@ -161,11 +161,5 @@ export async function renderPptx(file, resultsEl) {
 
   if (!slideOrder.length) slidesCard.appendChild(el('p', { class: 'anr-hint' }, 'No slides found.'));
 
-  // ---- Integrity ----
-  const hashCard = el('div', { class: 'anr-card' });
-  hashCard.appendChild(el('h3', {}, 'Integrity'));
-  const hashTbl = el('table', { class: 'anr-readout' });
-  hashTbl.appendChild(sha256Row(file));
-  hashCard.appendChild(hashTbl);
-  resultsEl.appendChild(hashCard);
+  resultsEl.appendChild(integrityCard(file));
 }

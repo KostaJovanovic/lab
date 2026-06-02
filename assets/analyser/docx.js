@@ -2,9 +2,12 @@
    Reads .docx (Office Open XML) and renders a simplified document view
    with metadata, formatted text, tables, and text extraction. */
 
-import { el, row, fmtBytes, sha256Row } from './util.js';
+import { el, row, fmtBytes, integrityCard } from './util.js';
+import { openZip } from './zip.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 function wFirst(parent, name) {
   return parent.getElementsByTagNameNS(W, name)[0] || null;
@@ -21,61 +24,44 @@ function wAttr(elem, name) {
   return elem.getAttributeNS(W, name) || elem.getAttribute('w:' + name) || '';
 }
 
-// ---------- ZIP reader ----------
-
-async function readZipEntries(file) {
-  const maxRead = Math.min(file.size, 4 * 1024 * 1024);
-  const buf = new Uint8Array(await file.slice(0, maxRead).arrayBuffer());
-  const view = new DataView(buf.buffer);
-  const entries = [];
-  let pos = 0;
-  while (pos + 30 < buf.length) {
-    if (buf[pos] !== 0x50 || buf[pos + 1] !== 0x4B ||
-        buf[pos + 2] !== 0x03 || buf[pos + 3] !== 0x04) break;
-    const method = view.getUint16(pos + 8, true);
-    const compSize = view.getUint32(pos + 18, true);
-    const nameLen = view.getUint16(pos + 26, true);
-    const extraLen = view.getUint16(pos + 28, true);
-    let name = '';
-    for (let i = 0; i < nameLen; i++) name += String.fromCharCode(buf[pos + 30 + i]);
-    const dataStart = pos + 30 + nameLen + extraLen;
-    entries.push({ name, method, compSize, dataStart });
-    pos = dataStart + compSize;
-  }
-  return { entries, buf };
-}
-
-async function inflateEntry(buf, entry) {
-  const raw = buf.slice(entry.dataStart, entry.dataStart + entry.compSize);
-  if (entry.method === 0) return new TextDecoder().decode(raw);
-  if (entry.method === 8 && typeof DecompressionStream !== 'undefined') {
-    const ds = new DecompressionStream('deflate-raw');
-    const writer = ds.writable.getWriter();
-    writer.write(raw);
-    writer.close();
-    const reader = ds.readable.getReader();
-    const chunks = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    const total = chunks.reduce((s, c) => s + c.length, 0);
-    const out = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) { out.set(c, off); off += c.length; }
-    return new TextDecoder().decode(out);
-  }
-  return null;
-}
-
 // ---------- Document XML → DOM ----------
 
-function parseRuns(paragraph) {
+// Pull an embedded image out of a run's <w:drawing>/<a:blip> (or legacy
+// <v:imagedata>) and return an <img> sized from the drawing extent, or null.
+function runImage(run, imageMap) {
+  if (!imageMap) return null;
+  let rid = null;
+  const blip = run.getElementsByTagNameNS(A, 'blip')[0];
+  if (blip) rid = blip.getAttributeNS(R, 'embed') || blip.getAttribute('r:embed') || blip.getAttributeNS(R, 'link');
+  if (!rid) {
+    // legacy VML image (<v:imagedata r:id="...">)
+    for (const n of run.getElementsByTagName('*')) {
+      if (n.localName === 'imagedata') { rid = n.getAttributeNS(R, 'id') || n.getAttribute('r:id'); break; }
+    }
+  }
+  const url = rid && imageMap[rid];
+  if (!url) return null;
+  const im = document.createElement('img');
+  im.src = url;
+  im.loading = 'lazy';
+  im.style.cssText = 'max-width:100%;height:auto;display:block;margin:10px 0;';
+  // Size from the drawing extent (EMU → px at 96dpi) when present.
+  let extent = null;
+  for (const n of run.getElementsByTagName('*')) { if (n.localName === 'extent') { extent = n; break; } }
+  if (extent) {
+    const cx = parseInt(extent.getAttribute('cx'), 10);
+    if (cx) im.style.width = Math.round(cx / 9525) + 'px';
+  }
+  return im;
+}
+
+function parseRuns(paragraph, imageMap) {
   const frag = document.createDocumentFragment();
   for (const child of paragraph.children) {
     if (child.namespaceURI !== W) continue;
     if (child.localName === 'r') {
+      const img = runImage(child, imageMap);
+      if (img) frag.appendChild(img);
       if (wFirst(child, 'br')) frag.appendChild(document.createElement('br'));
       if (wFirst(child, 'tab')) frag.appendChild(document.createTextNode('\t'));
       let text = '';
@@ -118,7 +104,7 @@ function parseRuns(paragraph) {
   return frag;
 }
 
-function renderParagraph(p) {
+function renderParagraph(p, imageMap) {
   const pPr = wFirst(p, 'pPr');
   let tag = 'p';
   let isList = false;
@@ -164,12 +150,12 @@ function renderParagraph(p) {
     elem.style.listStyleType = listLevel % 2 === 0 ? 'disc' : 'circle';
   }
   if (align) elem.style.textAlign = align;
-  elem.appendChild(parseRuns(p));
-  if (!elem.textContent.trim() && !elem.querySelector('br')) elem.style.minHeight = '1em';
+  elem.appendChild(parseRuns(p, imageMap));
+  if (!elem.textContent.trim() && !elem.querySelector('br') && !elem.querySelector('img')) elem.style.minHeight = '1em';
   return elem;
 }
 
-function renderTable(tbl) {
+function renderTable(tbl, imageMap) {
   const table = document.createElement('table');
   table.style.cssText = 'border-collapse:collapse;width:100%;margin:12px 0;';
   for (const tr of wChildren(tbl, 'tr')) {
@@ -179,8 +165,8 @@ function renderTable(tbl) {
       td.style.cssText = 'border:1px solid #ccc;padding:6px 8px;vertical-align:top;';
       for (const child of tc.children) {
         if (child.namespaceURI !== W) continue;
-        if (child.localName === 'p') td.appendChild(renderParagraph(child));
-        else if (child.localName === 'tbl') td.appendChild(renderTable(child));
+        if (child.localName === 'p') td.appendChild(renderParagraph(child, imageMap));
+        else if (child.localName === 'tbl') td.appendChild(renderTable(child, imageMap));
       }
       rowEl.appendChild(td);
     }
@@ -189,7 +175,7 @@ function renderTable(tbl) {
   return table;
 }
 
-function renderDocumentXml(xmlStr) {
+function renderDocumentXml(xmlStr, imageMap) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlStr, 'application/xml');
   if (doc.querySelector('parsererror'))
@@ -199,19 +185,49 @@ function renderDocumentXml(xmlStr) {
   const container = document.createElement('div');
   for (const child of body.children) {
     if (child.namespaceURI !== W) continue;
-    if (child.localName === 'p') container.appendChild(renderParagraph(child));
-    else if (child.localName === 'tbl') container.appendChild(renderTable(child));
+    if (child.localName === 'p') container.appendChild(renderParagraph(child, imageMap));
+    else if (child.localName === 'tbl') container.appendChild(renderTable(child, imageMap));
   }
   return container;
 }
 
+// Build a map of relationship-id → blob URL for every embedded raster image
+// referenced by the document. Relationship targets in word/_rels/document.xml.rels
+// are relative to word/.
+async function buildImageMap(zip) {
+  const map = {};
+  if (!zip.has('word/_rels/document.xml.rels')) return map;
+  const relsXml = await zip.text('word/_rels/document.xml.rels');
+  if (!relsXml) return map;
+  const doc = new DOMParser().parseFromString(relsXml, 'application/xml');
+  for (const r of doc.getElementsByTagName('Relationship')) {
+    const id = r.getAttribute('Id');
+    const target = r.getAttribute('Target') || '';
+    if (!id || !target) continue;
+    if ((r.getAttribute('TargetMode') || '') === 'External' || /^https?:/i.test(target)) continue;
+    if (!/\.(png|jpe?g|gif|bmp|webp)$/i.test(target)) continue; // browser-renderable only
+    // Resolve relative to word/
+    const parts = ('word/' + target.replace(/^\.\//, '')).split('/');
+    const out = [];
+    for (const p of parts) { if (p === '..') out.pop(); else if (p !== '.' && p !== '') out.push(p); }
+    const path = out.join('/');
+    try {
+      const bytes = await zip.bytes(path);
+      if (bytes) {
+        const ext = (path.match(/\.(\w+)$/) || [, 'png'])[1].toLowerCase();
+        map[id] = URL.createObjectURL(new Blob([bytes], { type: 'image/' + (ext === 'jpg' ? 'jpeg' : ext) }));
+      }
+    } catch (_) { /* skip unreadable entry */ }
+  }
+  return map;
+}
+
 // ---------- Metadata ----------
 
-async function extractMeta(entries, buf) {
+async function extractMeta(zip) {
   const fields = {};
-  const coreEntry = entries.find(e => e.name === 'docProps/core.xml');
-  if (coreEntry) {
-    const xml = await inflateEntry(buf, coreEntry);
+  if (zip.has('docProps/core.xml')) {
+    const xml = await zip.text('docProps/core.xml');
     if (xml) {
       const grab = (tag) => {
         const m = xml.match(new RegExp('<(?:dc:|cp:)?' + tag + '[^>]*>([^<]+)<'));
@@ -231,9 +247,8 @@ async function extractMeta(entries, buf) {
       if (revision) fields['Revision'] = revision;
     }
   }
-  const appEntry = entries.find(e => e.name === 'docProps/app.xml');
-  if (appEntry) {
-    const xml = await inflateEntry(buf, appEntry);
+  if (zip.has('docProps/app.xml')) {
+    const xml = await zip.text('docProps/app.xml');
     if (xml) {
       const grab = (tag) => {
         const m = xml.match(new RegExp('<' + tag + '[^>]*>([^<]+)<'));
@@ -259,17 +274,18 @@ export async function renderDocx(file, container) {
   container.appendChild(el('div', { class: 'anr-info' }, 'Reading document…'));
 
   try {
-    const { entries, buf } = await readZipEntries(file);
-    const meta = await extractMeta(entries, buf);
+    // Read generously: embedded images (word/media/*) usually sit after
+    // document.xml in the archive, so a small cap would miss them.
+    const zip = await openZip(file, 128 * 1024 * 1024);
+    const meta = await extractMeta(zip);
 
-    const docEntry = entries.find(e => e.name === 'word/document.xml');
-    if (!docEntry) {
+    if (!zip.has('word/document.xml')) {
       container.innerHTML = '';
       container.appendChild(el('div', { class: 'anr-error' },
         'Could not find document content in this DOCX file.'));
       return;
     }
-    const docXml = await inflateEntry(buf, docEntry);
+    const docXml = await zip.text('word/document.xml');
     if (!docXml) {
       container.innerHTML = '';
       container.appendChild(el('div', { class: 'anr-error' },
@@ -291,9 +307,11 @@ export async function renderDocx(file, container) {
     infoCard.appendChild(tbl);
     container.appendChild(infoCard);
 
+    const imageMap = await buildImageMap(zip);
+
     const docCard = el('div', { class: 'anr-card' });
     docCard.appendChild(el('h3', {}, 'Document'));
-    const rendered = renderDocumentXml(docXml);
+    const rendered = renderDocumentXml(docXml, imageMap);
     rendered.style.cssText =
       'max-height:700px;overflow:auto;padding:24px 28px;background:#fff;color:#1a1a1a;' +
       'border:1px solid var(--rule);font-family:Georgia,"Times New Roman",serif;' +
@@ -324,12 +342,7 @@ export async function renderDocx(file, container) {
     }
 
     if (file.size <= 500 * 1024 * 1024) {
-      const hashCard = el('div', { class: 'anr-card' });
-      hashCard.appendChild(el('h3', {}, 'Integrity'));
-      const hashTbl = el('table', { class: 'anr-readout' });
-      hashTbl.appendChild(sha256Row(file));
-      hashCard.appendChild(hashTbl);
-      container.appendChild(hashCard);
+      container.appendChild(integrityCard(file));
     }
   } catch (e) {
     container.innerHTML = '';

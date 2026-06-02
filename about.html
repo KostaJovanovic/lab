@@ -3,13 +3,59 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>About - Analyser</title>
-  <meta name="description" content="About Analyser. A local-only forensic tool for photos, sound, and video.">
-  <meta name="theme-color" content="#ffffff">
+  <title>About Analyser — A Local-Only File Forensics Tool</title>
+  <meta name="description" content="Why Analyser exists, what it analyses, and how it works offline. A free, local-only forensic tool for photos, sound, video, and 200+ file formats.">
+  <link rel="canonical" href="https://lab.valjdakosta.com/about.html">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Analyser">
+  <meta property="og:title" content="About Analyser — A Local-Only File Forensics Tool">
+  <meta property="og:description" content="Why Analyser exists, what it analyses, and how it works offline. A free, local-only forensic tool for photos, sound, video, and 200+ file formats.">
+  <meta property="og:url" content="https://lab.valjdakosta.com/about.html">
+  <meta property="og:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
+  <meta property="og:image:width" content="1195">
+  <meta property="og:image:height" content="427">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="About Analyser — A Local-Only File Forensics Tool">
+  <meta name="twitter:description" content="Why Analyser exists, what it analyses, and how it works offline. A free, local-only forensic tool for photos, sound, video, and 200+ formats.">
+  <meta name="twitter:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.png">
   <link rel="manifest" href="manifest.json">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Aren't there many similar tools already?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Most tools I found are full of ads, require uploading your files, or are unresponsive and unintuitive. Analyser started as a tool for my own needs and grew from there, including a spectrogram viewer that doesn't require a multi-gigabyte installation or uploads."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does Analyser do?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Analyser reads photos, sound, video, PDFs, archives, and over 200 file formats. It extracts every byte of metadata, visualises spectra, decodes frames, and identifies files, all without uploading a single bit."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Analyser work without internet?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. The service worker caches the app shell on first visit, and heavy tools like FFmpeg, ImageMagick, and Tesseract are cached separately when you choose to download them."
+        }
+      }
+    ]
+  }
+  </script>
   <link rel="stylesheet" href="assets/fonts.css">
   <link rel="stylesheet" href="assets/analyser.css">
   <script>try{var t=localStorage.getItem('anr-theme'),s=parseInt(localStorage.getItem('anr-theme:ts'),10);if(t&&(!s||Date.now()-s>604800000)){localStorage.removeItem('anr-theme');localStorage.removeItem('anr-theme:ts');t=null;}if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -133,7 +179,7 @@
       <div class="section-content">
         <h2 class="section-head">Works without internet.</h2>
         <div class="about-block">
-          <p>Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. Use the download buttons on the main page to pre-cache dependencies, from the essentials (~47 MB) up to all 32 OCR languages (~190 MB).</p>
+          <p>Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. Use the download buttons on the main page to pre-cache dependencies, from the essentials (~46 MB) up to all 32 OCR languages (~290 MB).</p>
           <p>The service worker caches the entire app shell on first visit. Heavy tools like FFmpeg, ImageMagick, and Tesseract are cached separately when you download them, so the initial load stays light.</p>
         </div>
       </div>
@@ -155,6 +201,54 @@
       </aside>
       <div class="section-content">
         <h2 class="section-head">Update notes.</h2>
+
+        <div class="patch-entry">
+          <p class="patch-version">1.5</p>
+          <p class="patch-date">3 June 2026, 01:39</p>
+          <ul class="patch-list">
+            <li>DOCX viewer now renders embedded images inline, alongside the text, tables, and headings</li>
+            <li>Everything needed for offline use is now bundled locally &mdash; OCR and the video-to-audio extractor (FFmpeg) no longer reach out to a CDN and work with no connection</li>
+            <li>OCR now offers 32 languages to download, including Cyrillic, Greek, Hebrew, Arabic, and CJK scripts</li>
+            <li>Offline download tiers rebalanced: Essentials (~46 MB), Everything (~72 MB), Complete with all OCR languages (~290 MB)</li>
+            <li>&ldquo;Clear all site data&rdquo; wipes every cache, database, and stored value &mdash; only your dark-mode preference is kept</li>
+            <li>The browser&rsquo;s native video player is now hidden everywhere except iPhone, where iOS needs it for playback</li>
+            <li>Search-engine and social-sharing support: page descriptions, link previews with a banner image, structured data, sitemap, and robots.txt</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
+          <p class="patch-version">1.4</p>
+          <p class="patch-date">3 June 2026, 00:51</p>
+          <ul class="patch-list">
+            <li>Every dependency is now hosted locally (FFmpeg, ImageMagick, Tesseract OCR, PDF.js, Leaflet maps, QR decoding, and more) &mdash; the whole app can run offline with nothing loaded from a CDN</li>
+            <li>Spreadsheet viewer &mdash; opens XLSX workbooks with a tab per sheet</li>
+            <li>E-book reader &mdash; opens EPUB files with chapter-by-chapter navigation</li>
+            <li>Slide viewer &mdash; opens PowerPoint PPTX presentations as slide cards</li>
+            <li>3D model viewer &mdash; opens STL files in an interactive WebGL view with orbit, zoom, spin, and dimensions</li>
+            <li>FL Studio projects (.flp): reads version, tempo, title, channels, and plugins</li>
+            <li>CNC G-code: identifies the machine, controller, and toolpath alongside the existing 3D-printing analysis</li>
+            <li>New identification and metadata for X.509 certificates (.crt), MSI installers, After Effects projects (.aepx), partial downloads (.part), CDP4 data (.cdp), RTF documents, ULTRAKILL saves (.bepis), and Dolby surround codecs (E-AC-3, TrueHD)</li>
+            <li>Font files show a live preview; variable fonts animate through their weight range</li>
+            <li>PDF: extract embedded images, export any page as a PNG, hover a page to Analyse or OCR it, and a &ldquo;Show next 3 pages&rdquo; button for long documents</li>
+            <li>SVG files get a smaller preview and an &ldquo;Analyse as image&rdquo; button that rasterises them for photo analysis</li>
+            <li>Folder drops and ZIP archives now use a collapsible, expandable tree instead of a flat text list</li>
+            <li>Surround-sound channel layouts (5.1, 7.1, Atmos) detected and labelled</li>
+            <li>SHA-256 hashing shows a progress bar; file integrity details grouped into their own card</li>
+            <li>Proper 192px and 512px app icons for a clean install on every device</li>
+            <li>Fixes: spectrogram playhead tracks correctly when zoomed, and the address bar no longer shows &ldquo;index.html&rdquo; after navigating back</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
+          <p class="patch-version">1.3</p>
+          <p class="patch-date">2 June 2026, 21:45</p>
+          <ul class="patch-list">
+            <li>Published the 1.2 update notes and tidied older releases into the &ldquo;Older updates&rdquo; dropdown</li>
+          </ul>
+        </div>
+
+        <details class="about-formats">
+          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">1.2</p>
@@ -201,9 +295,6 @@
             <li>Contact email is display-only (no clickable mailto)</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
           <div class="patch-entry">
             <p class="patch-version">0.23</p>
@@ -312,7 +403,7 @@
             <p class="patch-version">0.13</p>
             <p class="patch-date">2 June 2026, 03:35</p>
             <ul class="patch-list">
-              <li>Offline download tiers (Essentials ~47 MB, Everything ~57 MB, Complete ~190 MB)</li>
+              <li>Offline download tiers (Essentials ~46 MB, Everything ~72 MB, Complete ~290 MB)</li>
               <li>PWA install prompt</li>
               <li>Header letter-proximity hover effect</li>
             </ul>

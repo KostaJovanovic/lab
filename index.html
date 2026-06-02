@@ -3,13 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analyser</title>
-  <meta name="description" content="Photo, sound, and video analysis. Everything runs locally in your browser.">
-  <meta name="theme-color" content="#ffffff">
+  <title>Analyser — Free EXIF, Spectrogram &amp; File Metadata Viewer</title>
+  <meta name="description" content="Drop a photo, audio, video, PDF, or 200+ file types to inspect EXIF, spectrograms, frames, and every byte of metadata. Free, no upload — all in your browser.">
+  <link rel="canonical" href="https://lab.valjdakosta.com/">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Analyser">
+  <meta property="og:title" content="Analyser — Free EXIF, Spectrogram &amp; File Metadata Viewer">
+  <meta property="og:description" content="Drop a photo, audio, video, PDF, or 200+ file types to inspect EXIF, spectrograms, and every byte of metadata. Free, no upload — all in your browser.">
+  <meta property="og:url" content="https://lab.valjdakosta.com/">
+  <meta property="og:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
+  <meta property="og:image:width" content="1195">
+  <meta property="og:image:height" content="427">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Analyser — Free EXIF, Spectrogram &amp; File Metadata Viewer">
+  <meta name="twitter:description" content="Drop a photo, audio, video, PDF, or 200+ file types to inspect metadata, spectrograms, and frames. Free, no upload — all in your browser.">
+  <meta name="twitter:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.png">
   <link rel="manifest" href="manifest.json">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Analyser",
+    "url": "https://lab.valjdakosta.com/",
+    "description": "Drop a photo, audio, video, PDF, or 200+ file types to inspect EXIF, spectrograms, frames, and every byte of metadata. Everything runs locally in your browser; nothing is uploaded.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Any (web browser)",
+    "browserRequirements": "Requires JavaScript.",
+    "image": "https://lab.valjdakosta.com/assets/banner.jpg",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "valjdakosta", "url": "https://valjdakosta.com/" },
+    "featureList": [
+      "EXIF and metadata extraction",
+      "Audio spectrogram and waveform visualisation",
+      "Video frame and codec analysis",
+      "PDF, archive, and document inspection",
+      "Identification of 200+ file formats",
+      "Works offline as a Progressive Web App"
+    ]
+  }
+  </script>
   <link rel="stylesheet" href="assets/fonts.css">
   <link rel="stylesheet" href="assets/analyser.css">
   <script>try{var t=localStorage.getItem('anr-theme'),s=parseInt(localStorage.getItem('anr-theme:ts'),10);if(t&&(!s||Date.now()-s>604800000)){localStorage.removeItem('anr-theme');localStorage.removeItem('anr-theme:ts');t=null;}if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -171,26 +209,26 @@
     <div class="offline-options">
       <button type="button" class="offline-btn" data-tier="essentials">
         <span class="offline-tier">Essentials</span>
-        <span class="offline-desc">App, fonts, metadata, FFmpeg, ImageMagick</span>
-        <span class="offline-size">~47 MB</span>
+        <span class="offline-desc">Full app (all viewers), fonts, metadata, FFmpeg, ImageMagick</span>
+        <span class="offline-size">~46 MB</span>
         <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
       </button>
       <button type="button" class="offline-btn" data-tier="everything">
         <span class="offline-tier">Everything</span>
         <span class="offline-desc">Essentials + OCR (English), PDF, maps, QR, HEIC, archives</span>
-        <span class="offline-size">~57 MB</span>
+        <span class="offline-size">~72 MB</span>
         <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
       </button>
       <button type="button" class="offline-btn" data-tier="complete">
         <span class="offline-tier">Complete</span>
         <span class="offline-desc">Everything + all 32 OCR languages</span>
-        <span class="offline-size">~190 MB</span>
+        <span class="offline-size">~290 MB</span>
         <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
       </button>
     </div>
     <div class="offline-bottom-row">
       <button type="button" class="offline-install" id="offlineInstall">Install as app</button>
-      <button type="button" class="offline-clear" id="offlineClear">Clear offline cache</button>
+      <button type="button" class="offline-clear" id="offlineClear">Clear all site data</button>
     </div>
   </div>
   <details class="about-details">

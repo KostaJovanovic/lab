@@ -5,8 +5,28 @@
 
 import { makeSpectrogramPanel, makePlayer, buildHistogramCard } from './audio.js';
 import { renderPhoto } from './photo.js';
-import { el, row, rowHelp, fmtBytes, h3help, sha256Row, roundFps } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, sha256Row, integrityCard, roundFps } from './util.js';
 import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
+
+// iOS (iPhone/iPad) detection. On iOS the custom scrubber's touch handling is
+// unreliable, so we show the native <video> controls there; everywhere else the
+// styled makePlayer transport handles playback and native controls stay hidden.
+function isIOS() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// Apply the right playback affordance to a visible <video>: native controls on
+// iOS, click-to-toggle play/pause elsewhere (the makePlayer scrubber does the rest).
+function applyVideoControls(playerEl) {
+  if (isIOS()) {
+    playerEl.setAttribute('controls', '');
+  } else {
+    playerEl.style.cursor = 'pointer';
+    playerEl.addEventListener('click', () => { if (playerEl.paused) playerEl.play(); else playerEl.pause(); });
+  }
+}
 
 // "Download audio (WAV)" link for the extracted-audio cards. Reuses the blob URL
 // already created for the player so no re-encoding is needed.
@@ -540,9 +560,10 @@ function seekAndPaint(video, t) {
 async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) {
   const playerCard = el('div', { class: 'anr-card' });
   playerCard.appendChild(el('h3', {}, 'Player'));
-  const playerEl = el('video', { src: url, playsinline: '', controls: '' });
+  const playerEl = el('video', { src: url, playsinline: '' });
   playerEl.setAttribute('webkit-playsinline', '');
   playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
+  applyVideoControls(playerEl);
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
   resultsEl.appendChild(playerCard);
@@ -805,12 +826,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
 
   // SHA-256
   if (file.size <= 500 * 1024 * 1024) {
-    const hashCard = el('div', { class: 'anr-card' });
-    hashCard.appendChild(el('h3', {}, 'Integrity'));
-    const hashTbl = el('table', { class: 'anr-readout' });
-    hashTbl.appendChild(sha256Row(file));
-    hashCard.appendChild(hashTbl);
-    resultsEl.appendChild(hashCard);
+    resultsEl.appendChild(integrityCard(file));
   }
 
   return true;
@@ -1066,12 +1082,7 @@ export async function renderVideo(file, resultsEl) {
 
       // SHA-256
       if (file.size <= 500 * 1024 * 1024) {
-        const hashCard = el('div', { class: 'anr-card' });
-        hashCard.appendChild(el('h3', {}, 'Integrity'));
-        const hashTbl = el('table', { class: 'anr-readout' });
-        hashTbl.appendChild(sha256Row(file));
-        hashCard.appendChild(hashTbl);
-        resultsEl.appendChild(hashCard);
+        resultsEl.appendChild(integrityCard(file));
       }
 
       return;
@@ -1150,9 +1161,10 @@ export async function renderVideo(file, resultsEl) {
   playerCard.appendChild(el('h3', {}, 'Player'));
   // playsinline keeps playback inline on iPhone instead of forcing fullscreen;
   // the poster shows the captured first frame right away.
-  const playerEl = el('video', { src: url, playsinline: '', poster: posterUrl, controls: '' });
+  const playerEl = el('video', { src: url, playsinline: '', poster: posterUrl });
   playerEl.setAttribute('webkit-playsinline', '');
   playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
+  applyVideoControls(playerEl);
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
 

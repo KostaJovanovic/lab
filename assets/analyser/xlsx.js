@@ -2,7 +2,7 @@
    Reads .xlsx (Office Open XML spreadsheet) and renders each worksheet as a
    table, with sheet tabs and document metadata. */
 
-import { el, row, fmtBytes, sha256Row } from './util.js';
+import { el, row, fmtBytes, integrityCard } from './util.js';
 import { openZip } from './zip.js';
 
 // "A1" -> { col: 0, row: 0 }; "BC12" -> { col: 54, row: 11 }
@@ -165,11 +165,5 @@ export async function renderXlsx(file, resultsEl) {
   if (sheets.length) renderSheet(0);
   else sheetCard.appendChild(el('p', { class: 'anr-hint' }, 'No sheets found.'));
 
-  // ---- Integrity ----
-  const hashCard = el('div', { class: 'anr-card' });
-  hashCard.appendChild(el('h3', {}, 'Integrity'));
-  const hashTbl = el('table', { class: 'anr-readout' });
-  hashTbl.appendChild(sha256Row(file));
-  hashCard.appendChild(hashTbl);
-  resultsEl.appendChild(hashCard);
+  resultsEl.appendChild(integrityCard(file));
 }

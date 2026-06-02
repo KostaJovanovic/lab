@@ -620,7 +620,8 @@ function makeOcrCard(file, img) {
       activeWorker = await T.createWorker(langState.value, undefined, {
         logger: setProgress,
         workerPath: 'assets/vendor/tesseract/worker.min.js',
-        langPath: 'assets/vendor/tesseract'
+        langPath: 'assets/vendor/tesseract',
+        corePath: 'assets/vendor/tesseract'
       });
       progressLabel.textContent = 'Recognising…';
       const r = await activeWorker.recognize(ocrInput);
