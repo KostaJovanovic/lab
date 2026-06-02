@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 22;
+const COMMIT_COUNT = 23;
 const VERSION_OFFSET = 17;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -370,6 +370,13 @@ function boot() {
     const minor = Math.max(0, COMMIT_COUNT - VERSION_OFFSET);
     verEl.textContent = '1.' + minor;
   }
+
+  // ----- Contact email -----
+  // The footer shows the address obfuscated ("[at]"/"[dot]") so scrapers don't
+  // harvest it from the HTML; build the real mailto: at runtime instead.
+  document.querySelectorAll('.footer-contact').forEach((a) => {
+    a.href = 'mailto:' + 'valjdakosta' + '@' + 'gmail.com';
+  });
 
   // ----- Dark mode toggle -----
   const saved = localStorage.getItem('anr-theme');

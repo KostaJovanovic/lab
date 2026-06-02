@@ -1097,7 +1097,10 @@ export async function renderPhoto(file, resultsEl) {
   }
 
   // ---- GPS ----
-  if (exif && exif.latitude != null && exif.longitude != null && !(exif.latitude === 0 && exif.longitude === 0)) {
+  // Number.isFinite (not `!= null`) so NaN/undefined coordinates are rejected —
+  // mobile camera photos without a GPS fix were slipping through as NaN and
+  // rendering a 0,0 / NaN map. Also skip the 0,0 null-island placeholder.
+  if (exif && Number.isFinite(exif.latitude) && Number.isFinite(exif.longitude) && !(exif.latitude === 0 && exif.longitude === 0)) {
     const gpsCard = el('div', { class: 'anr-card' });
     gpsCard.appendChild(el('h3', {}, 'GPS'));
     const lat = exif.latitude, lon = exif.longitude;

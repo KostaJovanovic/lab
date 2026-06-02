@@ -366,7 +366,12 @@ async function detectFps(file, fpsCell) {
 
 // ---------- scene change detection ----------
 
-async function detectSceneChanges(video, threshold) {
+// Walk the video at a fixed interval, comparing each sampled frame to the
+// previous one by mean per-channel pixel difference. When the difference crosses
+// `threshold` it's marked as a scene change, with a thumbnail and a confidence
+// score (how decisively it cleared the threshold). `signal` lets an in-progress
+// run bail when a new file is loaded.
+async function detectSceneChanges(video, threshold, signal) {
   if (!isFinite(video.duration) || video.duration <= 0) return [];
 
   const dur = video.duration;
@@ -392,6 +397,7 @@ async function detectSceneChanges(video, threshold) {
   const changes = [];
 
   for (let i = 0; i <= sampleCount; i++) {
+    if (signal && signal.aborted) return changes;
     const t = Math.min(i * interval, dur - 0.05);
     await seekAndPaint(video, t);
 
@@ -416,6 +422,9 @@ async function detectSceneChanges(video, threshold) {
         changes.push({
           time: t,
           diff: meanDiff,
+          // How decisively the difference cleared the threshold, as a 0-99%
+          // confidence (at the threshold ≈ 50%, twice the threshold ≈ 99%).
+          confidence: Math.min(99, Math.round((meanDiff / threshold) * 50)),
           thumbnail: thumbCanvas.toDataURL('image/jpeg', 0.8)
         });
       }
@@ -1222,77 +1231,71 @@ export async function renderVideo(file, resultsEl) {
     sheetCard.appendChild(sheetOut);
     resultsEl.appendChild(sheetCard);
 
-    // ---- Scene change detection ----
+    // ---- Scene change detection (runs automatically) ----
     const sceneCard = el('div', { class: 'anr-card' });
-    const [scH, scHelp] = h3help('Scene changes', 'Compares consecutive frames by computing the mean pixel difference. When the difference exceeds a threshold, a scene change is marked. Click any thumbnail or timeline marker to jump to that point in the video.');
+    const [scH, scHelp] = h3help('Scene changes',
+      'Samples the video at a fixed interval and compares consecutive frames by mean pixel difference. When the difference crosses the threshold a scene change is marked, with a confidence score for how decisively it cleared it. Runs automatically; click any thumbnail or timeline marker to jump there.');
     sceneCard.appendChild(scH); sceneCard.appendChild(scHelp);
-    const sceneBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Detect scene changes');
     const sceneOut = el('div');
+    sceneOut.appendChild(el('p', { class: 'anr-hint' }, 'Detecting scene changes…'));
+    sceneCard.appendChild(sceneOut);
+    resultsEl.appendChild(sceneCard);
 
-    sceneBtn.addEventListener('click', async () => {
-      sceneBtn.disabled = true;
-      sceneBtn.textContent = 'Analysing…';
+    // Detection seeks the player around, so run it in the background once the
+    // duration is known, then return the playhead to the start.
+    (async () => {
+      if (!isFinite(playerEl.duration) || playerEl.duration <= 0) {
+        await new Promise((res) => {
+          if (isFinite(playerEl.duration) && playerEl.duration > 0) return res();
+          playerEl.addEventListener('loadedmetadata', res, { once: true });
+          setTimeout(res, 6000);
+        });
+      }
+      if (renderSignal.aborted) return;
 
-      const changes = await detectSceneChanges(playerEl, 55);
+      let changes = [];
+      try { changes = await detectSceneChanges(playerEl, 55, renderSignal); } catch (_) {}
+      if (renderSignal.aborted) return;
+      try { playerEl.currentTime = 0; playerEl.pause(); } catch (_) {}
 
       sceneOut.innerHTML = '';
-
-      const countLabel = el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
+      sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
         changes.length
           ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected'
-          : 'No scene changes detected');
-      sceneOut.appendChild(countLabel);
+          : 'No scene changes detected'));
 
       if (changes.length && isFinite(dur) && dur > 0) {
-        // Timeline bar with markers
-        const timeline = el('div', {
-          style: 'position:relative; height:24px; background:var(--surface); border:1px solid var(--hairline); border-radius:3px; margin-bottom:14px;'
-        });
+        // Timeline bar with a marker per change (hover shows time + confidence).
+        const timeline = el('div', { class: 'anr-scene-timeline' });
         for (const sc of changes) {
-          const pct = (sc.time / dur) * 100;
           const marker = el('div', {
-            style: 'position:absolute; top:2px; bottom:2px; width:2px; background:var(--accent); border-radius:1px; left:' + pct + '%;',
-            title: formatDuration(sc.time)
+            class: 'anr-scene-marker',
+            style: 'left:' + (sc.time / dur) * 100 + '%;',
+            title: formatDuration(sc.time) + '  ·  ' + sc.confidence + '% confidence'
           });
-          marker.addEventListener('click', () => {
-            playerEl.currentTime = sc.time;
-            playerEl.pause();
-          });
-          marker.style.cursor = 'pointer';
+          marker.addEventListener('click', () => { playerEl.currentTime = sc.time; playerEl.pause(); });
           timeline.appendChild(marker);
         }
         sceneOut.appendChild(timeline);
 
-        // Thumbnail grid
-        const grid = el('div', {
-          style: 'display:flex; flex-wrap:wrap; gap:8px;'
-        });
+        // Thumbnails tucked into a collapsible dropdown.
+        const details = el('details', { class: 'anr-scene-details' });
+        details.appendChild(el('summary', {}, 'Thumbnails (' + changes.length + ')'));
+        const grid = el('div', { class: 'anr-scene-grid' });
         for (const sc of changes) {
           const wrap = el('div', {
-            style: 'cursor:pointer; text-align:center;',
+            class: 'anr-scene-thumb',
             onclick: () => { playerEl.currentTime = sc.time; playerEl.pause(); }
           });
-          wrap.appendChild(el('img', {
-            src: sc.thumbnail,
-            alt: 'Scene change at ' + formatDuration(sc.time),
-            style: 'width:160px; height:90px; object-fit:cover; display:block; border:1px solid var(--hairline); border-radius:2px;'
-          }));
-          wrap.appendChild(el('span', {
-            class: 'anr-hint',
-            style: 'font-size:11px; font-variant-numeric:tabular-nums;'
-          }, formatDuration(sc.time)));
+          wrap.appendChild(el('img', { src: sc.thumbnail, alt: 'Scene change at ' + formatDuration(sc.time) }));
+          wrap.appendChild(el('span', { class: 'anr-scene-meta' },
+            formatDuration(sc.time) + ' · ' + sc.confidence + '%'));
           grid.appendChild(wrap);
         }
-        sceneOut.appendChild(grid);
+        details.appendChild(grid);
+        sceneOut.appendChild(details);
       }
-
-      sceneBtn.disabled = false;
-      sceneBtn.textContent = 'Detect scene changes';
-    });
-
-    sceneCard.appendChild(el('div', { class: 'anr-btn-row' }, [sceneBtn]));
-    sceneCard.appendChild(sceneOut);
-    resultsEl.appendChild(sceneCard);
+    })();
   }
 
   // ---- Audio track extraction (renders into the Sound section) ----

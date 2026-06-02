@@ -2369,6 +2369,54 @@ details[open] summary::after { content: "\2212"; }
 .anr-modal-ok { background: var(--fg); color: var(--bg); }
 .anr-modal-ok:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* ---------- Scene change detection (video) ---------- */
+.anr-scene-timeline {
+  position: relative;
+  height: 24px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  margin-bottom: 14px;
+}
+.anr-scene-marker {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--accent);
+  cursor: pointer;
+}
+.anr-scene-details { margin-top: 4px; }
+.anr-scene-details summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.anr-scene-details summary:hover { color: var(--fg); }
+.anr-scene-details[open] summary { color: var(--fg); margin-bottom: 10px; }
+.anr-scene-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.anr-scene-thumb { cursor: pointer; text-align: center; }
+.anr-scene-thumb img {
+  width: 160px;
+  height: 90px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--hairline);
+}
+.anr-scene-thumb:hover img { border-color: var(--accent); }
+.anr-scene-meta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+
 /* ---------- UTILITY / REFACTOR CLASSES ---------- */
 .is-hidden { display: none !important; }
 

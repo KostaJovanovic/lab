@@ -156,39 +156,67 @@
         <h2 class="section-head">Update notes.</h2>
 
         <div class="patch-entry">
-          <p class="patch-version">1.3</p>
-          <p class="patch-date">2 June 2026, 19:14</p>
+          <p class="patch-version">1.6</p>
+          <p class="patch-date">2 June 2026, 19:38</p>
           <ul class="patch-list">
-            <li>Central format catalog &mdash; one file now drives the supported-types list, the overlay search, and the about-page tables</li>
-            <li>iPhone: videos that the off-screen decoder couldn&rsquo;t open now fall back to a working player with metadata and frame capture</li>
-            <li>Mobile: tap a section card to pick a file (with a confirmation prompt); the heading moves into the numbered card once a file is analysed</li>
-            <li>Dropzone format lists kept to a single row; squared-off supported-formats popup</li>
-            <li>&ldquo;Install as app&rdquo; button; confirmation tick on clearing the offline cache</li>
+            <li>Scene detection now runs automatically, scores each cut by confidence, and tucks the thumbnails into a dropdown</li>
+            <li>Photos with no GPS fix no longer show a 0,0 / NaN map</li>
+            <li>Spam-safe contact email in the footer</li>
+            <li>Internal: split the audio transport into its own module</li>
           </ul>
         </div>
 
         <div class="patch-entry">
-          <p class="patch-version">1.2</p>
-          <p class="patch-date">2 June 2026, 17:49</p>
+          <p class="patch-version">1.5</p>
+          <p class="patch-date">2 June 2026, 19:31</p>
           <ul class="patch-list">
-            <li>Added &ldquo;?&rdquo; pop-up explanations for audio and photo stats (RMS, peak, spectral centroid, and the rest)</li>
-            <li>Restored the scrubber under the spectrogram; the playhead now tracks correctly when zoomed</li>
+            <li>Internal: split photo HEIC/RAW conversion into its own module</li>
           </ul>
         </div>
 
         <div class="patch-entry">
-          <p class="patch-version">1.1</p>
-          <p class="patch-date">2 June 2026, 17:27</p>
+          <p class="patch-version">1.4</p>
+          <p class="patch-date">2 June 2026, 19:27</p>
           <ul class="patch-list">
-            <li>AVI (Motion-JPEG) playback and direct audio extraction without re-encoding</li>
-            <li>Folder-drop overview</li>
-            <li>Identification for 100+ more proprietary formats</li>
-            <li>SPA navigation refinements</li>
+            <li>Vertical edge guides on wide displays, marking where the page ends</li>
+            <li>Internal: began modularising the codebase &mdash; AVI container parsing split out, shared helpers consolidated</li>
           </ul>
         </div>
 
         <details class="about-formats">
           <summary>Older updates</summary>
+
+          <div class="patch-entry">
+            <p class="patch-version">1.3</p>
+            <p class="patch-date">2 June 2026, 19:14</p>
+            <ul class="patch-list">
+              <li>Central format catalog &mdash; one file now drives the supported-types list, the overlay search, and the about-page tables</li>
+              <li>iPhone: videos that the off-screen decoder couldn&rsquo;t open now fall back to a working player with metadata and frame capture</li>
+              <li>Mobile: tap a section card to pick a file (with a confirmation prompt); the heading moves into the numbered card once a file is analysed</li>
+              <li>Dropzone format lists kept to a single row; squared-off supported-formats popup</li>
+              <li>&ldquo;Install as app&rdquo; button; confirmation tick on clearing the offline cache</li>
+            </ul>
+          </div>
+
+          <div class="patch-entry">
+            <p class="patch-version">1.2</p>
+            <p class="patch-date">2 June 2026, 17:49</p>
+            <ul class="patch-list">
+              <li>Added &ldquo;?&rdquo; pop-up explanations for audio and photo stats (RMS, peak, spectral centroid, and the rest)</li>
+              <li>Restored the scrubber under the spectrogram; the playhead now tracks correctly when zoomed</li>
+            </ul>
+          </div>
+
+          <div class="patch-entry">
+            <p class="patch-version">1.1</p>
+            <p class="patch-date">2 June 2026, 17:27</p>
+            <ul class="patch-list">
+              <li>AVI (Motion-JPEG) playback and direct audio extraction without re-encoding</li>
+              <li>Folder-drop overview</li>
+              <li>Identification for 100+ more proprietary formats</li>
+              <li>SPA navigation refinements</li>
+            </ul>
+          </div>
 
           <div class="patch-entry patch-milestone">
             <p class="patch-version">1.0</p>
@@ -379,6 +407,8 @@
   </div>
   <div class="footer-row footer-bottom">
     <p class="footer-meta"><a href="index.html">&larr; Return to main page</a></p>
+    <!-- Email shown obfuscated to deter scrapers; app.js wires the real mailto. -->
+    <p class="footer-meta">Contact: <a class="footer-contact">valjdakosta[at]gmail[dot]com</a></p>
     <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
   </div>
 </footer>
