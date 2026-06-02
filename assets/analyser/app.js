@@ -1015,6 +1015,81 @@ function boot() {
       window.scrollTo({ top, behavior: 'smooth' });
     });
   }
+
+  // ----- Search -----
+  const searchInput = document.getElementById('navSearch');
+  const searchWrap = document.getElementById('navSearchWrap');
+  const searchBtn = document.getElementById('navSearchBtn');
+  if (searchInput && searchWrap && searchBtn) {
+    const nav = searchWrap.closest('nav');
+    function sizeSearchBtn() {
+      const h = nav.offsetHeight;
+      searchBtn.style.width = h + 'px';
+    }
+    sizeSearchBtn();
+    window.addEventListener('resize', sizeSearchBtn);
+    function openSearch() {
+      searchWrap.classList.remove('is-closing');
+      searchWrap.classList.add('is-open');
+      searchInput.focus();
+    }
+    function closeSearch() {
+      if (!searchWrap.classList.contains('is-open')) return;
+      searchWrap.classList.add('is-closing');
+      searchWrap.classList.remove('is-open');
+      setTimeout(() => searchWrap.classList.remove('is-closing'), 350);
+    }
+    searchBtn.addEventListener('click', openSearch);
+    let debounceTimer = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(runSearch, 150);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        runSearch();
+        searchInput.blur();
+        closeSearch();
+      }
+    });
+    searchInput.addEventListener('blur', () => {
+      if (!searchInput.value) closeSearch();
+    });
+
+    function runSearch() {
+      const q = searchInput.value.trim().toLowerCase();
+      const containers = document.querySelectorAll('.anr-results');
+      const prev = document.querySelectorAll('.anr-search-highlight');
+      for (const el of prev) el.classList.remove('anr-search-highlight');
+
+      if (!q) return;
+
+      let firstMatch = null;
+      for (const container of containers) {
+        const cards = container.querySelectorAll('.anr-card');
+        for (const card of cards) {
+          const text = card.textContent.toLowerCase();
+          if (text.includes(q)) {
+            card.classList.add('anr-search-highlight');
+            if (!firstMatch) firstMatch = card;
+          }
+        }
+        const tables = container.querySelectorAll('.anr-readout tr');
+        for (const tr of tables) {
+          const text = tr.textContent.toLowerCase();
+          if (text.includes(q)) {
+            tr.classList.add('anr-search-highlight');
+            if (!firstMatch) firstMatch = tr;
+          }
+        }
+      }
+
+      if (firstMatch) {
+        firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }
 }
 
 if (document.readyState === 'loading') {
