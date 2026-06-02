@@ -120,6 +120,8 @@ export const IDENTIFICATION = [
   { label: 'Config',          exts: 'TOML INI ENV CONF CFG PROPERTIES', tags: 'configuration settings dotenv toml ini' },
   { label: 'Executables',     exts: 'EXE DLL MSI APK IPA DMG AppImage', tags: 'windows android apple mac macos linux program application installer package' },
   { label: 'Video editing',   exts: 'DRP', tags: 'davinci resolve blackmagic' },
+  { label: 'CNC / 3D print',  exts: 'GCODE GCO NC NGC', tags: 'gcode cnc 3d printing slicer prusa cura bambu orca simplify3d slic3r' },
+  { label: 'Logs',            exts: 'LOG', tags: 'log file server apache nginx syslog error debug' },
   { label: 'Other',           exts: 'TORRENT', tags: 'bittorrent peer to peer p2p download' },
 ];
 

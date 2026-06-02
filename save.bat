@@ -38,7 +38,7 @@ set SAVE_ERROR=0
 for /f %%i in ('git rev-list --count HEAD 2^>nul') do set COMMIT_COUNT=%%i
 if not defined COMMIT_COUNT set COMMIT_COUNT=0
 set /a NEXT_COUNT=%COMMIT_COUNT%+1
-set /a MINOR=%NEXT_COUNT%-17
+set /a MINOR=%NEXT_COUNT%-25
 if %MINOR% lss 0 set MINOR=0
 echo Bumping version to 1.%MINOR% (commit %NEXT_COUNT%)
 

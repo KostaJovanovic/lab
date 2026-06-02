@@ -529,13 +529,14 @@ function seekAndPaint(video, t) {
 async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) {
   const playerCard = el('div', { class: 'anr-card' });
   playerCard.appendChild(el('h3', {}, 'Player'));
-  const playerEl = el('video', { src: url, controls: '', playsinline: '' });
+  const playerEl = el('video', { src: url, playsinline: '' });
   playerEl.setAttribute('webkit-playsinline', '');
-  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
+  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline); cursor:pointer;';
+  playerEl.addEventListener('click', () => { if (playerEl.paused) playerEl.play(); else playerEl.pause(); });
   playerCard.appendChild(playerEl);
+  playerCard.appendChild(makePlayer(playerEl));
   resultsEl.appendChild(playerCard);
 
-  // A visible element loads on iOS where the probe didn't; wait for metadata.
   const loaded = await new Promise((resolve) => {
     let done = false;
     const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
@@ -548,54 +549,250 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
 
   const vw = playerEl.videoWidth, vh = playerEl.videoHeight, dur = playerEl.duration;
 
-  // File info — placed above the player.
+  // File info
   const infoCard = el('div', { class: 'anr-card' });
   infoCard.appendChild(el('h3', {}, 'File info'));
   const tbl = el('table', { class: 'anr-readout' });
   tbl.appendChild(row('Name', file.name));
   tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
   tbl.appendChild(row('MIME', file.type || '-'));
-  if (header && header.container) tbl.appendChild(row('Container', header.container));
+  if (header && header.container) tbl.appendChild(row('Container', header.container + (header.brand ? '  (' + header.brand + ')' : '')));
   if (vw && vh) {
     tbl.appendChild(row('Resolution', `${vw} × ${vh} px`));
     tbl.appendChild(row('Aspect ratio', aspectRatio(vw, vh)));
   }
   if (isFinite(dur) && dur > 0) tbl.appendChild(row('Duration', formatDuration(dur)));
+  const bitrate = isFinite(dur) && dur > 0
+    ? (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)' : '-';
+  tbl.appendChild(row('Bitrate (total)', bitrate));
+  const fpsRow = row('Frame rate', 'detecting…');
+  tbl.appendChild(fpsRow);
+  if (vw && vh) tbl.appendChild(row('Frame size', ((vw * vh) / 1_000_000).toFixed(2) + ' MP'));
   infoCard.appendChild(tbl);
   resultsEl.insertBefore(infoCard, playerCard);
 
-  // On-demand frame grab — captures whatever frame is currently displayed and
-  // hands it to the photo analyser. (Auto-capture is unreliable on iOS until a
-  // frame has actually painted, so this is gated on a user tap.)
+  // Detect FPS
+  let detectedFps = 30;
+  const fpsCell = fpsRow.querySelector('td');
+  detectFps(file, fpsCell).then((fps) => {
+    fpsCell.textContent = fps != null ? fps + ' fps' : 'N/A';
+    if (fps != null) { detectedFps = fps; updateTc(); }
+  });
+
+  // Frame-by-frame navigation + timecode
+  function fmtTc(t) {
+    const f = Math.floor(t * detectedFps) % Math.round(detectedFps);
+    const ts = Math.floor(t);
+    return String(Math.floor(ts / 3600)).padStart(2, '0') + ':' +
+      String(Math.floor((ts % 3600) / 60)).padStart(2, '0') + ':' +
+      String(ts % 60).padStart(2, '0') + ':' + String(f).padStart(2, '0');
+  }
+  const tcDisplay = el('span', { class: 'anr-timecode-value' }, '00:00:00:00');
+  const tcLabel = el('span', { class: 'anr-timecode-label' }, 'TIMECODE');
+  const frameTimeLabel = el('div', { class: 'anr-timecode' }, [tcLabel, tcDisplay]);
+  function updateTc() { tcDisplay.textContent = fmtTc(playerEl.currentTime); }
+  let tcRaf = 0;
+  function tickTc() { updateTc(); if (!playerEl.paused) tcRaf = requestAnimationFrame(tickTc); }
+  playerEl.addEventListener('play', () => { tcRaf = requestAnimationFrame(tickTc); });
+  playerEl.addEventListener('pause', () => { cancelAnimationFrame(tcRaf); updateTc(); });
+  playerEl.addEventListener('seeked', updateTc);
+
   if (vw && vh) {
-    const grabCard = el('div', { class: 'anr-card' });
-    grabCard.appendChild(el('h3', {}, 'Frame'));
-    grabCard.appendChild(el('p', { class: 'anr-hint' },
-      'Play or scrub to a frame, then capture it for full photo analysis.'));
-    const grabBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Analyse current frame');
-    grabBtn.onclick = async () => {
-      grabBtn.disabled = true; grabBtn.textContent = 'Capturing…';
+    const prevFrameBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+      playerEl.pause(); playerEl.currentTime = Math.max(0, playerEl.currentTime - 1 / detectedFps);
+    }}, '← Prev frame');
+    const nextFrameBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+      if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+        playerEl.requestVideoFrameCallback(() => { playerEl.pause(); updateTc(); });
+        playerEl.play();
+      } else {
+        playerEl.currentTime = Math.min(playerEl.duration, playerEl.currentTime + 1 / detectedFps);
+      }
+    }}, 'Next frame →');
+    const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: async () => {
+      analyseBtn.disabled = true; analyseBtn.textContent = 'Capturing…';
       try {
-        const cv = document.createElement('canvas');
-        cv.width = vw; cv.height = vh;
+        const cv = document.createElement('canvas'); cv.width = vw; cv.height = vh;
         cv.getContext('2d').drawImage(playerEl, 0, 0, vw, vh);
         const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
-        const t = playerEl.currentTime || 0;
-        const frameFile = new File([blob], `frame_${t.toFixed(3)}s.png`, { type: 'image/png' });
-        const photoResults = document.getElementById('photoResults');
-        if (photoResults) {
-          renderPhoto(frameFile, photoResults);
-          const photoSection = document.getElementById('photo');
-          if (photoSection) window.scrollTo({ top: photoSection.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
-        }
+        const frameFile = new File([blob], `frame_${playerEl.currentTime.toFixed(3)}s.png`, { type: 'image/png' });
+        const pr = document.getElementById('photoResults');
+        if (pr) { renderPhoto(frameFile, pr); const ps = document.getElementById('photo');
+          if (ps) window.scrollTo({ top: ps.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
       } catch (_) {}
-      grabBtn.disabled = false; grabBtn.textContent = 'Analyse current frame';
-    };
-    grabCard.appendChild(grabBtn);
-    resultsEl.appendChild(grabCard);
+      analyseBtn.disabled = false; analyseBtn.textContent = 'Analyse frame';
+    }}, 'Analyse frame');
+    const frameGrid = el('div', { class: 'anr-frame-grid' }, [frameTimeLabel, analyseBtn, prevFrameBtn, nextFrameBtn]);
+    playerCard.appendChild(el('div', { class: 'anr-frame-wrap' }, [frameGrid]));
   }
 
-  // SHA-256 integrity hash.
+  // EXIF metadata
+  let exif = null;
+  try { if (window.exifr) exif = await window.exifr.parse(file, { tiff: true, exif: true, gps: true, xmp: true, mergeOutput: true, translateValues: true, translateKeys: true, reviveValues: true, sanitize: true, silentErrors: true }); } catch (_) {}
+  if (exif) {
+    const metaRows = [];
+    if (exif.Make) metaRows.push(['Make', exif.Make]);
+    if (exif.Model) metaRows.push(['Model', exif.Model]);
+    if (exif.Software) metaRows.push(['Software', exif.Software]);
+    if (exif.DateTimeOriginal) metaRows.push(['Taken', new Date(exif.DateTimeOriginal).toISOString().replace('T', ' ').slice(0, 19)]);
+    if (exif.CreateDate) metaRows.push(['Created', new Date(exif.CreateDate).toISOString().replace('T', ' ').slice(0, 19)]);
+    if (metaRows.length) {
+      const mc = el('div', { class: 'anr-card' });
+      mc.appendChild(el('h3', {}, 'Metadata'));
+      const mt = el('table', { class: 'anr-readout' });
+      for (const [k, v] of metaRows) mt.appendChild(row(k, v));
+      mc.appendChild(mt);
+      resultsEl.appendChild(mc);
+    }
+  }
+
+  // Contact sheet
+  if (vw && vh && isFinite(dur) && dur > 0) {
+    const sheetCard = el('div', { class: 'anr-card' });
+    sheetCard.appendChild(el('h3', {}, 'Contact sheet'));
+    const sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
+    const sheetOut = el('div');
+    sheetBtn.addEventListener('click', async () => {
+      sheetBtn.disabled = true; sheetBtn.textContent = 'Generating…';
+      const cols = 4, rows = 2, total = cols * rows;
+      const tw = Math.round(vw * (320 / Math.max(vw, vh)));
+      const th = Math.round(vh * (320 / Math.max(vw, vh)));
+      const pad = 4;
+      const gc = document.createElement('canvas');
+      gc.width = cols * tw + (cols + 1) * pad;
+      gc.height = rows * th + (rows + 1) * pad;
+      const ctx = gc.getContext('2d');
+      ctx.fillStyle = '#111'; ctx.fillRect(0, 0, gc.width, gc.height);
+      for (let i = 0; i < total; i++) {
+        const t = total > 1 ? (Math.max(0, dur - 0.1) * i) / (total - 1) : 0;
+        await seekAndPaint(playerEl, t);
+        const c = i % cols, r = Math.floor(i / cols);
+        ctx.drawImage(playerEl, pad + c * (tw + pad), pad + r * (th + pad), tw, th);
+      }
+      sheetOut.innerHTML = '';
+      sheetOut.appendChild(el('img', { src: gc.toDataURL('image/png'), alt: 'Contact sheet',
+        style: 'max-width:100%;margin-top:10px;border:1px solid var(--hairline);display:block;' }));
+      sheetBtn.disabled = false; sheetBtn.textContent = 'Generate contact sheet';
+    });
+    sheetCard.appendChild(el('div', { class: 'anr-btn-row' }, [sheetBtn]));
+    sheetCard.appendChild(sheetOut);
+    resultsEl.appendChild(sheetCard);
+
+    // Scene detection
+    const sceneCard = el('div', { class: 'anr-card' });
+    sceneCard.appendChild(el('h3', {}, 'Scene changes'));
+    const sceneOut = el('div');
+    sceneOut.appendChild(el('p', { class: 'anr-hint' }, 'Detecting scene changes…'));
+    sceneCard.appendChild(sceneOut);
+    resultsEl.appendChild(sceneCard);
+    (async () => {
+      if (!isFinite(playerEl.duration) || playerEl.duration <= 0) {
+        await new Promise(r => { playerEl.addEventListener('loadedmetadata', r, { once: true }); setTimeout(r, 6000); });
+      }
+      if (signal && signal.aborted) return;
+      let changes = [];
+      try { changes = await detectSceneChanges(playerEl, 55, signal); } catch (_) {}
+      if (signal && signal.aborted) return;
+      try { playerEl.currentTime = 0; playerEl.pause(); } catch (_) {}
+      sceneOut.innerHTML = '';
+      sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
+        changes.length ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected' : 'No scene changes detected'));
+      if (changes.length && isFinite(dur) && dur > 0) {
+        const timeline = el('div', { class: 'anr-scene-timeline' });
+        for (const sc of changes) {
+          const marker = el('div', { class: 'anr-scene-marker',
+            style: 'left:' + (sc.time / dur) * 100 + '%;',
+            title: formatDuration(sc.time) + '  ·  ' + sc.confidence + '% confidence' });
+          marker.addEventListener('click', () => { playerEl.currentTime = sc.time; playerEl.pause(); });
+          timeline.appendChild(marker);
+        }
+        sceneOut.appendChild(timeline);
+        const details = el('details', { class: 'anr-scene-details' });
+        details.appendChild(el('summary', {}, 'Thumbnails (' + changes.length + ')'));
+        const grid = el('div', { class: 'anr-scene-grid' });
+        for (const sc of changes) {
+          const wrap = el('div', { class: 'anr-scene-thumb',
+            onclick: () => { playerEl.currentTime = sc.time; playerEl.pause(); } });
+          wrap.appendChild(el('img', { src: sc.thumbnail, alt: 'Scene at ' + formatDuration(sc.time) }));
+          wrap.appendChild(el('span', { class: 'anr-scene-meta' }, formatDuration(sc.time) + ' · ' + sc.confidence + '%'));
+          grid.appendChild(wrap);
+        }
+        details.appendChild(grid);
+        sceneOut.appendChild(details);
+      }
+    })();
+  }
+
+  // Audio extraction (into Sound section)
+  const audioResultsEl = document.getElementById('audioResults');
+  if (audioResultsEl) {
+    audioResultsEl.hidden = false;
+    const audioCard = el('div', { class: 'anr-card' });
+    audioCard.appendChild(el('h3', {}, 'Audio track'));
+    const audioStatus = el('p', { class: 'anr-info' }, 'Decoding audio from video…');
+    audioCard.appendChild(audioStatus);
+    audioResultsEl.appendChild(audioCard);
+    try {
+      const ac = getAudioCtx();
+      const buf = await file.arrayBuffer();
+      let audioBuf;
+      try { audioBuf = await ac.decodeAudioData(buf.slice(0)); } catch (_) {
+        audioStatus.textContent = 'Trying PCM extraction…';
+        audioBuf = extractPcmFromMp4(buf);
+      }
+      if (!audioBuf) {
+        audioStatus.textContent = 'Web Audio failed, using FFmpeg…';
+        audioBuf = await ffmpegExtractAudio(file, audioCard);
+      }
+      audioStatus.remove();
+      const mono = getMono(audioBuf);
+      const stats = computeStats(mono);
+      const wavBlob = encodeWav(audioBuf);
+      const wavUrl = URL.createObjectURL(wavBlob);
+      const audioPlayer = el('audio', { src: wavUrl }); audioPlayer.style.display = 'none';
+      const apCard = el('div', { class: 'anr-card' });
+      apCard.appendChild(el('h3', {}, 'Extracted audio'));
+      apCard.appendChild(audioPlayer); apCard.appendChild(makePlayer(audioPlayer));
+      audioResultsEl.appendChild(apCard);
+      const at = el('table', { class: 'anr-readout' });
+      at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
+      at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
+      at.appendChild(row('Channels', audioBuf.numberOfChannels));
+      at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)', 'Highest sample amplitude.'));
+      at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)', 'Root Mean Square — average signal power.'));
+      at.appendChild(row('Samples', mono.length.toLocaleString()));
+      audioCard.appendChild(at);
+      const waveWrap = el('div', { style: 'position:relative; width:100%;' });
+      const waveCanvas = el('canvas', { class: 'anr-waveform' }); waveCanvas.width = 1024; waveCanvas.height = 80;
+      renderWaveform(waveCanvas, mono);
+      const waveLine = el('div', { class: 'anr-playhead' });
+      waveLine.style.cssText = 'pointer-events:auto;width:7px;margin-left:-3px;cursor:col-resize;background:transparent;border-left:1px solid #fff;';
+      waveWrap.appendChild(waveCanvas); waveWrap.appendChild(waveLine);
+      audioCard.appendChild(waveWrap);
+      audioResultsEl.appendChild(buildHistogramCard(mono));
+      const basename = (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio';
+      audioResultsEl.appendChild(makeSpectrogramPanel(mono, audioBuf.sampleRate, { basename, audioEl: audioPlayer, signal }));
+      const audioDuration = audioBuf.duration;
+      function tickPh() {
+        waveLine.style.left = (audioDuration > 0 ? (audioPlayer.currentTime / audioDuration) * 100 : 0) + '%';
+        if (!audioPlayer.paused) requestAnimationFrame(tickPh);
+      }
+      audioPlayer.addEventListener('play', () => requestAnimationFrame(tickPh));
+      audioPlayer.addEventListener('pause', tickPh);
+      audioPlayer.addEventListener('seeked', tickPh);
+      waveCanvas.style.cursor = 'pointer';
+      waveCanvas.addEventListener('click', (e) => {
+        const rect = waveCanvas.getBoundingClientRect();
+        audioPlayer.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * audioDuration;
+        tickPh();
+      });
+    } catch (e) {
+      audioStatus.remove();
+      audioCard.appendChild(el('p', { class: 'anr-hint' }, 'Audio decode failed: ' + (e && e.message || 'unknown error')));
+    }
+  }
+
+  // SHA-256
   if (file.size <= 500 * 1024 * 1024) {
     const hashCard = el('div', { class: 'anr-card' });
     hashCard.appendChild(el('h3', {}, 'Integrity'));

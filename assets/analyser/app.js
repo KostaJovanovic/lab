@@ -5,7 +5,7 @@
    - Renders a basic dump for unknown formats */
 
 const COMMIT_COUNT = 25;
-const VERSION_OFFSET = 17;
+const VERSION_OFFSET = 25;
 
 import { initPhoto, renderPhoto } from './photo.js';
 import { initAudio, renderAudio } from './audio.js';
@@ -16,6 +16,7 @@ import { renderSvg } from './svg.js';
 import { renderCsv } from './csv.js';
 import { renderUnknown } from './unknown.js';
 import { renderProprietary, isProprietaryExt } from './proprietary.js';
+import { renderDocx } from './docx.js';
 import { initSearch } from './search.js';
 import { fileExt, el } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
@@ -70,6 +71,7 @@ function classifyFile(file) {
   if (t.startsWith('audio/')) return 'audio';
   if (t.startsWith('video/')) return 'video';
   if (CSV_EXTS.has(ext) || t === 'text/csv' || t === 'text/tab-separated-values') return 'csv';
+  if (ext === 'docx') return 'docx';
   if (PHOTO_EXTS.has(ext)) return 'photo';
   if (AUDIO_EXTS.has(ext)) return 'audio';
   if (VIDEO_EXTS.has(ext)) return 'video';
@@ -209,6 +211,9 @@ function boot() {
       markAnalysed('photo');
       scrollTo('#video');
       renderVideo(file, videoResults);
+    } else if (kind === 'docx') {
+      scrollTo('#unknownResults');
+      renderDocx(file, unknownResults);
     } else if (kind === 'pdf') {
       scrollTo('#unknownResults');
       renderPdf(file, unknownResults);
@@ -455,6 +460,38 @@ function boot() {
       return letters;
     }
 
+    function makeSweep(letters, radius, duration) {
+      return function sweep() {
+        const rect = mark.getBoundingClientRect();
+        const sx = rect.left - radius;
+        const ex = rect.right + radius;
+        const cy = rect.top + rect.height * 0.5;
+        const span = ex - sx;
+        let t0 = null;
+        function frame(ts) {
+          if (!t0) t0 = ts;
+          const p = Math.min(1, (ts - t0) / duration);
+          const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+          const vx = sx + e * span;
+          for (const l of letters) {
+            const r = l.el.getBoundingClientRect();
+            const d = Math.hypot(vx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+            const f = Math.min(1, d / radius);
+            l.el.style.fontWeight = Math.round(l.base * f + 300 * (1 - f));
+          }
+          if (p < 1) requestAnimationFrame(frame);
+          else {
+            for (const l of letters) {
+              l.el.style.transition = 'font-weight 0.4s ease';
+              l.el.style.fontWeight = l.base;
+            }
+            setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
+          }
+        }
+        requestAnimationFrame(frame);
+      };
+    }
+
     if (title && byline && mark && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
       const letters = initLetters();
       const RADIUS = 120;
@@ -485,40 +522,13 @@ function boot() {
           l.el.style.fontWeight = l.base;
         }
       });
+
+      setTimeout(makeSweep(letters, RADIUS, 3500), 800);
     } else if (title && byline && mark && window.matchMedia('(pointer: coarse)').matches) {
       const letters = initLetters();
-      const RADIUS = 80;
-      const DURATION = 3500;
-      function sweep() {
-        const rect = mark.getBoundingClientRect();
-        const sx = rect.left - RADIUS;
-        const ex = rect.right + RADIUS;
-        const cy = rect.top + rect.height * 0.5;
-        const span = ex - sx;
-        let t0 = null;
-        function frame(ts) {
-          if (!t0) t0 = ts;
-          const p = Math.min(1, (ts - t0) / DURATION);
-          const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-          const vx = sx + e * span;
-          for (const l of letters) {
-            const r = l.el.getBoundingClientRect();
-            const d = Math.hypot(vx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
-            const f = Math.min(1, d / RADIUS);
-            l.el.style.fontWeight = Math.round(l.base * f + 300 * (1 - f));
-          }
-          if (p < 1) requestAnimationFrame(frame);
-          else {
-            for (const l of letters) {
-              l.el.style.transition = 'font-weight 0.4s ease';
-              l.el.style.fontWeight = l.base;
-            }
-            setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
-          }
-        }
-        requestAnimationFrame(frame);
-      }
+      const sweep = makeSweep(letters, 80, 3500);
       setTimeout(sweep, 800);
+      setInterval(sweep, 8000);
     }
 
     boot._once = true;

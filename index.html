@@ -6,6 +6,7 @@
   <title>Analyser</title>
   <meta name="description" content="Photo, sound, and video analysis. Everything runs locally in your browser.">
   <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.png">
   <link rel="manifest" href="manifest.json">
@@ -63,7 +64,7 @@
         <label class="anr-dropzone-inner" for="photoInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
           <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> a photo or video</strong>
-          <input type="file" accept="image/*,video/*" id="photoInput" hidden>
+          <input type="file" accept=".jpg,.jpeg,.jpe,.jfif,.png,.gif,.webp,.heic,.heif,.bmp,.tif,.tiff,.avif,.jxl,.ico,.raw,.arw,.cr2,.cr3,.nef,.dng,.raf,.rw2,.orf,.pef,.sr2,.srw,.x3f,.mp4,.m4v,.mov,.avi,.mkv,.webm,.wmv,.flv,.3gp,.mpg,.mpeg,.mts" id="photoInput" hidden>
           <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; RAW &middot; MP4 &middot; MOV &middot; MKV &middot; WEBM &middot; AVI</p>
         </label>
       </div>
@@ -206,7 +207,7 @@
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. ~30 MB, loaded only when needed.</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a>. Fast ZIP decompression in the browser.</dd></div>
-      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, fonts, and more. Extracts version, author, and metadata from headers, ZIP manifests, ID3 tags, and gzipped XML projects.</dd></div>
+      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, fonts, G-Code, log files, and more. Extracts version, author, and metadata from headers, ZIP manifests, ID3 tags, and gzipped XML projects. DOCX documents render with formatted text. AI-generation markers detected in photo metadata.</dd></div>
       <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell. Use the buttons above to pre-cache heavy dependencies.</dd></div>
     </dl>
   </details>

@@ -58,7 +58,7 @@ If the format isn't photo/audio/video/csv/svg and needs its own renderer:
 
 ## Version numbering
 
-Formula: `1.(commit_count - 17)`. The constant `COMMIT_COUNT` in `app.js` is updated automatically by `save.bat` on each commit. `VERSION_OFFSET` is 17. Don't change these manually.
+Formula: `1.(commit_count - 25)`. The constant `COMMIT_COUNT` in `app.js` is updated automatically by `save.bat` on each commit. `VERSION_OFFSET` is 25. Don't change these manually.
 
 ## SPA navigation
 
