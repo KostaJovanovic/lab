@@ -37,10 +37,12 @@ set SAVE_ERROR=0
 
 for /f %%i in ('git rev-list --count HEAD 2^>nul') do set COMMIT_COUNT=%%i
 if not defined COMMIT_COUNT set COMMIT_COUNT=0
-set /a NEXT_VER=%COMMIT_COUNT%+1
-echo Bumping version to 0.%NEXT_VER%
+set /a NEXT_COUNT=%COMMIT_COUNT%+1
+set /a MINOR=%NEXT_COUNT%-17
+if %MINOR% lss 0 set MINOR=0
+echo Bumping version to 1.%MINOR% (commit %NEXT_COUNT%)
 
-powershell -Command "(Get-Content 'index.html') -replace '<dt>Version</dt><dd>[^<]*</dd>', '<dt>Version</dt><dd>0.%NEXT_VER%</dd>' | Set-Content 'index.html' -Encoding utf8"
+powershell -Command "(Get-Content 'assets/analyser/app.js') -replace 'const COMMIT_COUNT = \d+;', 'const COMMIT_COUNT = %NEXT_COUNT%;' | Set-Content 'assets/analyser/app.js' -Encoding utf8"
 
 git add .
 git status

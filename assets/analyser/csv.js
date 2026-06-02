@@ -78,6 +78,7 @@ export async function renderCsv(file, resultsEl) {
   statsCard.appendChild(el('h3', {}, 'CSV / TSV file'));
 
   const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Application', 'CSV / TSV Spreadsheet'));
   tbl.appendChild(row('Name', file.name));
   tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
   tbl.appendChild(row('Delimiter', delimiter === '\t' ? 'Tab' : 'Comma'));

@@ -193,6 +193,7 @@ export async function renderUnknown(file, resultsEl) {
   card.appendChild(el('h3', {}, 'Unknown file — best-effort inspection'));
 
   const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Application', 'Unknown'));
   tbl.appendChild(row('Name',     file.name));
   tbl.appendChild(row('Size',     `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
   tbl.appendChild(row('MIME',     file.type || '-'));

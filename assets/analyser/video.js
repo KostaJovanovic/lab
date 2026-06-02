@@ -288,41 +288,54 @@ function roundFps(raw) {
 }
 
 async function detectFpsFromContainer(file) {
-  const size = Math.min(file.size, 4 * 1024 * 1024);
-  const buf = await file.slice(0, size).arrayBuffer();
-  const view = new DataView(buf);
-  if (size < 12) return null;
-  const ftyp = String.fromCharCode(view.getUint8(4), view.getUint8(5), view.getUint8(6), view.getUint8(7));
+  if (file.size < 12) return null;
+  const headBuf = await file.slice(0, Math.min(file.size, 64)).arrayBuffer();
+  const hv = new DataView(headBuf);
+  const ftyp = String.fromCharCode(hv.getUint8(4), hv.getUint8(5), hv.getUint8(6), hv.getUint8(7));
   if (ftyp !== 'ftyp') return null;
 
-  const traks = findAllBoxes(view, 0, size, 'trak');
+  // Walk top-level boxes to find moov (handles 64-bit extended sizes)
+  let moovOffset = -1, moovSize = 0, pos = 0;
+  while (pos < file.size) {
+    const headerBuf = await file.slice(pos, pos + 16).arrayBuffer();
+    const dv = new DataView(headerBuf);
+    if (headerBuf.byteLength < 8) break;
+    let boxSize = dv.getUint32(0);
+    const type = String.fromCharCode(dv.getUint8(4), dv.getUint8(5), dv.getUint8(6), dv.getUint8(7));
+    if (boxSize === 1 && headerBuf.byteLength >= 16) {
+      const hi = dv.getUint32(8), lo = dv.getUint32(12);
+      boxSize = hi * 0x100000000 + lo;
+    }
+    if (boxSize < 8) break;
+    if (type === 'moov') { moovOffset = pos; moovSize = boxSize; break; }
+    pos += boxSize;
+  }
+
+  if (moovOffset < 0 || moovSize > 20 * 1024 * 1024) return null;
+  const moovBuf = await file.slice(moovOffset, moovOffset + moovSize).arrayBuffer();
+  const view = new DataView(moovBuf);
+  const traks = findAllBoxes(view, 8, moovSize, 'trak');
   for (const trak of traks) {
     const trakStart = trak.offset + trak.headerSize;
-    const trakEnd = Math.min(trak.offset + trak.size, size);
-
-    const vmhd = findAllBoxes(view, trakStart, trakEnd, 'vmhd');
-    if (!vmhd.length) continue;
-
+    const trakEnd = Math.min(trak.offset + trak.size, moovSize);
+    if (!findAllBoxes(view, trakStart, trakEnd, 'vmhd').length) continue;
     const mdhdBoxes = findAllBoxes(view, trakStart, trakEnd, 'mdhd');
     if (!mdhdBoxes.length) continue;
     const mdhd = mdhdBoxes[0];
     const mdhdData = mdhd.offset + mdhd.headerSize;
-    if (mdhdData + 24 > size) continue;
+    if (mdhdData + 24 > moovSize) continue;
     const mdhdVersion = view.getUint8(mdhdData);
     const timescale = mdhdVersion === 1
       ? view.getUint32(mdhdData + 20)
       : view.getUint32(mdhdData + 12);
-
     const sttsBoxes = findAllBoxes(view, trakStart, trakEnd, 'stts');
     if (!sttsBoxes.length) continue;
     const stts = sttsBoxes[0];
     const sttsData = stts.offset + stts.headerSize;
-    if (sttsData + 16 > size) continue;
-    const entryCount = view.getUint32(sttsData + 4);
-    if (entryCount < 1) continue;
+    if (sttsData + 16 > moovSize) continue;
+    if (view.getUint32(sttsData + 4) < 1) continue;
     const sampleDuration = view.getUint32(sttsData + 12);
     if (sampleDuration <= 0 || timescale <= 0) continue;
-
     const fps = timescale / sampleDuration;
     if (fps > 1 && fps < 1000) return roundFps(fps);
   }
@@ -349,9 +362,12 @@ async function detectFps(file, fpsCell) {
   if (containerFps) return containerFps;
   if (fpsCell) fpsCell.textContent = 'loading ffmpeg…';
   try {
-    return await detectFpsWithFfmpeg(file, (p) => {
-      if (fpsCell) fpsCell.textContent = 'loading ffmpeg… ' + Math.round(p * 100) + '%';
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000));
+    const detect = detectFpsWithFfmpeg(file, (p) => {
+      const pct = Math.round(p * 100);
+      if (fpsCell) fpsCell.textContent = pct >= 100 ? 'initialising ffmpeg…' : 'loading ffmpeg… ' + pct + '%';
     });
+    return await Promise.race([detect, timeout]);
   } catch (_) {
     return null;
   }
@@ -560,20 +576,41 @@ export async function renderVideo(file, resultsEl) {
 
   resultsEl.innerHTML = '';
 
-  // ---- Thumbnail in section-meta ----
+  // Capture the first frame once, here — reused for the section-meta thumbnail
+  // AND the player poster so the first frame shows immediately on load (the
+  // <video> can otherwise render black until played, especially on iOS).
+  let posterUrl = '';
+  if (vw && vh) {
+    const pcv = document.createElement('canvas');
+    const pscale = Math.min(1, 1280 / Math.max(vw, vh));
+    pcv.width = Math.round(vw * pscale);
+    pcv.height = Math.round(vh * pscale);
+    pcv.getContext('2d').drawImage(probe, 0, 0, pcv.width, pcv.height);
+    posterUrl = pcv.toDataURL('image/jpeg', 0.85);
+  }
+
+  // ---- Thumbnail in section-meta (desktop only, hidden by CSS on mobile) ----
   const previewSlot = document.getElementById('videoPreview');
-  if (previewSlot && vw && vh) {
+  if (previewSlot && posterUrl) {
     previewSlot.innerHTML = '';
-    const cv = document.createElement('canvas');
-    const scale = Math.min(1, 400 / Math.max(vw, vh));
-    cv.width = Math.round(vw * scale);
-    cv.height = Math.round(vh * scale);
-    cv.getContext('2d').drawImage(probe, 0, 0, cv.width, cv.height);
     const thumb = el('div', { class: 'section-meta-preview' });
-    thumb.appendChild(el('img', { src: cv.toDataURL('image/jpeg', 0.85), alt: file.name }));
+    thumb.appendChild(el('img', { src: posterUrl, alt: file.name }));
     thumb.appendChild(el('p', { class: 'section-meta-preview-caption' },
       `${vw} × ${vh} · ${formatDuration(dur)} · ${fmtBytes(file.size)}`));
     previewSlot.appendChild(thumb);
+  }
+
+  // Auto-analyse first frame in the photo section
+  if (vw && vh) {
+    const fcv = document.createElement('canvas');
+    fcv.width = vw; fcv.height = vh;
+    fcv.getContext('2d').drawImage(probe, 0, 0, vw, vh);
+    fcv.toBlob(blob => {
+      if (!blob) return;
+      const frameFile = new File([blob], `frame_0.000s.png`, { type: 'image/png' });
+      const photoResults = document.getElementById('photoResults');
+      if (photoResults) renderPhoto(frameFile, photoResults);
+    }, 'image/png');
   }
 
   probe.removeAttribute('src');
@@ -583,8 +620,9 @@ export async function renderVideo(file, resultsEl) {
   // ---- Player ----
   const playerCard = el('div', { class: 'anr-card' });
   playerCard.appendChild(el('h3', {}, 'Player'));
-  // playsinline keeps playback inline on iPhone instead of forcing fullscreen.
-  const playerEl = el('video', { src: url, playsinline: '' });
+  // playsinline keeps playback inline on iPhone instead of forcing fullscreen;
+  // the poster shows the captured first frame right away.
+  const playerEl = el('video', { src: url, playsinline: '', poster: posterUrl });
   playerEl.setAttribute('webkit-playsinline', '');
   playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline); cursor:pointer;';
   playerEl.addEventListener('click', () => { if (playerEl.paused) playerEl.play(); else playerEl.pause(); });
@@ -593,10 +631,8 @@ export async function renderVideo(file, resultsEl) {
 
   // ---- Frame-by-frame navigation ----
   let detectedFps = 30;
-  const frameTimeLabel = el('span', { class: 'anr-hint', style: 'min-width:110px; text-align:center; font-variant-numeric:tabular-nums;' }, '00:00:00:00');
 
-  function updateFrameTimeLabel() {
-    const t = playerEl.currentTime;
+  function fmtTimecode(t) {
     const fps = detectedFps;
     const totalFrames = Math.floor(t * fps);
     const f = totalFrames % Math.round(fps);
@@ -604,14 +640,77 @@ export async function renderVideo(file, resultsEl) {
     const s = totalSec % 60;
     const m = Math.floor(totalSec / 60) % 60;
     const h = Math.floor(totalSec / 3600);
-    frameTimeLabel.textContent =
-      String(h).padStart(2, '0') + ':' +
+    return String(h).padStart(2, '0') + ':' +
       String(m).padStart(2, '0') + ':' +
       String(s).padStart(2, '0') + ':' +
       String(f).padStart(2, '0');
   }
 
-  playerEl.addEventListener('timeupdate', updateFrameTimeLabel);
+  function parseTimecode(str) {
+    const parts = str.split(':').map(Number);
+    if (parts.length !== 4 || parts.some(isNaN)) return null;
+    const [h, m, s, f] = parts;
+    return h * 3600 + m * 60 + s + f / detectedFps;
+  }
+
+  const tcDisplay = el('span', { class: 'anr-timecode-value' }, '00:00:00:00');
+  const tcInput = el('input', {
+    type: 'text',
+    class: 'anr-timecode-input',
+    maxlength: '11',
+    spellcheck: 'false',
+    autocomplete: 'off'
+  });
+  tcInput.style.display = 'none';
+
+  const tcLabel = el('span', { class: 'anr-timecode-label' }, 'TIMECODE');
+  const tcHint = el('span', { class: 'anr-timecode-hint' }, 'hour : min : sec : frame');
+  tcHint.style.display = 'none';
+  const frameTimeLabel = el('div', { class: 'anr-timecode' }, [tcLabel, tcDisplay, tcInput]);
+
+  function updateFrameTimeLabel() {
+    tcDisplay.textContent = fmtTimecode(playerEl.currentTime);
+  }
+
+  tcDisplay.addEventListener('click', () => {
+    playerEl.pause();
+    tcInput.value = tcDisplay.textContent;
+    tcDisplay.style.display = 'none';
+    tcInput.style.display = '';
+    tcHint.style.display = '';
+    tcInput.focus();
+    tcInput.select();
+  });
+
+  function commitTimecode() {
+    const t = parseTimecode(tcInput.value);
+    if (t !== null && isFinite(playerEl.duration)) {
+      playerEl.currentTime = Math.max(0, Math.min(playerEl.duration, t));
+    }
+    tcInput.style.display = 'none';
+    tcHint.style.display = 'none';
+    tcDisplay.style.display = '';
+    updateFrameTimeLabel();
+  }
+
+  tcInput.addEventListener('blur', commitTimecode);
+  tcInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); tcInput.blur(); }
+    if (e.key === 'Escape') {
+      tcInput.style.display = 'none';
+      tcHint.style.display = 'none';
+      tcDisplay.style.display = '';
+    }
+  });
+
+  let tcRaf = 0;
+  function tickTimecode() {
+    updateFrameTimeLabel();
+    if (!playerEl.paused) tcRaf = requestAnimationFrame(tickTimecode);
+  }
+  playerEl.addEventListener('play', () => { tcRaf = requestAnimationFrame(tickTimecode); });
+  playerEl.addEventListener('pause', () => { cancelAnimationFrame(tcRaf); updateFrameTimeLabel(); });
+  playerEl.addEventListener('seeked', updateFrameTimeLabel);
 
   const prevFrameBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
     playerEl.pause();
@@ -650,8 +749,9 @@ export async function renderVideo(file, resultsEl) {
     analyseFrameBtn.textContent = 'Analyse frame';
   }}, 'Analyse frame');
 
-  const frameNavGroup = el('div', { class: 'anr-frame-nav' }, [prevFrameBtn, frameTimeLabel, nextFrameBtn]);
-  playerCard.appendChild(el('div', { class: 'anr-btn-row' }, [frameNavGroup, analyseFrameBtn]));
+  const frameGrid = el('div', { class: 'anr-frame-grid' }, [frameTimeLabel, analyseFrameBtn, prevFrameBtn, nextFrameBtn]);
+  const frameWrap = el('div', { class: 'anr-frame-wrap' }, [tcHint, frameGrid]);
+  playerCard.appendChild(frameWrap);
 
   resultsEl.appendChild(playerCard);
 

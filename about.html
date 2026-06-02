@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About - Analyser</title>
+  <meta name="description" content="About Analyser. A local-only forensic tool for photos, sound, and video.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="stylesheet" href="assets/analyser.css">
+  <script>try{var t=localStorage.getItem('anr-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<div id="pageDrop" class="page-drop" hidden aria-hidden="true">
+  <div class="page-drop-inner">
+    <span class="page-drop-icon" aria-hidden="true">+</span>
+    <strong>Drop anywhere</strong>
+    <p>Photo, sound, video, or anything else. I&rsquo;ll figure it out</p>
+  </div>
+</div>
+
+<header class="site-header">
+  <div class="grid">
+    <div class="site-mark">
+      <span class="site-kicker">A 02 - 05</span>
+      <h1 class="site-title">Analyser</h1>
+      <p class="site-byline">by <a href="https://valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
+      <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
+    </div>
+    <div class="site-meta">
+      <dl>
+        <dt>Version</dt><dd id="versionNum">1.0</dd>
+        <dt>Status</dt><dd><span class="dot"></span> Local-only</dd>
+        <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">Enable</button></dd>
+        <dt>About</dt><dd><a href="index.html" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Back</a></dd>
+      </dl>
+    </div>
+  </div>
+</header>
+
+<nav class="site-nav" aria-label="Primary">
+  <div class="nav-home" id="navHomeWrap">
+    <button type="button" class="nav-home-btn" id="navHomeBtn" aria-label="Home — scroll to top"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7.1 7.5 1.8l6 5.3"/><path d="M3.2 6.1V13.2h8.6V6.1"/></svg></button>
+  </div>
+  <a href="#why" class="nav-link"><span class="nav-num">i</span><span>Why</span></a>
+  <a href="#what" class="nav-link"><span class="nav-num">ii</span><span>What</span></a>
+  <a href="#how" class="nav-link"><span class="nav-num">iii</span><span>How</span></a>
+  <a href="#where" class="nav-link"><span class="nav-num">iv</span><span>Where</span></a>
+
+  <div class="nav-search" id="navSearchWrap">
+    <button type="button" class="nav-search-btn" id="navSearchBtn" aria-label="Search"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="5"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>
+    <input type="text" id="navSearch" class="nav-search-input" placeholder="Search" autocomplete="off" spellcheck="false">
+  </div>
+</nav>
+
+<main class="site-main about-page">
+
+  <section id="why" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">i</span>
+        <span class="section-kicker">Why</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">Why even waste time on this, aren't there many similar tools?</h2>
+        <div class="about-block">
+          <p>No. All the tools I have found are either full of ads, require uploading, or even worse: Ugly, unresponsive and unintuitive.<br>I have made this tool primarily for my needs, but it spiraled out of control and became whatever you are seeing right now.<br>I was unable to find a satisfactory spectrogram app / website / program, since all of them are either far too complex for my liking and needs, don't work as they should, or require a multiple gigabyte installation. No more.</p>
+          <p>This tool has a bunch of functions that I needed, or anticipate that I will need in the future, and equal number of ones that I don't or never will.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="what" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">ii</span>
+        <span class="section-kicker">What</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">A forensic tool that runs entirely in your browser.</h2>
+        <p class="section-lede">Analyser reads photos, sound, video, PDFs, archives, and over 100 proprietary file formats. It extracts every byte of metadata, visualises spectra, decodes frames, and identifies files, all without uploading a single bit.</p>
+
+        <p class="anr-readout-section">Full analysis</p>
+        <table class="anr-readout about-readout">
+          <tr><th>Photo</th><td><span class="about-exts">JPG JPEG PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F</span></td></tr>
+          <tr><th>Sound</th><td><span class="about-exts">MP3 WAV M4A AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA MIDI</span></td></tr>
+          <tr><th>Video</th><td><span class="about-exts">MP4 MOV AVI MKV WebM WMV FLV 3GP MPG MPEG MTS M2TS TS VOB OGV</span></td></tr>
+          <tr><th>PDF</th><td>Metadata, text extraction, page previews, OCR scanning</td></tr>
+          <tr><th>Archives</th><td><span class="about-exts">ZIP</span></td></tr>
+          <tr><th>Data</th><td><span class="about-exts">CSV TSV SVG</span></td></tr>
+          <tr><th>Web / code</th><td><span class="about-exts">HTML CSS JS TS TSX JSX JSON YAML XML MD</span></td></tr>
+        </table>
+
+        <p class="anr-readout-section">Identification + basic metadata</p>
+        <table class="anr-readout about-readout">
+          <tr><th>Documents</th><td><span class="about-exts">DOC DOCX XLS XLSX PPT PPTX PPSX ODT ODS ODP ODG Pages Numbers Keynote</span></td></tr>
+          <tr><th>Adobe</th><td><span class="about-exts">PSD PSB AI INDD INDT IDML AEP AET PRPROJ MOGRT SESX XD FLA SWF XMP LRtemplate LRcat ACV ACO ASL ABR GRD PAT</span></td></tr>
+          <tr><th>Design</th><td><span class="about-exts">FIG Sketch afphoto afdesign afpub Procreate XCF KRA PDN SPP SBSAR SBS</span></td></tr>
+          <tr><th>CAD</th><td><span class="about-exts">DWG DXF DWT SLDPRT SLDASM SLDDRW F3D F3Z IPT IAM IDW 3DM SKP 3DS MAX C4D HIP ZPR ZTL MA MB CATPART CATPRODUCT PRT ASM BRD SCH KiCad</span></td></tr>
+          <tr><th>CAD exchange</th><td><span class="about-exts">STEP STP IGES IGS SAT X_T X_B</span></td></tr>
+          <tr><th>3D / printing</th><td><span class="about-exts">STL OBJ FBX glTF GLB PLY USDZ USD USDA 3MF AMF BLEND</span></td></tr>
+          <tr><th>Executables</th><td><span class="about-exts">EXE DLL MSI APK IPA DMG AppImage</span></td></tr>
+          <tr><th>Video editing</th><td><span class="about-exts">DRP</span></td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">iii</span>
+        <span class="section-kicker">How</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">What Analyser can do.</h2>
+        <div class="about-block">
+          <dl class="about-caps">
+            <div>
+              <dt>Photo</dt>
+              <dd>EXIF, IPTC, XMP, ICC. Dimensions, aspect ratio, RGB histogram, dominant palette, GPS map, QR code detection, OCR. Supports JPEG, PNG, WebP, HEIC, and RAW formats (ARW, CR2, CR3, NEF, etc.).</dd>
+            </div>
+            <div>
+              <dt>Sound</dt>
+              <dd>Waveform, spectrogram (linear or logarithmic), adjustable FFT size and window function, colourmap selection, fullscreen mode. Open a file, record from the mic, or visualise live input. MP3, WAV, M4A, FLAC, OGG, OPUS.</dd>
+            </div>
+            <div>
+              <dt>Video</dt>
+              <dd>Container and codec detection, resolution, frame rate (parsed from MP4 container with FFmpeg fallback), bitrate, duration. Frame-by-frame navigation with editable timecode. Capture any frame for full photo analysis. Extract the audio track for waveform and spectrogram.</dd>
+            </div>
+            <div>
+              <dt>PDF</dt>
+              <dd>Metadata, page count, dimensions. Full text extraction with pagination. Page previews. OCR scanning of image-only pages via Tesseract. Open in browser.</dd>
+            </div>
+            <div>
+              <dt>Archives</dt>
+              <dd>ZIP file listing with sizes, dates, and compression ratios.</dd>
+            </div>
+            <div>
+              <dt>100+ formats</dt>
+              <dd>Adobe (PSD, AI, INDD), AutoCAD (DWG, DXF), SolidWorks, Fusion 360, Blender, 3D meshes (FBX, GLB, STL, OBJ, 3MF, STEP, IGES), Office documents (DOCX, XLSX, PPTX), executables (EXE, DLL), web files (HTML, CSS, JS), and more. Header parsing extracts metadata where possible.</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="where" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">iv</span>
+        <span class="section-kicker">Where</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">Works without internet.</h2>
+        <div class="about-block">
+          <p>Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. Use the download buttons on the main page to pre-cache dependencies, from the essentials (~47 MB) up to all 32 OCR languages (~190 MB).</p>
+          <p>The service worker caches the entire app shell on first visit. Heavy tools like FFmpeg, ImageMagick, and Tesseract are cached separately when you download them, so the initial load stays light.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer site-footer--about">
+  <div class="footer-about-heading">
+    <p class="footer-mark">Everything runs in your browser.</p>
+    <p class="footer-meta">No upload, no analytics, no servers in the loop.</p>
+  </div>
+  <div class="footer-row footer-bottom">
+    <p class="footer-meta"><a href="index.html">&larr; Return to main page</a></p>
+    <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
+  </div>
+</footer>
+
+<script src="assets/analyser/navigate.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script type="module" src="assets/analyser/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW failed:', e); });
+    });
+  }
+</script>
+
+</body>
+</html>

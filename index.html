@@ -11,6 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="assets/fonts.css">
   <link rel="stylesheet" href="assets/analyser.css">
+  <script>try{var t=localStorage.getItem('anr-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
 
@@ -25,16 +26,17 @@
 <header class="site-header">
   <div class="grid">
     <div class="site-mark">
-      <span class="site-kicker">A 01 / 03</span>
+      <span class="site-kicker">A 01 - 03</span>
       <h1 class="site-title">Analyser</h1>
-      <p class="site-byline">by valjdakosta</p>
-      <p class="site-sub">A small forensic tool for photos, sound, and video. Drop a file. Everything is read in your browser; nothing is uploaded.</p>
+      <p class="site-byline">by <a href="https://valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
+      <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
     </div>
     <div class="site-meta">
       <dl>
-        <dt>Version</dt><dd>0.16</dd>
+        <dt>Version</dt><dd id="versionNum">1.0</dd>
         <dt>Status</dt><dd><span class="dot"></span> Local-only</dd>
         <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">Enable</button></dd>
+        <dt>About</dt><dd><a href="about.html" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Info</a></dd>
       </dl>
     </div>
   </div>
@@ -106,7 +108,7 @@
       </aside>
       <div class="section-content">
         <h2 class="section-head">Read every byte of metadata a camera left behind.</h2>
-        <p class="section-lede">JPEG, HEIC, PNG, WEBP, RAW. EXIF, IPTC, XMP, ICC. Dimensions, exact aspect ratio, RGB histogram, dominant palette, GPS map, on-device OCR.</p>
+        <p class="section-lede">EXIF, IPTC, XMP, ICC. Dimensions, exact aspect ratio, RGB histogram, dominant palette, GPS map, on-device OCR.</p>
 
         <div id="photoResults" class="anr-results" hidden></div>
       </div>
@@ -152,6 +154,33 @@
     <p class="footer-mark">Everything runs in your browser.</p>
     <p class="footer-meta">No upload, no analytics, no servers in the loop.</p>
   </div>
+  <div class="offline-section" id="offlineSection">
+    <p class="offline-heading">Download for offline use</p>
+    <div class="offline-options">
+      <button type="button" class="offline-btn" data-tier="essentials">
+        <span class="offline-tier">Essentials</span>
+        <span class="offline-desc">App, fonts, metadata, FFmpeg, ImageMagick</span>
+        <span class="offline-size">~47 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+      <button type="button" class="offline-btn" data-tier="everything">
+        <span class="offline-tier">Everything</span>
+        <span class="offline-desc">Essentials + OCR (English), PDF, maps, QR, HEIC, archives</span>
+        <span class="offline-size">~57 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+      <button type="button" class="offline-btn" data-tier="complete">
+        <span class="offline-tier">Complete</span>
+        <span class="offline-desc">Everything + all 32 OCR languages</span>
+        <span class="offline-size">~190 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+    </div>
+    <div class="offline-bottom-row">
+      <button type="button" class="offline-install" id="offlineInstall" hidden>Install as app</button>
+      <button type="button" class="offline-clear" id="offlineClear">Clear offline cache</button>
+    </div>
+  </div>
   <details class="about-details">
     <summary>Dependencies</summary>
     <dl class="about-defs">
@@ -164,13 +193,13 @@
       <div><dt>Audio</dt><dd>Native Web Audio API plus a hand-written radix-2 FFT for spectrogram and analysis.</dd></div>
       <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback.</dd></div>
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. ~30 MB, loaded only when needed.</dd></div>
-      <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages and extracts text. Loaded only for PDF files.</dd></div>
+      <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a>. Fast ZIP decompression in the browser.</dd></div>
-      <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell.</dd></div>
+      <div><dt>File ID</dt><dd>Built-in identification for 100+ proprietary formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, and more. Extracts metadata from headers where possible.</dd></div>
+      <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell. Use the buttons above to pre-cache heavy dependencies.</dd></div>
     </dl>
   </details>
   <div class="footer-row footer-bottom">
-    <p class="footer-mark">Analyser</p>
     <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
   </div>
 </footer>
@@ -179,6 +208,7 @@
   <div class="anr-error" style="margin: 24px;">This page needs JavaScript to read your files.</div>
 </noscript>
 
+<script src="assets/analyser/navigate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script type="module" src="assets/analyser/app.js"></script>
 <script>

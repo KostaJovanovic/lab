@@ -41,6 +41,7 @@ export async function renderSvg(file, resultsEl) {
 
   const svgRoot = doc.querySelector('svg');
   const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Application', 'SVG Vector Image'));
   tbl.appendChild(row('Name', file.name));
   tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
 

@@ -5,6 +5,7 @@ const VERSION = 'analyser-v12';
 const SHELL = [
   './',
   './index.html',
+  './about.html',
   './manifest.json',
   './assets/analyser.css',
   './assets/fonts.css',
@@ -22,6 +23,8 @@ const SHELL = [
   './assets/analyser/svg.js',
   './assets/analyser/csv.js',
   './assets/analyser/unknown.js',
+  './assets/analyser/proprietary.js',
+  './assets/analyser/navigate.js',
   './assets/favicon.svg',
   './assets/icon.png',
   'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js'

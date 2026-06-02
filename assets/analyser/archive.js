@@ -94,6 +94,7 @@ export async function renderArchive(file, resultsEl) {
   infoCard.appendChild(el('h3', {}, 'ZIP archive'));
 
   const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Application', 'ZIP Archive'));
   tbl.appendChild(row('Name', file.name));
   tbl.appendChild(row('Archive size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
   tbl.appendChild(row('Files', String(fileEntries.length)));

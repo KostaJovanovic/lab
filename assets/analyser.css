@@ -3,6 +3,13 @@
    Black on white, hairline rules, 12-col grid, red accent.
    ========================================================= */
 
+/* ---------- VIEW TRANSITIONS ---------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.2s;
+  animation-timing-function: ease;
+}
+
 :root {
   --bg:        #ffffff;
   --fg:        #0a0a0a;
@@ -97,6 +104,8 @@ button { font-family: inherit; }
 
 .site-mark {
   grid-column: 1 / span 8;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .site-meta {
   grid-column: 10 / span 3;
@@ -145,12 +154,31 @@ button { font-family: inherit; }
    size (--t-mega), so the two scale together and the byline's right edge stays
    anchored just left of the "y" at every viewport width. */
 .site-byline {
-  font-size: calc(var(--t-mega) * 0.3);
+  font-size: calc(var(--t-mega) * 0.29);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
-  margin: -5px 0 0;
+  margin: -8px 0 0;
 }
+.site-byline-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  position: relative;
+}
+.site-byline-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 0;
+  background: currentColor;
+  transition: width 0.3s ease;
+}
+.site-title:hover ~ .site-byline .site-byline-link::after,
+.site-byline:hover .site-byline-link::after { width: 100%; }
+.site-byline-link:hover::after { background: #e53e3e; }
 
 .site-sub {
   font-size: clamp(15px, 1.6vw, 18px);
@@ -168,6 +196,7 @@ button { font-family: inherit; }
 
 /* ---------- NAV ---------- */
 .site-nav {
+  position: -webkit-sticky;   /* older iOS Safari needs the prefix to pin */
   position: sticky;
   top: 0;
   z-index: 20;
@@ -225,6 +254,7 @@ button { font-family: inherit; }
   align-items: center;
   justify-content: center;
   padding: 0;
+  width: 46px;
 }
 .nav-home-btn:hover { opacity: 1; }
 
@@ -247,6 +277,7 @@ button { font-family: inherit; }
   align-items: center;
   justify-content: center;
   padding: 0;
+  width: 46px;
 }
 .nav-search-btn:hover { opacity: 1; }
 .nav-search.is-open .nav-search-btn { display: none; }
@@ -499,7 +530,7 @@ button { font-family: inherit; }
   margin-top: 14px !important;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  word-break: break-all;
+  overflow-wrap: break-word;
   overflow-wrap: anywhere;
 }
 
@@ -549,7 +580,65 @@ button { font-family: inherit; }
 @keyframes anr-blink { 50% { opacity: 0; } }
 
 .anr-btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.anr-frame-nav { display: flex; gap: 8px; align-items: center; }
+.anr-frame-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.anr-frame-grid > .anr-btn { width: 100%; }
+
+.anr-timecode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  cursor: pointer;
+}
+.anr-timecode-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.anr-timecode-value {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.anr-timecode-input {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  outline: none;
+  padding: 0;
+}
+.anr-frame-wrap { margin: 8px 0; }
+.anr-frame-wrap .anr-frame-grid { margin: 0; }
+.anr-timecode-hint {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  line-height: 1;
+  text-align: center;
+  display: block;
+}
+.anr-timecode:hover { border-color: var(--fg); }
+:root[data-theme="dark"] .anr-timecode { background: #1a1a1a; }
 
 /* ---------- RESULTS / CARDS ---------- */
 .anr-results { margin: 0; scroll-margin-top: 60px; }
@@ -1197,11 +1286,115 @@ details[open] summary::after { content: "\2212"; }
 .about-details summary::after { color: rgba(255,255,255,0.3); }
 .about-details .about-defs { margin: 0; }
 
+.offline-section {
+  border-top: 1px solid rgba(255,255,255,0.15);
+  padding-top: 24px;
+  margin-bottom: 24px;
+}
+.offline-heading {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+  margin: 0 0 12px;
+}
+.offline-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .offline-options { grid-template-columns: 1fr; }
+}
+.offline-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: transparent;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.offline-btn:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.05); }
+.offline-btn.is-done { border-color: #e60023; }
+.offline-btn.is-done.is-fading { border-color: rgba(255,255,255,0.15); transition: border-color 1s ease; }
+.offline-btn.is-active { border-color: rgba(255,255,255,0.6); }
+.offline-tier {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.offline-desc {
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+  line-height: 1.3;
+}
+.offline-size {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  margin-top: 2px;
+}
+.offline-bar {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  font-weight: 900;
+  white-space: pre;
+  overflow: hidden;
+  color: rgba(255,255,255,0.3);
+  margin-top: 6px;
+  line-height: 1;
+}
+.offline-bar .offline-bar-fill {
+  color: rgba(255,255,255,0.8);
+}
+.offline-btn.is-done .offline-bar .offline-bar-fill { color: #e60023; }
+.offline-btn.is-done.is-fading .offline-bar .offline-bar-fill { color: rgba(255,255,255,0.8); transition: color 1s ease; }
+
+.offline-bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+.offline-install {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.8);
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  cursor: pointer;
+  padding: 6px 14px;
+  transition: border-color 0.2s ease;
+}
+.offline-install:hover { border-color: rgba(255,255,255,0.7); }
+.offline-clear {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.35);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.offline-clear:hover { color: rgba(255,255,255,0.7); }
+
+:root[data-theme="dark"] .offline-section { border-top-color: #333; }
+:root[data-theme="dark"] .offline-btn { border-color: #333; }
+:root[data-theme="dark"] .offline-btn:hover { border-color: #555; background: rgba(255,255,255,0.03); }
+
 .footer-bottom {
   border-top: 1px solid rgba(255,255,255,0.15);
   padding-top: 24px;
 }
-.footer-bottom .footer-mark { color: var(--bg); }
 .footer-bottom .footer-meta { color: rgba(255,255,255,0.4); }
 .footer-bottom .footer-meta a { color: rgba(255,255,255,0.5); }
 :root[data-theme="dark"] .site-footer--about {
@@ -1214,6 +1407,49 @@ details[open] summary::after { content: "\2212"; }
 :root[data-theme="dark"] .footer-bottom .footer-mark { color: #e8e8e8; }
 :root[data-theme="dark"] .about-defs > div { border-top-color: #333; }
 :root[data-theme="dark"] .footer-bottom { border-top-color: #333; }
+
+/* ---------- ABOUT PAGE ---------- */
+.about-page .section { border-bottom: 1px solid var(--hairline); }
+.about-block { margin-top: 16px; }
+.about-block p { color: var(--muted); max-width: 60ch; line-height: 1.6; margin: 0 0 12px; }
+.about-block p:last-child { margin-bottom: 0; }
+.about-caps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+}
+.about-caps > div {
+  border-top: 1px solid var(--rule);
+  padding: 12px 0;
+}
+.about-caps dt {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.about-caps dd {
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--fg);
+  max-width: 60ch;
+  line-height: 1.5;
+}
+.about-readout { margin-bottom: 0; }
+.about-readout th { width: 120px; white-space: nowrap; }
+.about-exts {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  word-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--fg);
+  line-height: 2;
+}
 
 /* ---------- FOOTER ---------- */
 .site-footer {
@@ -1421,6 +1657,7 @@ details[open] summary::after { content: "\2212"; }
 @media (max-width: 900px) {
   .section-meta-slot { margin-top: 16px; }
   .section-meta-preview img { max-height: 280px; }
+  #videoPreview { display: none; }
 }
 @media (max-width: 600px) {
   .section-meta { display: block; }
@@ -1801,6 +2038,7 @@ details[open] summary::after { content: "\2212"; }
   white-space: nowrap;
 }
 .anr-table-sticky {
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   background: var(--bg);
@@ -1874,6 +2112,10 @@ details[open] summary::after { content: "\2212"; }
   .anr-spec-card .anr-control select { flex: 1 1 auto; min-width: 0; }
   .anr-spec-card .anr-control .anr-toggle { display: flex; flex: 1 1 auto; }
   .anr-spec-card .anr-control .anr-toggle button { flex: 1 1 auto; }
+  /* Axis (LOG/LINEAR) is the widest control — give it its own full-width row
+     and keep the toggle its natural size so it can't overflow into the FFT cell. */
+  .anr-spec-card .anr-control:first-child { grid-column: 1 / -1; }
+  .anr-spec-card .anr-control:first-child .anr-toggle { flex: 0 0 auto; }
   .anr-spec-card .anr-control .anr-btn {
     display: flex;
     align-items: center;
