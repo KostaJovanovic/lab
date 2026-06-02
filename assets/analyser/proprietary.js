@@ -3,7 +3,7 @@
    and magic bytes. Extracts whatever metadata is accessible without
    full format parsers. */
 
-import { el, row, fmtBytes, sha256Hex } from './util.js';
+import { el, row, fmtBytes, sha256Row } from './util.js';
 
 // ---------- format database ----------
 const FORMATS = {
@@ -243,6 +243,8 @@ const FORMATS = {
   gco:     { app: 'G-Code (CNC / 3D printing)', icon: 'GC', parse: 'text' },
   nc:      { app: 'G-Code (CNC)', icon: 'NC', parse: 'text' },
   ngc:     { app: 'G-Code (CNC)', icon: 'NC', parse: 'text' },
+  tap:     { app: 'G-Code (CNC)', icon: 'NC', parse: 'text' },
+  cnc:     { app: 'G-Code (CNC)', icon: 'NC', parse: 'text' },
 
   // Log files
   log:     { app: 'Log File', icon: 'LOG', parse: 'text' },
@@ -279,6 +281,35 @@ const FORMATS = {
   xml:     { app: 'XML Document', icon: 'XML', parse: 'xml' },
   md:      { app: 'Markdown', icon: 'MD', parse: 'text' },
   txt:     { app: 'Plain Text', icon: 'TXT', parse: 'text' },
+
+  // Adobe After Effects XML project
+  aepx:    { app: 'Adobe After Effects (XML)', icon: 'Ae', parse: 'xml' },
+
+  // Rich Text
+  rtf:     { app: 'Rich Text Format', icon: 'RTF', parse: 'text' },
+
+  // X.509 certificates / keys
+  crt:     { app: 'X.509 Certificate', icon: 'CRT' },
+  cer:     { app: 'X.509 Certificate', icon: 'CER' },
+  pem:     { app: 'PEM Certificate / Key', icon: 'PEM' },
+  der:     { app: 'DER Certificate', icon: 'DER' },
+
+  // Partial downloads
+  part:    { app: 'Partial Download', icon: 'PRT' },
+  crdownload: { app: 'Chrome Partial Download', icon: 'PRT' },
+
+  // Dolby surround / object audio containers
+  ec3:     { app: 'Dolby Digital Plus (E-AC-3)', icon: 'DD+' },
+  eac3:    { app: 'Dolby Digital Plus (E-AC-3)', icon: 'DD+' },
+  thd:     { app: 'Dolby TrueHD', icon: 'THD' },
+  mlp:     { app: 'Meridian Lossless Packing', icon: 'MLP' },
+  atmos:   { app: 'Dolby Atmos Master', icon: 'ATM' },
+
+  // Engineering
+  cdp:     { app: 'CDP4 (COMET Data Platform)', icon: 'CDP' },
+
+  // Game saves
+  bepis:   { app: 'ULTRAKILL Save', icon: 'UK' },
 };
 
 // ---------- helpers ----------
@@ -463,17 +494,68 @@ function parsePe(buf) {
   const machine = view.getUint16(peOffset + 4, true);
   const machines = { 0x14C: 'x86 (32-bit)', 0x8664: 'x64 (64-bit)', 0xAA64: 'ARM64' };
   const arch = machines[machine] || '0x' + machine.toString(16);
-  const sections = view.getUint16(peOffset + 6, true);
+  const numSections = view.getUint16(peOffset + 6, true);
   const timestamp = view.getUint32(peOffset + 8, true);
   const date = timestamp ? new Date(timestamp * 1000).toISOString().slice(0, 19).replace('T', ' ') : 'N/A';
   const optMagic = peOffset + 24 < buf.length ? view.getUint16(peOffset + 24, true) : 0;
-  const peType = optMagic === 0x20B ? 'PE32+ (64-bit)' : optMagic === 0x10B ? 'PE32 (32-bit)' : 'PE';
-  return {
+  const is64 = optMagic === 0x20B;
+  const peType = is64 ? 'PE32+ (64-bit)' : optMagic === 0x10B ? 'PE32 (32-bit)' : 'PE';
+  const result = {
     'Format': peType,
     'Architecture': arch,
-    'Sections': sections,
+    'Sections': numSections,
     'Compile date': date
   };
+  const optBase = peOffset + 24;
+  if (optBase + 2 > buf.length) return result;
+  try {
+    const subsysOff = optBase + (is64 ? 68 : 68);
+    if (subsysOff + 2 <= buf.length) {
+      const ss = view.getUint16(subsysOff, true);
+      const subsystems = { 1: 'Native', 2: 'Windows GUI', 3: 'Windows Console', 5: 'OS/2 Console', 7: 'POSIX Console', 10: 'EFI Application', 14: 'Xbox' };
+      result['Subsystem'] = subsystems[ss] || 'Unknown (' + ss + ')';
+    }
+    const entryOff = optBase + 16;
+    if (entryOff + 4 <= buf.length) {
+      const ep = view.getUint32(entryOff, true);
+      if (ep) result['Entry point'] = '0x' + ep.toString(16).toUpperCase();
+    }
+    const ddBase = optBase + (is64 ? 112 : 96);
+    const ddCount = ddBase >= 4 ? view.getUint32(ddBase - 4, true) : 0;
+    if (ddCount > 14 && ddBase + 14 * 8 + 4 <= buf.length) {
+      const clrRva = view.getUint32(ddBase + 14 * 8, true);
+      if (clrRva) result['.NET'] = 'Yes (CLR)';
+    }
+    if (ddCount > 1 && ddBase + 1 * 8 + 4 <= buf.length) {
+      const importRva = view.getUint32(ddBase + 1 * 8, true);
+      const importSize = view.getUint32(ddBase + 1 * 8 + 4, true);
+      if (importRva && importSize) {
+        const sizeOfOptHdr = view.getUint16(peOffset + 20, true);
+        const secTableOff = peOffset + 24 + sizeOfOptHdr;
+        let importFileOff = 0;
+        for (let s = 0; s < numSections && secTableOff + s * 40 + 40 <= buf.length; s++) {
+          const secVa = view.getUint32(secTableOff + s * 40 + 12, true);
+          const secVSize = view.getUint32(secTableOff + s * 40 + 8, true);
+          const secRaw = view.getUint32(secTableOff + s * 40 + 20, true);
+          if (importRva >= secVa && importRva < secVa + secVSize) {
+            importFileOff = secRaw + (importRva - secVa);
+            break;
+          }
+        }
+        if (importFileOff && importFileOff + 20 <= buf.length) {
+          let dllCount = 0;
+          for (let off = importFileOff; off + 20 <= buf.length; off += 20) {
+            const nameRva = view.getUint32(off + 12, true);
+            if (!nameRva) break;
+            dllCount++;
+            if (dllCount > 200) break;
+          }
+          if (dllCount) result['Imported DLLs'] = dllCount;
+        }
+      }
+    }
+  } catch (_) {}
+  return result;
 }
 
 // ---------- OLE compound doc (SolidWorks, old Office) ----------
@@ -495,12 +577,11 @@ async function parseFont(file) {
   const magic = view.getUint32(0);
   if (magic !== 0x00010000 && magic !== 0x4F54544F) return null;
   const numTables = view.getUint16(4);
-  let nameOff = 0;
+  let nameOff = 0, fvarOff = 0;
   for (let i = 0; i < numTables && 12 + i * 16 + 16 <= buf.length; i++) {
-    if (ascii(buf, 12 + i * 16, 4) === 'name') {
-      nameOff = view.getUint32(12 + i * 16 + 8);
-      break;
-    }
+    const tag = ascii(buf, 12 + i * 16, 4);
+    if (tag === 'name') nameOff = view.getUint32(12 + i * 16 + 8);
+    else if (tag === 'fvar') fvarOff = view.getUint32(12 + i * 16 + 8);
   }
   if (!nameOff || nameOff + 6 > buf.length) return null;
   const count = view.getUint16(nameOff + 2);
@@ -527,22 +608,112 @@ async function parseFont(file) {
     }
     if (text.trim()) names[label] = text.trim();
   }
+  // fvar: variable-font axes. Header: major(2) minor(2) axesArrayOffset(2)
+  // reserved(2) axisCount(2) axisSize(2), then axisCount records of
+  // {tag(4) min(16.16) default(16.16) max(16.16) flags(2) nameID(2)}.
+  if (fvarOff && fvarOff + 16 <= buf.length) {
+    const axesOff = fvarOff + view.getUint16(fvarOff + 4);
+    const axisCount = view.getUint16(fvarOff + 8);
+    const axisSize = view.getUint16(fvarOff + 10);
+    const axes = [];
+    let wght = null;
+    for (let i = 0; i < axisCount; i++) {
+      const a = axesOff + i * axisSize;
+      if (a + 20 > buf.length) break;
+      const tag = ascii(buf, a, 4);
+      const min = view.getInt32(a + 4) / 65536;
+      const def = view.getInt32(a + 8) / 65536;
+      const max = view.getInt32(a + 12) / 65536;
+      axes.push(tag);
+      if (tag === 'wght') wght = { min, def, max };
+    }
+    names['Variable font'] = 'Yes — ' + axisCount + ' axis' + (axisCount === 1 ? '' : 'es') + ' (' + axes.join(', ') + ')';
+    names._font = { variable: true, wght: wght || { min: 100, def: 400, max: 900 } };
+  }
   return Object.keys(names).length ? names : null;
 }
 
 // ---------- FL Studio (.flp) ----------
-function parseFlp(buf) {
-  if (buf.length < 10) return null;
-  const sig = ascii(buf, 0, 4);
-  if (sig !== 'FLhd') return null;
+// Decode an FLP text-event payload. Modern FL Studio (11.5+) stores strings as
+// UTF-16LE; older versions use single-byte text. Sniff by the density of NUL
+// bytes, then drop the trailing terminator.
+function decodeFlpText(bytes) {
+  if (!bytes.length) return '';
+  let zeros = 0;
+  for (let i = 0; i < bytes.length; i++) if (bytes[i] === 0) zeros++;
+  let text;
+  if (bytes.length >= 2 && zeros >= bytes.length / 3) {
+    const codes = [];
+    for (let i = 0; i + 1 < bytes.length; i += 2) codes.push(bytes[i] | (bytes[i + 1] << 8));
+    text = String.fromCharCode(...codes);
+  } else {
+    text = new TextDecoder('utf-8').decode(bytes);
+  }
+  return text.replace(/\0+$/, '').trim();
+}
+
+async function parseFlp(file) {
+  // FLPs are small; read up to 8 MB to cover the whole event stream.
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 8 * 1024 * 1024)).arrayBuffer());
+  if (buf.length < 10 || ascii(buf, 0, 4) !== 'FLhd') return null;
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const headerLen = view.getUint32(4, true);
   const format = view.getUint16(8, true);
-  const channels = headerLen >= 10 && buf.length >= 12 ? view.getUint16(10, true) : null;
-  return {
-    'Format version': format,
-    ...(channels != null ? { 'Channels': channels } : {})
-  };
+  const channelCount = view.getUint16(10, true);
+  const ppq = view.getUint16(12, true);
+  const fields = { 'Format': format === 0 ? 'Song' : 'Format ' + format };
+  if (channelCount) fields['Channels'] = channelCount;
+  if (ppq) fields['PPQ (ticks/beat)'] = ppq;
+
+  // Locate the FLdt data chunk (right after the FLhd chunk).
+  let pos = 8 + headerLen;
+  if (pos + 8 > buf.length || ascii(buf, pos, 4) !== 'FLdt') return fields;
+  const dataLen = view.getUint32(pos + 4, true);
+  pos += 8;
+  const end = Math.min(buf.length, pos + dataLen);
+
+  const channelNames = [];
+  const plugins = new Set();
+  let title, comment, version, tempo, genre, author;
+
+  while (pos < end) {
+    const id = buf[pos++];
+    if (id < 0x40) {                         // BYTE event
+      pos += 1;
+    } else if (id < 0x80) {                  // WORD event
+      if (id === 0x42 && pos + 2 <= end) tempo = view.getUint16(pos, true); // legacy Tempo
+      pos += 2;
+    } else if (id < 0xC0) {                  // DWORD event
+      if (id === 0x9C && pos + 4 <= end) tempo = view.getUint32(pos, true) / 1000; // FineTempo
+      pos += 4;
+    } else {                                 // TEXT / DATA event (varint length)
+      let len = 0, shift = 0, b;
+      do { b = buf[pos++]; len |= (b & 0x7F) << shift; shift += 7; } while (b & 0x80 && pos < end);
+      const data = buf.subarray(pos, pos + len);
+      pos += len;
+      switch (id) {
+        case 199: version = decodeFlpText(data); break;       // FLP_Version (ASCII)
+        case 194: title = decodeFlpText(data); break;          // Title
+        case 195: comment = decodeFlpText(data); break;        // Comment
+        case 206: genre = decodeFlpText(data); break;          // Genre
+        case 207: author = decodeFlpText(data); break;         // Author
+        case 192: { const n = decodeFlpText(data); if (n) channelNames.push(n); break; } // ChanName
+        case 201: case 203: {                                   // DefPluginName / PluginName
+          const n = decodeFlpText(data); if (n && /[a-zA-Z]/.test(n)) plugins.add(n); break;
+        }
+      }
+    }
+  }
+
+  if (version) fields['FL Studio version'] = version;
+  if (tempo) fields['Tempo'] = (Math.round(tempo * 100) / 100) + ' BPM';
+  if (title) fields['Title'] = title;
+  if (author) fields['Author'] = author;
+  if (genre) fields['Genre'] = genre;
+  if (comment) fields['Comment'] = comment.slice(0, 300);
+  if (channelNames.length) fields['Named channels'] = channelNames.slice(0, 30).join(', ');
+  if (plugins.size) fields['Plugins'] = [...plugins].slice(0, 40).join(', ');
+  return fields;
 }
 
 // ---------- RAR ----------
@@ -797,26 +968,79 @@ async function parseGzipXmlProject(file, ext) {
 // ---------- Torrent ----------
 async function parseTorrent(file) {
   try {
-    const text = await file.slice(0, 8192).text();
+    const raw = new Uint8Array(await file.arrayBuffer());
+    let pos = 0;
+    const td = new TextDecoder('latin1');
+    function peek() { return td.decode(raw.subarray(pos, pos + 1)); }
+    function decode() {
+      if (pos >= raw.length) return null;
+      const ch = peek();
+      if (ch === 'i') {
+        pos++;
+        let end = pos;
+        while (end < raw.length && raw[end] !== 0x65) end++;
+        const val = parseInt(td.decode(raw.subarray(pos, end)), 10);
+        pos = end + 1;
+        return val;
+      }
+      if (ch === 'l') {
+        pos++;
+        const list = [];
+        while (pos < raw.length && peek() !== 'e') list.push(decode());
+        pos++;
+        return list;
+      }
+      if (ch === 'd') {
+        pos++;
+        const dict = {};
+        while (pos < raw.length && peek() !== 'e') {
+          const key = decode();
+          dict[key] = decode();
+        }
+        pos++;
+        return dict;
+      }
+      let colonIdx = pos;
+      while (colonIdx < raw.length && raw[colonIdx] !== 0x3A) colonIdx++;
+      const len = parseInt(td.decode(raw.subarray(pos, colonIdx)), 10);
+      pos = colonIdx + 1;
+      const data = raw.subarray(pos, pos + len);
+      pos += len;
+      return td.decode(data);
+    }
+    const torrent = decode();
+    if (!torrent || typeof torrent !== 'object') return null;
     const fields = {};
-    const announce = text.match(/8:announce(\d+):/);
-    if (announce) {
-      const len = parseInt(announce[1], 10);
-      const idx = text.indexOf(announce[0]) + announce[0].length;
-      fields['Tracker'] = text.slice(idx, idx + len);
+    if (torrent.announce) fields['Tracker'] = torrent.announce;
+    const info = torrent.info;
+    if (info) {
+      if (info.name) fields['Name'] = info.name.slice(0, 200);
+      if (info['piece length']) fields['Piece size'] = fmtBytes(info['piece length']);
+      if (info.pieces) fields['Pieces'] = Math.floor(info.pieces.length / 20);
+      if (info.length) {
+        fields['Total size'] = fmtBytes(info.length);
+      } else if (info.files) {
+        const total = info.files.reduce((s, f) => s + (f.length || 0), 0);
+        fields['Total size'] = fmtBytes(total);
+        fields['Files'] = info.files.length;
+        const fileList = info.files.slice(0, 20).map(f => {
+          const path = Array.isArray(f.path) ? f.path.join('/') : f.path;
+          return path + '  (' + fmtBytes(f.length) + ')';
+        });
+        if (info.files.length > 20) fileList.push('… and ' + (info.files.length - 20) + ' more');
+        fields['_fileList'] = fileList;
+      }
     }
-    const name = text.match(/4:name(\d+):/);
-    if (name) {
-      const len = parseInt(name[1], 10);
-      const idx = text.indexOf(name[0]) + name[0].length;
-      fields['Name'] = text.slice(idx, idx + Math.min(len, 200));
+    if (torrent['created by']) fields['Created by'] = torrent['created by'];
+    if (torrent['creation date']) {
+      fields['Created'] = new Date(torrent['creation date'] * 1000).toISOString().slice(0, 19).replace('T', ' ');
     }
-    const createdBy = text.match(/10:created by(\d+):/);
-    if (createdBy) {
-      const len = parseInt(createdBy[1], 10);
-      const idx = text.indexOf(createdBy[0]) + createdBy[0].length;
-      fields['Created by'] = text.slice(idx, idx + Math.min(len, 100));
+    if (torrent.comment) fields['Comment'] = torrent.comment.slice(0, 300);
+    if (torrent['announce-list'] && Array.isArray(torrent['announce-list'])) {
+      const trackers = torrent['announce-list'].flat().filter(Boolean);
+      if (trackers.length > 1) fields['Trackers'] = trackers.length;
     }
+    if (torrent.nodes) fields['DHT'] = 'Yes (' + torrent.nodes.length + ' nodes)';
     return Object.keys(fields).length ? fields : null;
   } catch (_) {
     return null;
@@ -826,72 +1050,180 @@ async function parseTorrent(file) {
 // ---------- GCode ----------
 async function parseGcode(file) {
   try {
-    const headSize = Math.min(file.size, 16384);
-    const headText = await file.slice(0, headSize).text();
-    const tailText = file.size > headSize
-      ? await file.slice(file.size - Math.min(file.size, 8192)).text() : '';
-    const text = headText + '\n' + tailText;
-    const fields = {};
+    // Read a generous window so machining stats (tools, bounding box) are
+    // representative, plus the tail (slicers/CAM often summarise at the end).
+    const scanSize = Math.min(file.size, 2 * 1024 * 1024);
+    const mainText = await file.slice(0, scanSize).text();
+    const tailText = file.size > scanSize
+      ? await file.slice(file.size - 8192).text() : '';
+    const text = mainText + '\n' + tailText;
+    const truncated = file.size > scanSize;
 
-    const slicerPatterns = [
-      [/generated by (PrusaSlicer[^\n]*)/i],
-      [/generated by (OrcaSlicer[^\n]*)/i],
-      [/generated by (BambuStudio[^\n]*)/i],
-      [/generated by (SuperSlicer[^\n]*)/i],
-      [/generated by (Simplify3D[^\n]*)/i],
-      [/Generated with (Cura_SteamEngine[^\n]*)/i],
-      [/generated by (Slic3r[^\n]*)/i],
-      [/(KISSlicer[^\n]*)/i],
-      [/(IdeaMaker[^\n]*)/i],
-    ];
-    for (const [re] of slicerPatterns) {
-      const m = text.match(re);
-      if (m) { fields['Slicer'] = m[1].trim(); break; }
-    }
+    // --- 3D-printing vs CNC discrimination ---
+    const hasExtrusion = /(?:^|\s)G[01]\b[^;\n]*\bE-?\d/m.test(mainText);
+    const hasTemp = /\bM(?:104|109|140|190)\b/.test(mainText);
+    const slicerHit = /(PrusaSlicer|OrcaSlicer|BambuStudio|SuperSlicer|Simplify3D|Cura_SteamEngine|Slic3r|KISSlicer|IdeaMaker)/i.test(text);
+    const isPrinting = hasExtrusion || hasTemp || slicerHit;
 
-    const kvPat = [
-      [/;\s*printer_model\s*=\s*(.+)/i, 'Printer'],
-      [/;\s*nozzle_diameter\s*=\s*([0-9.]+)/i, 'Nozzle'],
-      [/;\s*layer_height\s*=\s*([0-9.]+)/i, 'Layer height'],
-      [/;\s*fill_density\s*=\s*(.+)/i, 'Infill'],
-      [/;\s*filament_type\s*=\s*(.+)/i, 'Filament'],
-      [/;\s*(?:bed_temperature|first_layer_bed_temperature)\s*=\s*(\d+)/i, 'Bed temp'],
-      [/;\s*(?:temperature|first_layer_temperature)\s*=\s*(\d+)/i, 'Nozzle temp'],
-      [/;\s*estimated\s+printing\s+time[^=]*=\s*(.+)/i, 'Print time'],
-      [/;\s*filament\s+used\s*\[mm\]\s*=\s*([0-9.]+)/i, 'Filament (mm)'],
-      [/;\s*filament\s+used\s*\[g\]\s*=\s*([0-9.]+)/i, 'Filament (g)'],
-      [/;\s*filament\s+used\s*\[cm3\]\s*=\s*([0-9.]+)/i, 'Filament (cm³)'],
-      [/;\s*(?:total\s+)?layer(?:s|\s+count)?\s*[:=]\s*(\d+)/i, 'Layers'],
-      [/;LAYER_COUNT:(\d+)/i, 'Layers'],
-      [/;\s*perimeters\s*=\s*(\d+)/i, 'Perimeters'],
-    ];
-    for (const [re, label] of kvPat) {
-      const m = text.match(re);
-      if (m && !fields[label]) fields[label] = m[1].trim();
-    }
-
-    const minx = text.match(/;\s*MINX:([0-9.-]+)/i);
-    const maxx = text.match(/;\s*MAXX:([0-9.-]+)/i);
-    const miny = text.match(/;\s*MINY:([0-9.-]+)/i);
-    const maxy = text.match(/;\s*MAXY:([0-9.-]+)/i);
-    const maxz = text.match(/;\s*MAXZ:([0-9.-]+)/i);
-    if (minx && maxx && miny && maxy) {
-      const w = (parseFloat(maxx[1]) - parseFloat(minx[1])).toFixed(1);
-      const d = (parseFloat(maxy[1]) - parseFloat(miny[1])).toFixed(1);
-      let dims = w + ' × ' + d;
-      if (maxz) dims += ' × ' + parseFloat(maxz[1]).toFixed(1);
-      fields['Print size'] = dims + ' mm';
-    }
-
-    if (fields['Nozzle']) fields['Nozzle'] += ' mm';
-    if (fields['Layer height']) fields['Layer height'] += ' mm';
-    if (fields['Bed temp']) fields['Bed temp'] += ' °C';
-    if (fields['Nozzle temp']) fields['Nozzle temp'] += ' °C';
-
-    return Object.keys(fields).length ? fields : null;
+    if (isPrinting) return parseGcodePrinting(text);
+    return parseGcodeCnc(text, truncated);
   } catch (_) {
     return null;
   }
+}
+
+// 3D-printing G-code (slicer, nozzle/bed temps, filament, dimensions).
+function parseGcodePrinting(text) {
+  const fields = { 'G-code type': '3D printing (FFF/FDM)' };
+  const slicerPatterns = [
+    /generated by (PrusaSlicer[^\n]*)/i, /generated by (OrcaSlicer[^\n]*)/i,
+    /generated by (BambuStudio[^\n]*)/i, /generated by (SuperSlicer[^\n]*)/i,
+    /generated by (Simplify3D[^\n]*)/i, /Generated with (Cura_SteamEngine[^\n]*)/i,
+    /generated by (Slic3r[^\n]*)/i, /(KISSlicer[^\n]*)/i, /(IdeaMaker[^\n]*)/i,
+  ];
+  for (const re of slicerPatterns) {
+    const m = text.match(re);
+    if (m) { fields['Slicer'] = m[1].trim(); break; }
+  }
+  const kvPat = [
+    [/;\s*printer_model\s*=\s*(.+)/i, 'Printer'],
+    [/;\s*nozzle_diameter\s*=\s*([0-9.]+)/i, 'Nozzle'],
+    [/;\s*layer_height\s*=\s*([0-9.]+)/i, 'Layer height'],
+    [/;\s*fill_density\s*=\s*(.+)/i, 'Infill'],
+    [/;\s*filament_type\s*=\s*(.+)/i, 'Filament'],
+    [/;\s*(?:bed_temperature|first_layer_bed_temperature)\s*=\s*(\d+)/i, 'Bed temp'],
+    [/;\s*(?:temperature|first_layer_temperature)\s*=\s*(\d+)/i, 'Nozzle temp'],
+    [/;\s*estimated\s+printing\s+time[^=]*=\s*(.+)/i, 'Print time'],
+    [/;\s*filament\s+used\s*\[mm\]\s*=\s*([0-9.]+)/i, 'Filament (mm)'],
+    [/;\s*filament\s+used\s*\[g\]\s*=\s*([0-9.]+)/i, 'Filament (g)'],
+    [/;\s*filament\s+used\s*\[cm3\]\s*=\s*([0-9.]+)/i, 'Filament (cm³)'],
+    [/;\s*(?:total\s+)?layer(?:s|\s+count)?\s*[:=]\s*(\d+)/i, 'Layers'],
+    [/;LAYER_COUNT:(\d+)/i, 'Layers'],
+    [/;\s*perimeters\s*=\s*(\d+)/i, 'Perimeters'],
+  ];
+  for (const [re, label] of kvPat) {
+    const m = text.match(re);
+    if (m && !fields[label]) fields[label] = m[1].trim();
+  }
+  const g = (re) => { const m = text.match(re); return m ? parseFloat(m[1]) : null; };
+  const minx = g(/;\s*MINX:([0-9.-]+)/i), maxx = g(/;\s*MAXX:([0-9.-]+)/i);
+  const miny = g(/;\s*MINY:([0-9.-]+)/i), maxy = g(/;\s*MAXY:([0-9.-]+)/i);
+  const maxz = g(/;\s*MAXZ:([0-9.-]+)/i);
+  if (minx != null && maxx != null && miny != null && maxy != null) {
+    let dims = (maxx - minx).toFixed(1) + ' × ' + (maxy - miny).toFixed(1);
+    if (maxz != null) dims += ' × ' + maxz.toFixed(1);
+    fields['Print size'] = dims + ' mm';
+  }
+  if (fields['Nozzle']) fields['Nozzle'] += ' mm';
+  if (fields['Layer height']) fields['Layer height'] += ' mm';
+  if (fields['Bed temp']) fields['Bed temp'] += ' °C';
+  if (fields['Nozzle temp']) fields['Nozzle temp'] += ' °C';
+  return fields;
+}
+
+// CNC / machining G-code: identify the CAM post, controller, machine type, and
+// pull machining statistics (units, tools, spindle, feeds, work offsets, extent).
+function parseGcodeCnc(text, truncated) {
+  const fields = {};
+
+  // --- CAM software / post-processor (from header comments) ---
+  const camPatterns = [
+    [/\(T\d+\s+D=[\d.]+\s+CR=/i, 'Autodesk Fusion 360 / HSM'],
+    [/Autodesk\s+(?:Fusion|HSM|Inventor\s+CAM)/i, 'Autodesk Fusion 360 / HSM'],
+    [/MASTERCAM|\(MCX FILE/i, 'Mastercam'],
+    [/Exported by FreeCAD|FreeCAD\s+Path/i, 'FreeCAD Path'],
+    [/Vectric|VCarve|Aspire|PhotoVCarve/i, 'Vectric (VCarve / Aspire)'],
+    [/Carbide Create/i, 'Carbide Create'],
+    [/Estlcam/i, 'Estlcam'],
+    [/SheetCam/i, 'SheetCam'],
+    [/LightBurn/i, 'LightBurn'],
+    [/Generated by Easel|;\s*Easel/i, 'Easel (Inventables)'],
+    [/PowerMILL|Delcam/i, 'Autodesk PowerMill'],
+    [/SolidCAM/i, 'SolidCAM'],
+    [/(?:^|\n)\s*\(?\s*SprutCAM/i, 'SprutCAM'],
+    [/Bantam|Othermill/i, 'Bantam Tools'],
+    [/bCNC/i, 'bCNC'],
+  ];
+  for (const [re, name] of camPatterns) {
+    if (re.test(text)) { fields['CAM software'] = name; break; }
+  }
+
+  // --- Controller / dialect ---
+  const hasOprog = /(?:^|\n)\s*O\d{1,5}\b/.test(text) || /^%\s*$/m.test(text);
+  const hasGrblCfg = /\$[0-9]+\s*=|\$\$|\$H\b|\$G\b/.test(text);
+  if (hasGrblCfg) fields['Controller'] = 'GRBL';
+  else if (hasOprog) fields['Controller'] = 'Fanuc / Haas style (O-numbered, %-wrapped)';
+
+  // --- Units ---
+  const inch = /\bG20\b/.test(text), mm = /\bG21\b/.test(text);
+  const unit = inch && !mm ? 'in' : 'mm';
+  fields['Units'] = inch && !mm ? 'Inch (G20)' : mm ? 'Millimetre (G21)' : 'Unspecified';
+
+  // --- Motion / feature flags ---
+  const hasArcs = /\bG0?[23]\b/.test(text);
+  const cannedCycle = /\bG8[1-9]\b/.test(text);
+  const hasSpindle = /\bM0?[34]\b/.test(text);
+  const hasCoolant = /\bM0?[78]\b/.test(text);
+  const hasY = /(?:^|\s)Y-?\d/m.test(text);
+  const hasZ = /(?:^|\s)Z-?\d/m.test(text);
+  const hasX = /(?:^|\s)X-?\d/m.test(text);
+  const isLaserPlasma = /LightBurn|laser|plasma|SheetCam/i.test(text) ||
+    (hasSpindle && !hasZ && /\bM0?[34]\b[^;\n]*S/i.test(text));
+
+  // --- Machine type inference ---
+  let machine;
+  if (/LightBurn|\blaser\b/i.test(text)) machine = 'Laser cutter / engraver';
+  else if (/plasma|SheetCam/i.test(text)) machine = 'Plasma / oxy-fuel cutter';
+  else if (hasX && hasZ && !hasY) machine = 'CNC lathe / turning';
+  else if (cannedCycle && !hasArcs) machine = 'CNC drilling';
+  else if (hasZ && (hasArcs || hasSpindle)) machine = 'CNC mill / router (3-axis)';
+  else if (isLaserPlasma) machine = 'Laser / plasma (2-axis)';
+  else machine = 'CNC machining (generic)';
+  fields['G-code type'] = 'CNC machining';
+  fields['Likely machine'] = machine;
+
+  // --- Stats over motion lines ---
+  const lines = text.split('\n');
+  let maxS = 0, maxF = 0, absolute = true, relativeSeen = false;
+  const tools = new Set(), offsets = new Set();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  const numAfter = (line, letter) => {
+    const m = line.match(new RegExp(letter + '\\s*(-?\\d+\\.?\\d*)'));
+    return m ? parseFloat(m[1]) : null;
+  };
+  for (let raw of lines) {
+    const line = raw.replace(/\(.*?\)/g, '').replace(/;.*$/, '').trim();
+    if (!line) continue;
+    if (/\bG90\b/.test(line)) absolute = true;
+    if (/\bG91\b/.test(line)) { absolute = false; relativeSeen = true; }
+    const sM = line.match(/\bS(\d+\.?\d*)/); if (sM) maxS = Math.max(maxS, parseFloat(sM[1]));
+    const fM = line.match(/\bF(\d+\.?\d*)/); if (fM) maxF = Math.max(maxF, parseFloat(fM[1]));
+    const tM = line.match(/\bT(\d+)/); if (tM && /\bM0?6\b/.test(line) || (tM && /^T\d+$/.test(line))) tools.add(parseInt(tM[1], 10));
+    const wM = line.match(/\bG5[4-9]\b/); if (wM) offsets.add(wM[0]);
+    if (absolute && /\bG0?[0-3]\b/.test(line)) {
+      const x = numAfter(line, 'X'), y = numAfter(line, 'Y'), z = numAfter(line, 'Z');
+      if (x != null) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+      if (y != null) { minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+      if (z != null) { minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+    }
+  }
+
+  if (tools.size) fields['Tools used'] = tools.size + ' (T' + [...tools].sort((a, b) => a - b).join(', T') + ')';
+  if (offsets.size) fields['Work offsets'] = [...offsets].sort().join(', ');
+  if (maxS) fields['Max spindle / power'] = maxS + (isLaserPlasma ? ' (S)' : ' RPM');
+  if (maxF) fields['Max feed rate'] = maxF + ' ' + unit + '/min';
+  if (hasCoolant) fields['Coolant'] = 'Yes (M7/M8)';
+  fields['Arc moves'] = hasArcs ? 'Yes (G2/G3)' : 'No';
+  if (cannedCycle) fields['Canned cycles'] = 'Yes (drilling/boring)';
+
+  if (!relativeSeen && minX !== Infinity && minY !== Infinity) {
+    let ext = (maxX - minX).toFixed(2) + ' × ' + (maxY - minY).toFixed(2);
+    if (minZ !== Infinity) ext += ' × ' + (maxZ - minZ).toFixed(2);
+    fields['Extent (X×Y×Z)'] = ext + ' ' + unit;
+    if (minZ !== Infinity) fields['Z range'] = minZ.toFixed(2) + ' to ' + maxZ.toFixed(2) + ' ' + unit;
+  }
+  fields['Lines scanned'] = lines.length.toLocaleString() + (truncated ? ' (file truncated for analysis)' : '');
+  return fields;
 }
 
 // ---------- Log file origin ----------
@@ -986,6 +1318,534 @@ async function parseTextCad(file, format) {
   }
 }
 
+// ---------- MSI (Windows Installer, OLE compound) ----------
+function parseMsi(head) {
+  if (head.length < 8 || head[0] !== 0xD0 || head[1] !== 0xCF || head[2] !== 0x11 || head[3] !== 0xE0) {
+    return { 'Type': 'Windows Installer (MSI)' };
+  }
+  const fields = { 'Type': 'Windows Installer database (OLE)' };
+  const ole = parseOle(head);
+  if (ole) Object.assign(fields, ole);
+  // The SummaryInformation property set stores a Template like "Intel;1033" or
+  // "x64;1033" (platform;language) — scan the header bytes for it.
+  try {
+    const txt = new TextDecoder('latin1').decode(head);
+    const tmpl = txt.match(/(Intel64|Intel|x64|Arm64|Arm);(\d{3,5})/);
+    if (tmpl) {
+      fields['Platform'] = tmpl[1] === 'Intel' ? 'x86 (32-bit)' : tmpl[1];
+      fields['Language'] = tmpl[2];
+    }
+  } catch (_) {}
+  return fields;
+}
+
+// ---------- X.509 certificate (PEM / DER) ----------
+function parseCert(file) {
+  return file.arrayBuffer().then((ab) => {
+    let der = new Uint8Array(ab);
+    const fields = {};
+    // PEM? (ASCII armour). Decode the base64 body of the first block.
+    const headStr = new TextDecoder('latin1').decode(der.subarray(0, 64));
+    if (headStr.indexOf('-----BEGIN') !== -1) {
+      const full = new TextDecoder('latin1').decode(der);
+      const m = full.match(/-----BEGIN ([^-]+)-----([\s\S]*?)-----END/);
+      if (m) {
+        fields['Encoding'] = 'PEM';
+        fields['Block'] = m[1].trim();
+        if (/PRIVATE KEY/.test(m[1])) {
+          fields['Contains'] = 'Private key';
+          return fields; // don't try to ASN.1-parse a key as a cert
+        }
+        try { der = Uint8Array.from(atob(m[2].replace(/\s+/g, '')), (ch) => ch.charCodeAt(0)); }
+        catch (_) { return fields; }
+      }
+    } else {
+      fields['Encoding'] = 'DER (binary)';
+    }
+    try {
+      const info = parseX509(der);
+      if (info) Object.assign(fields, info);
+    } catch (_) {}
+    return Object.keys(fields).length ? fields : null;
+  }).catch(() => null);
+}
+
+// Minimal ASN.1 DER walker, just enough to pull the interesting fields out of an
+// X.509 certificate (serial, validity, issuer/subject CN, algorithms, key size).
+function parseX509(der) {
+  let p = 0;
+  function readLen() {
+    let len = der[p++];
+    if (len & 0x80) {
+      const n = len & 0x7F;
+      len = 0;
+      for (let i = 0; i < n; i++) len = (len << 8) | der[p++];
+    }
+    return len;
+  }
+  function readTLV() {
+    const tag = der[p++];
+    const len = readLen();
+    const start = p;
+    p += len;
+    return { tag, len, start, end: start + len };
+  }
+  function oidToStr(start, end) {
+    const bytes = der.subarray(start, end);
+    const parts = [Math.floor(bytes[0] / 40), bytes[0] % 40];
+    let val = 0;
+    for (let i = 1; i < bytes.length; i++) {
+      val = (val << 7) | (bytes[i] & 0x7F);
+      if (!(bytes[i] & 0x80)) { parts.push(val); val = 0; }
+    }
+    return parts.join('.');
+  }
+  const OIDS = {
+    '1.2.840.113549.1.1.1': 'RSA', '1.2.840.113549.1.1.11': 'SHA-256 with RSA',
+    '1.2.840.113549.1.1.5': 'SHA-1 with RSA', '1.2.840.113549.1.1.12': 'SHA-384 with RSA',
+    '1.2.840.113549.1.1.13': 'SHA-512 with RSA', '1.2.840.10045.2.1': 'EC',
+    '1.2.840.10045.4.3.2': 'ECDSA with SHA-256', '1.2.840.10045.4.3.3': 'ECDSA with SHA-384',
+    '2.5.4.3': 'CN', '2.5.4.10': 'O', '2.5.4.11': 'OU', '2.5.4.6': 'C',
+  };
+  function readName(end) {
+    // SEQUENCE of RDNs; pull out CN/O if present.
+    const parts = [];
+    while (p < end) {
+      const set = readTLV();             // SET
+      const setEnd = set.end;
+      while (p < setEnd) {
+        const seq = readTLV();           // SEQUENCE { OID, value }
+        const oid = readTLV();
+        const oidStr = oidToStr(oid.start, oid.end);
+        const val = readTLV();
+        const text = new TextDecoder().decode(der.subarray(val.start, val.end));
+        const key = OIDS[oidStr];
+        if (key === 'CN') parts.unshift(text);
+        else if (key === 'O') parts.push(text);
+        p = seq.end;
+      }
+    }
+    return parts.join(', ');
+  }
+  function readTime(tlv) {
+    const s = new TextDecoder().decode(der.subarray(tlv.start, tlv.end));
+    // UTCTime YYMMDDHHMMSSZ or GeneralizedTime YYYYMMDD...
+    let yr, rest;
+    if (tlv.tag === 0x17) { yr = parseInt(s.slice(0, 2), 10); yr += yr < 50 ? 2000 : 1900; rest = s.slice(2); }
+    else { yr = parseInt(s.slice(0, 4), 10); rest = s.slice(4); }
+    const mo = rest.slice(0, 2), da = rest.slice(2, 4), hh = rest.slice(4, 6), mm = rest.slice(6, 8);
+    return yr + '-' + mo + '-' + da + ' ' + hh + ':' + mm;
+  }
+
+  const fields = {};
+  const cert = readTLV();              // Certificate SEQUENCE
+  const tbs = readTLV();               // TBSCertificate SEQUENCE
+  const tbsEnd = tbs.end;
+  // [0] version (optional, EXPLICIT)
+  if (der[p] === 0xA0) { const v = readTLV(); const vi = readTLV(); fields['Version'] = 'v' + (der[vi.start] + 1); }
+  const serial = readTLV();            // INTEGER serial
+  const serialHex = Array.from(der.subarray(serial.start, serial.end)).map(b => b.toString(16).padStart(2, '0')).join(':');
+  if (serialHex) fields['Serial'] = serialHex.length > 48 ? serialHex.slice(0, 48) + '…' : serialHex;
+  const sigAlg = readTLV();            // SEQUENCE { OID }
+  const sigOid = readTLV();
+  fields['Signature'] = OIDS[oidToStr(sigOid.start, sigOid.end)] || oidToStr(sigOid.start, sigOid.end);
+  p = sigAlg.end;
+  const issuer = readTLV();            // issuer Name
+  const issuerStr = readName(issuer.end);
+  if (issuerStr) fields['Issuer'] = issuerStr;
+  p = issuer.end;
+  const validity = readTLV();          // SEQUENCE { notBefore, notAfter }
+  const nb = readTLV(); fields['Valid from'] = readTime(nb); p = nb.end;
+  const na = readTLV(); fields['Valid to'] = readTime(na); p = validity.end;
+  const subject = readTLV();           // subject Name
+  const subjStr = readName(subject.end);
+  if (subjStr) fields['Subject'] = subjStr;
+  p = subject.end;
+  const spki = readTLV();              // SubjectPublicKeyInfo SEQUENCE
+  const algSeq = readTLV();
+  const algOid = readTLV();
+  const algName = OIDS[oidToStr(algOid.start, algOid.end)] || 'key';
+  fields['Key type'] = algName;
+  p = algSeq.end;
+  const keyBits = readTLV();           // BIT STRING
+  if (algName === 'RSA') {
+    // BIT STRING -> SEQUENCE { modulus INTEGER, exponent }
+    let kp = keyBits.start + 1;        // skip unused-bits byte
+    if (der[kp] === 0x30) {
+      const save = p; p = kp; readTLV(); const mod = readTLV(); p = save;
+      let bytes = mod.len;
+      if (der[mod.start] === 0x00) bytes -= 1; // leading zero
+      fields['Key size'] = (bytes * 8) + ' bit';
+    }
+  }
+  return fields;
+}
+
+// ---------- After Effects XML project (.aepx) ----------
+async function parseAepx(file) {
+  try {
+    const text = await file.text();
+    const fields = {};
+    // Footage / asset references
+    const assets = [...text.matchAll(/fullpath="([^"]+)"/g)].map(m => m[1]);
+    const uniqAssets = [...new Set(assets)];
+    if (uniqAssets.length) {
+      fields['Assets'] = uniqAssets.length;
+      fields['_fileList'] = uniqAssets.slice(0, 30).map(a => a.replace(/&amp;/g, '&'));
+    }
+    // Effect match-names (ADBE ...) used across comps
+    const effects = [...new Set([...text.matchAll(/<string>(ADBE [^<]+)<\/string>/g)].map(m => m[1]))];
+    if (effects.length) fields['Effects'] = effects.length;
+    // Plain string names (comp / layer / folder names) — first few, filtered
+    const names = [...new Set([...text.matchAll(/<string>([^<]{1,60})<\/string>/g)]
+      .map(m => m[1]).filter(s => !s.startsWith('ADBE ') && /[a-zA-Z]/.test(s)))];
+    if (names.length) fields['Named items'] = names.length;
+    // Composition count (each comp has a <Layr> grouping under an <Item>)
+    const comps = (text.match(/<idta/g) || []).length;
+    if (comps) fields['Items'] = comps;
+    return Object.keys(fields).length ? fields : { 'Type': 'After Effects XML project' };
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- Partial download (.part / .crdownload) ----------
+async function parsePart(file, head) {
+  const fields = { 'Status': 'Incomplete download' };
+  fields['Bytes present'] = fmtBytes(file.size);
+  const sig = guessFromMagic(head);
+  if (sig) fields['Detected original format'] = sig;
+  else fields['Detected original format'] = 'Unrecognised (' +
+    Array.from(head.subarray(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ') + ')';
+  return fields;
+}
+
+// Small magic-byte sniffer for the partial-download detector.
+function guessFromMagic(b) {
+  const a = (s, l) => Array.from(b.subarray(s, s + l)).map(c => String.fromCharCode(c)).join('');
+  if (a(0, 4) === '%PDF') return 'PDF document';
+  if (b[0] === 0x50 && b[1] === 0x4B) return 'ZIP / Office / archive';
+  if (b[0] === 0x4D && b[1] === 0x5A) return 'Windows executable (PE)';
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'JPEG image';
+  if (a(0, 8) === '\x89PNG\r\n\x1a\n') return 'PNG image';
+  if (a(0, 6) === 'GIF89a' || a(0, 6) === 'GIF87a') return 'GIF image';
+  if (a(0, 4) === 'RIFF') return 'RIFF (WAV / AVI / WebP)';
+  if (a(0, 4) === 'OggS') return 'Ogg media';
+  if (a(0, 4) === 'fLaC') return 'FLAC audio';
+  if (b[0] === 0x1F && b[1] === 0x8B) return 'GZIP archive';
+  if (a(0, 4) === '7z\xBC\xAF') return '7-Zip archive';
+  if (a(0, 4) === 'Rar!') return 'RAR archive';
+  if (a(4, 4) === 'ftyp') return 'MP4 / MOV / HEIF';
+  if (a(0, 5) === '<?xml') return 'XML document';
+  if (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return 'MP3 (ID3) audio';
+  if (b[0] === 0xD0 && b[1] === 0xCF) return 'OLE compound (legacy Office / MSI)';
+  return null;
+}
+
+// ---------- Dolby Digital Plus / E-AC-3 (.ec3) ----------
+function parseEac3(head) {
+  // Find the 0x0B77 sync word, then read the bitstream header for acmod + lfe.
+  let off = -1;
+  for (let i = 0; i + 1 < Math.min(head.length, 4096); i++) {
+    if (head[i] === 0x0B && head[i + 1] === 0x77) { off = i + 2; break; }
+  }
+  const fields = { 'Codec': 'Dolby Digital Plus (E-AC-3)' };
+  if (off < 0 || off + 4 > head.length) return fields;
+  // Bit reader starting at the byte after the sync word.
+  let bitPos = off * 8;
+  const bits = (n) => {
+    let v = 0;
+    for (let i = 0; i < n; i++) {
+      const byte = head[bitPos >> 3];
+      const bit = (byte >> (7 - (bitPos & 7))) & 1;
+      v = (v << 1) | bit;
+      bitPos++;
+    }
+    return v;
+  };
+  bits(2);                    // strmtyp
+  bits(3);                    // substreamid
+  bits(11);                   // frmsiz
+  const fscod = bits(2);
+  if (fscod === 3) bits(2); else bits(2); // fscod2 / numblkscod
+  const acmod = bits(3);
+  const lfeon = bits(1);
+  const chans = [2, 1, 2, 3, 3, 4, 4, 5][acmod] + (lfeon ? 1 : 0);
+  const layout = { 1: 'Mono', 2: 'Stereo', 3: '3.0', 4: '3.0 (surround)', 6: '5.1', 5: '4.0' };
+  fields['Channels'] = lfeon ? (chans - 1) + '.1' : String(chans);
+  if (acmod === 7) fields['Layout'] = lfeon ? '5.1 surround' : '5.0 surround';
+  const rates = { 0: '48 kHz', 1: '44.1 kHz', 2: '32 kHz' };
+  if (rates[fscod]) fields['Sample rate'] = rates[fscod];
+  return fields;
+}
+
+// ---------- Dolby TrueHD / MLP (.thd / .mlp) ----------
+function parseTrueHd(head) {
+  // MLP major sync: format_sync at offset 4 is 0xF8726FBA (TrueHD) or 0xF8726FBB (MLP).
+  for (let i = 0; i + 8 < Math.min(head.length, 4096); i++) {
+    if (head[i + 4] === 0xF8 && head[i + 5] === 0x72 && head[i + 6] === 0x6F &&
+        (head[i + 7] === 0xBA || head[i + 7] === 0xBB)) {
+      const isTrueHd = head[i + 7] === 0xBA;
+      return { 'Codec': isTrueHd ? 'Dolby TrueHD' : 'MLP (Meridian Lossless Packing)', 'Container': 'MLP major sync found' };
+    }
+  }
+  return { 'Codec': 'Dolby TrueHD / MLP' };
+}
+
+// ---------- CDP4 (COMET Data Platform) ----------
+async function parseCdp(file, head) {
+  const fields = { 'Application': 'CDP4 (COMET Data Platform)' };
+  const a = (s, l) => Array.from(head.subarray(s, s + l)).map(c => String.fromCharCode(c)).join('');
+  if (a(0, 15) === 'SQLite format 3') {
+    fields['Container'] = 'SQLite database';
+  } else if (head[0] === 0x50 && head[1] === 0x4B) {
+    fields['Container'] = 'ZIP archive (annotated model)';
+    const meta = await parseZipMeta(file, 'zip').catch(() => null);
+    if (meta) Object.assign(fields, meta);
+  } else {
+    const txt = a(0, Math.min(head.length, 256)).trimStart();
+    if (txt[0] === '{' || txt[0] === '[') fields['Container'] = 'JSON';
+    else if (txt.startsWith('<?xml') || txt[0] === '<') fields['Container'] = 'XML';
+    else fields['Container'] = 'Binary';
+  }
+  return fields;
+}
+
+// ---------- ULTRAKILL save (.bepis) ----------
+// The internal layout isn't publicly documented, so this is best-effort:
+// identify the container, then surface any readable strings (level / weapon /
+// difficulty names, JSON keys) found in the bytes.
+async function parseBepis(file, head) {
+  const fields = { 'Game': 'ULTRAKILL', 'File type': 'Save data' };
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 1024 * 1024)).arrayBuffer());
+  const headStr = new TextDecoder('latin1').decode(buf.subarray(0, 256)).trimStart();
+
+  // JSON save?
+  if (headStr[0] === '{' || headStr[0] === '[') {
+    fields['Container'] = 'JSON';
+    try {
+      const obj = JSON.parse(new TextDecoder('utf-8').decode(buf));
+      const keys = Object.keys(obj);
+      if (keys.length) fields['Fields'] = keys.slice(0, 20).join(', ');
+    } catch (_) { /* truncated / not pure JSON */ }
+    return fields;
+  }
+
+  // Binary save — pull printable ASCII runs (≥4 chars) as a hint at contents.
+  fields['Container'] = 'Binary';
+  const strings = [];
+  let cur = '';
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i];
+    if (c >= 0x20 && c < 0x7F) {
+      cur += String.fromCharCode(c);
+    } else {
+      if (cur.length >= 4 && /[a-zA-Z]/.test(cur)) strings.push(cur);
+      cur = '';
+    }
+  }
+  if (cur.length >= 4) strings.push(cur);
+  const uniq = [...new Set(strings)];
+  // Highlight known ULTRAKILL tokens if present.
+  const known = uniq.filter(s => /(level|prelude|layer|secret|rank|difficulty|brutal|violent|standard|harmless|cybergrind|weapon|revolver|shotgun|nailgun|railcannon|fist|whiplash|coin|time|kills|style)/i.test(s));
+  if (known.length) fields['Recognised tokens'] = known.slice(0, 25).join(', ');
+  if (uniq.length) fields['_readableText'] = uniq.slice(0, 300).join('\n');
+  return fields;
+}
+
+// ---------- Rich Text Format (.rtf) ----------
+async function parseRtf(file) {
+  try {
+    const text = await file.text();
+    if (!text.startsWith('{\\rtf')) return { 'Type': 'Rich Text (header not found)' };
+    const fields = {};
+    const ver = text.match(/\{\\rtf(\d+)/);
+    if (ver) fields['RTF version'] = ver[1];
+    const cs = text.match(/\\ansicpg(\d+)/);
+    if (cs) fields['Code page'] = cs[1];
+    const gen = text.match(/\{\\\*\\generator ([^;}]+)[;}]/);
+    if (gen) fields['Generator'] = gen[1].trim();
+    // Info group: title / author
+    const title = text.match(/\{\\title ([^}]*)\}/);
+    if (title) fields['Title'] = title[1].trim();
+    const author = text.match(/\{\\author ([^}]*)\}/);
+    if (author) fields['Author'] = author[1].trim();
+    fields['_readableText'] = stripRtf(text).slice(0, 20000);
+    return fields;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Strip RTF control words and groups down to readable plain text.
+function stripRtf(rtf) {
+  let out = '';
+  let i = 0;
+  const n = rtf.length;
+  let skipUntilDepth = -1;
+  let depth = 0;
+  while (i < n) {
+    const ch = rtf[i];
+    if (ch === '{') { depth++; i++; continue; }
+    if (ch === '}') { if (depth === skipUntilDepth) skipUntilDepth = -1; depth--; i++; continue; }
+    if (skipUntilDepth !== -1) { i++; continue; }
+    if (ch === '\\') {
+      // Escaped literal char?
+      const next = rtf[i + 1];
+      if (next === '\\' || next === '{' || next === '}') { out += next; i += 2; continue; }
+      if (next === "'") { // hex byte
+        i += 4; continue;
+      }
+      if (next === '*') { i += 2; continue; } // \* ignorable-destination marker
+      // Control word
+      const m = rtf.slice(i).match(/^\\([a-zA-Z]+)(-?\d+)? ?/);
+      if (m) {
+        const word = m[1];
+        // Groups whose entire content should be dropped (metadata / fonts / etc).
+        if (/^(fonttbl|colortbl|stylesheet|info|pict|object|themedata|colorschememapping|datastore|generator|\*)$/.test(word)) {
+          skipUntilDepth = depth;
+        }
+        if (word === 'par' || word === 'line' || word === 'pard') out += '\n';
+        if (word === 'tab') out += '\t';
+        i += m[0].length;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '\n' || ch === '\r') { i++; continue; }
+    out += ch;
+    i++;
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ---------- Font preview (live rendering via FontFace) ----------
+let fontPreviewSeq = 0;
+async function renderFontPreview(file, card, fontInfo) {
+  let face;
+  const family = 'anr-font-' + (++fontPreviewSeq);
+  try {
+    const buf = await file.arrayBuffer();
+    face = new FontFace(family, buf);
+    await face.load();
+    document.fonts.add(face);
+  } catch (_) {
+    return; // browser couldn't load the font (e.g. unsupported flavour)
+  }
+
+  const previewCard = el('div', { class: 'anr-card' });
+  previewCard.appendChild(el('h3', {}, 'Font preview'));
+  const pangram = 'The quick brown fox jumps over the lazy dog';
+
+  // Sizes
+  const sizes = [48, 36, 28, 22, 18, 14];
+  for (const sz of sizes) {
+    previewCard.appendChild(el('p', {
+      style: `font-family:'${family}';font-size:${sz}px;line-height:1.25;margin:6px 0;`
+    }, pangram));
+  }
+
+  // Alphabet + numerals
+  previewCard.appendChild(el('p', {
+    style: `font-family:'${family}';font-size:24px;margin:14px 0 2px;`
+  }, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'));
+  previewCard.appendChild(el('p', {
+    style: `font-family:'${family}';font-size:24px;margin:2px 0;`
+  }, 'abcdefghijklmnopqrstuvwxyz 0123456789 & ? !'));
+
+  // Varying weights
+  const wRow = el('div', { style: 'margin-top:14px;border-top:1px solid var(--rule);padding-top:12px;' });
+  wRow.appendChild(el('div', { class: 'anr-readout-section' }, 'Weights'));
+  for (const w of [100, 300, 400, 500, 700, 900]) {
+    wRow.appendChild(el('p', {
+      style: `font-family:'${family}';font-weight:${w};font-size:22px;margin:3px 0;`
+    }, w + ' — ' + pangram));
+  }
+  previewCard.appendChild(wRow);
+
+  // Variable font: animate a big "A" pulsing weight from lightest to boldest,
+  // ease-in-out, looping. Driven by requestAnimationFrame so it works everywhere.
+  if (fontInfo && fontInfo.variable && fontInfo.wght) {
+    const { min, max } = fontInfo.wght;
+    const varRow = el('div', { style: 'margin-top:14px;border-top:1px solid var(--rule);padding-top:12px;text-align:center;' });
+    varRow.appendChild(el('div', { class: 'anr-readout-section', style: 'text-align:left;' },
+      'Variable axis — weight ' + Math.round(min) + ' to ' + Math.round(max)));
+    const bigA = el('div', {
+      style: `font-family:'${family}';font-size:140px;line-height:1.1;font-variation-settings:"wght" ${min};`
+    }, 'A');
+    varRow.appendChild(bigA);
+    previewCard.appendChild(varRow);
+    const period = 3000; // ms for a full lightest→boldest sweep
+    let t0 = null;
+    const tick = (ts) => {
+      if (!bigA.isConnected) return; // stop when removed (new file analysed)
+      if (t0 === null) t0 = ts;
+      // Triangle wave 0→1→0 with ease-in-out shaping.
+      const phase = ((ts - t0) % (period * 2)) / period;
+      const tri = phase <= 1 ? phase : 2 - phase;
+      const eased = tri < 0.5 ? 2 * tri * tri : 1 - Math.pow(-2 * tri + 2, 2) / 2;
+      bigA.style.fontVariationSettings = '"wght" ' + Math.round(min + (max - min) * eased);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  card.appendChild(previewCard);
+}
+
+// ---------- per-extension parser dispatch ----------
+// Maps an extension to a metadata parser. Functions receive { head, file, ext }
+// and may be sync or async (the caller awaits the result). To add a format,
+// drop a line here rather than extending a branch chain.
+const PARSERS = {
+  psd:   c => parsePsd(c.head),
+  psb:   c => parsePsd(c.head),
+  dwg:   c => parseDwg(c.head),
+  dwt:   c => parseDwg(c.head),
+  blend: c => parseBlender(c.head),
+  fbx:   c => parseFbx(c.head),
+  glb:   c => parseGlb(c.head),
+  stl:   c => parseStl(c.head),
+  swf:   c => parseSwf(c.head),
+  exe:   c => parsePe(c.head),
+  dll:   c => parsePe(c.head),
+  ttf:   c => parseFont(c.file),
+  otf:   c => parseFont(c.file),
+  flp:   c => parseFlp(c.file),
+  rar:   c => parseRar(c.head),
+  '7z':  c => parse7z(c.head),
+  sqlite: c => parseSqlite(c.head),
+  db:    c => parseSqlite(c.head),
+  xcf:   c => parseXcf(c.head),
+  torrent: c => parseTorrent(c.file),
+  als:   c => parseGzipXmlProject(c.file, c.ext),
+  alp:   c => parseGzipXmlProject(c.file, c.ext),
+  prproj: c => parseGzipXmlProject(c.file, c.ext),
+  gcode: c => parseGcode(c.file),
+  gco:   c => parseGcode(c.file),
+  nc:    c => parseGcode(c.file),
+  ngc:   c => parseGcode(c.file),
+  tap:   c => parseGcode(c.file),
+  cnc:   c => parseGcode(c.file),
+  log:   c => parseLogOrigin(c.file),
+  msi:   c => parseMsi(c.head),
+  crt:   c => parseCert(c.file),
+  cer:   c => parseCert(c.file),
+  pem:   c => parseCert(c.file),
+  der:   c => parseCert(c.file),
+  aepx:  c => parseAepx(c.file),
+  part:  c => parsePart(c.file, c.head),
+  crdownload: c => parsePart(c.file, c.head),
+  ec3:   c => parseEac3(c.head),
+  eac3:  c => parseEac3(c.head),
+  thd:   c => parseTrueHd(c.head),
+  mlp:   c => parseTrueHd(c.head),
+  cdp:   c => parseCdp(c.file, c.head),
+  rtf:   c => parseRtf(c.file),
+  bepis: c => parseBepis(c.file, c.head),
+};
+
 // ---------- main render ----------
 export async function renderProprietary(file, container) {
   const ext = extFromName(file.name);
@@ -1001,28 +1861,15 @@ export async function renderProprietary(file, container) {
   tbl.appendChild(row('File', file.name));
   tbl.appendChild(row('Size', fmtBytes(file.size)));
 
-  // Read header bytes for magic-based parsing
-  const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+  // Read header bytes for magic-based parsing (more for PE/EXE to walk import tables)
+  const headSize = (ext === 'exe' || ext === 'dll' || ext === 'msi') ? Math.min(file.size, 65536) : 4096;
+  const head = new Uint8Array(await file.slice(0, headSize).arrayBuffer());
   let extra = null;
 
-  if (ext === 'psd' || ext === 'psb') extra = parsePsd(head);
-  else if (ext === 'dwg' || ext === 'dwt') extra = parseDwg(head);
-  else if (ext === 'blend') extra = parseBlender(head);
-  else if (ext === 'fbx') extra = parseFbx(head);
-  else if (ext === 'glb') extra = parseGlb(head);
-  else if (ext === 'stl') extra = parseStl(head);
-  else if (ext === 'swf') extra = parseSwf(head);
-  else if (ext === 'exe' || ext === 'dll') extra = parsePe(head);
-  else if (ext === 'ttf' || ext === 'otf') extra = await parseFont(file);
-  else if (ext === 'flp') extra = parseFlp(head);
-  else if (ext === 'rar') extra = parseRar(head);
-  else if (ext === '7z') extra = parse7z(head);
-  else if (ext === 'sqlite' || ext === 'db') extra = parseSqlite(head);
-  else if (ext === 'xcf') extra = parseXcf(head);
-  else if (ext === 'torrent') extra = await parseTorrent(file);
-  else if (ext === 'als' || ext === 'alp' || ext === 'prproj') extra = await parseGzipXmlProject(file, ext);
-  else if (ext === 'gcode' || ext === 'gco' || ext === 'nc' || ext === 'ngc') extra = await parseGcode(file);
-  else if (ext === 'log') extra = await parseLogOrigin(file);
+  // Per-extension metadata parsers. Each receives { head, file, ext } and may be
+  // sync or async; the result is awaited. Aliases (e.g. psd/psb) share an entry.
+  const fn = PARSERS[ext];
+  if (fn) extra = await fn({ head, file, ext });
 
   // ISO: primary volume descriptor at sector 16 (32768 bytes)
   if (!extra && ext === 'iso' && file.size > 32868) {
@@ -1045,8 +1892,11 @@ export async function renderProprietary(file, container) {
   // Generic text/XML version detection for formats without a dedicated parser
   if (!extra && (fmt.parse === 'text' || fmt.parse === 'xml')) extra = await parseTextVersion(file);
 
+  let extraFileList = null;
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
+      if (k === '_fileList') { extraFileList = v; continue; }
+      if (k.startsWith('_')) continue;   // internal payloads (e.g. _font, _readableText)
       if (v !== undefined) tbl.appendChild(row(k, String(v)));
     }
   }
@@ -1072,13 +1922,33 @@ export async function renderProprietary(file, container) {
 
   card.appendChild(tbl);
 
-  // SHA-256 hash
-  const hashRow = row('SHA-256', 'computing…');
+  // Font preview (TTF/OTF/WOFF/WOFF2/TTC) — render sample text live with the font.
+  if (ext === 'ttf' || ext === 'otf' || ext === 'woff' || ext === 'woff2' || ext === 'ttc') {
+    await renderFontPreview(file, card, extra && extra._font);
+  }
+
+  // Torrent file list (rendered as its own block beneath the readout)
+  if (extraFileList && extraFileList.length) {
+    const det = el('details', { style: 'margin-top: 14px;' });
+    det.appendChild(el('summary', {}, 'Contents (' + extraFileList.length + ' entries)'));
+    const pre = el('pre', { class: 'anr-code', style: 'max-height:400px; overflow:auto; font-size:12px;' });
+    pre.textContent = extraFileList.join('\n');
+    det.appendChild(pre);
+    card.appendChild(det);
+  }
+
+  const hashRow = sha256Row(file);
   tbl.appendChild(hashRow);
-  sha256Hex(file).then(h => {
-    const td = hashRow.querySelector('td');
-    if (td) td.textContent = h;
-  });
+
+  // Readable text block (e.g. RTF stripped of control words)
+  if (extra && extra._readableText) {
+    const det = el('details', { style: 'margin-top: 14px;', open: '' });
+    det.appendChild(el('summary', {}, 'Readable text'));
+    const pre = el('pre', { class: 'anr-ocr-text', style: 'max-height:400px; overflow:auto; white-space:pre-wrap;' });
+    pre.textContent = extra._readableText;
+    det.appendChild(pre);
+    card.appendChild(det);
+  }
 
   // Text / code preview for web files
   if (fmt.parse === 'text' || fmt.parse === 'html') {
@@ -1113,8 +1983,29 @@ export async function renderProprietary(file, container) {
       openBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const b = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
-        window.open(URL.createObjectURL(b), '_blank');
+        const overlay = el('div', {
+          class: 'anr-text-overlay',
+          style: 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;'
+        });
+        const inner = el('div', {
+          style: 'background:var(--bg);max-width:90vw;max-height:90vh;overflow:auto;padding:24px;border:1px solid var(--hairline);position:relative;width:900px;'
+        });
+        const closeBtn = el('button', {
+          type: 'button',
+          style: 'position:absolute;top:8px;right:12px;background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--fg);'
+        }, '×');
+        const fullPre = el('pre', { class: 'anr-code', style: 'font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0;' });
+        fullPre.textContent = fullText;
+        inner.appendChild(closeBtn);
+        inner.appendChild(fullPre);
+        overlay.appendChild(inner);
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+        function close() { overlay.remove(); document.body.style.overflow = ''; }
+        closeBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close(); });
+        const onKey = (ev) => { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+        document.addEventListener('keydown', onKey);
       });
       summary.appendChild(openBtn);
       det.appendChild(summary);

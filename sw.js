@@ -1,7 +1,7 @@
 /* Analyser - service worker
    Precache the app shell; stale-while-revalidate the rest. */
 
-const VERSION = 'analyser-v21';
+const VERSION = 'analyser-v22';
 const SHELL = [
   './',
   './index.html',
@@ -29,18 +29,24 @@ const SHELL = [
   './assets/analyser/unknown.js',
   './assets/analyser/proprietary.js',
   './assets/analyser/docx.js',
+  './assets/analyser/xlsx.js',
+  './assets/analyser/epub.js',
+  './assets/analyser/pptx.js',
+  './assets/analyser/stl.js',
+  './assets/analyser/zip.js',
   './assets/analyser/folder.js',
   './assets/analyser/navigate.js',
   './assets/favicon.svg',
   './assets/icon.png',
-  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js'
+  './assets/icon-192.png',
+  './assets/icon-512.png',
+  './assets/vendor/exifr.umd.js'
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(VERSION).then((c) => c.addAll(
-      SHELL.map((u) => new Request(u, { mode: u.startsWith('http') ? 'no-cors' : 'same-origin' }))
-    )).then(() => self.skipWaiting())
+    caches.open(VERSION).then((c) => c.addAll(SHELL))
+      .then(() => self.skipWaiting())
   );
 });
 

@@ -2,7 +2,7 @@
    Magic-byte format guess, hex/ASCII dump, SHA-256, and enhanced
    previews for plain text, JSON, and XML. */
 
-import { el, row, fmtBytes, fileExt, sha256Hex } from './util.js';
+import { el, row, fmtBytes, fileExt, sha256Row } from './util.js';
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -205,9 +205,9 @@ export async function renderUnknown(file, resultsEl) {
   card.appendChild(el('div', { class: 'anr-readout-section' }, 'First 128 bytes'));
   card.appendChild(el('pre', { class: 'anr-unknown-dump' }, 'HEX:\n' + hex + '\n\nASCII:\n' + ascii));
 
-  card.appendChild(el('div', { class: 'anr-readout-section' }, 'SHA-256'));
-  const hashOut = el('p', { class: 'anr-hint anr-hash-out' }, 'computing…');
-  card.appendChild(hashOut);
+  const hashTbl = el('table', { class: 'anr-readout' });
+  hashTbl.appendChild(sha256Row(file));
+  card.appendChild(hashTbl);
 
   // If it looks like text, JSON, or XML, show enhanced previews
   const ext = fileExt(file.name);
@@ -350,7 +350,4 @@ export async function renderUnknown(file, resultsEl) {
 
   resultsEl.appendChild(card);
 
-  sha256Hex(file).then((h) => {
-    hashOut.textContent = h || 'SHA-256 unavailable in this browser';
-  });
 }

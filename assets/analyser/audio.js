@@ -44,6 +44,16 @@ function getMono(audioBuffer) {
   return out;
 }
 
+// Human-readable speaker layout for a given channel count.
+function describeChannels(n) {
+  const map = {
+    1: '  (Mono)', 2: '  (Stereo)', 3: '  (2.1)', 4: '  (Quad / 4.0)',
+    6: '  (5.1 surround)', 7: '  (6.1 surround)', 8: '  (7.1 surround)',
+    10: '  (7.1.2 Atmos)', 12: '  (7.1.4 Atmos)', 16: '  (9.1.6 Atmos)'
+  };
+  return map[n] || (n > 2 ? '  (' + n + '-channel surround)' : '');
+}
+
 // Make a playhead line grabbable, so you can drag it to scrub. `seekFromClientX`
 // maps a pointer x to a seek (and repositions the line). Works for mouse + touch.
 // Window listeners are attached only for the duration of a drag and removed on
@@ -290,7 +300,7 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     const audioDur = () => opts.audioEl.duration || (samples.length / sampleRate);
     function scrollToLine() {
       if (canvas.clientWidth <= scrollEl.clientWidth) return;
-      const linePos = canvasWrap.clientWidth * parseFloat(specLine.style.left || '0') / 100;
+      const linePos = canvas.clientWidth * parseFloat(specLine.style.left || '0') / 100;
       const viewLeft = scrollEl.scrollLeft;
       const viewRight = viewLeft + scrollEl.clientWidth;
       if (linePos < viewLeft + 20 || linePos > viewRight - 20)
@@ -770,7 +780,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   if (header.codec)     tbl.appendChild(row('Codec',         header.codec));
   tbl.appendChild(row('Duration',       formatTime(audioBuffer.duration)));
   tbl.appendChild(row('Sample rate',    audioBuffer.sampleRate.toLocaleString() + ' Hz'));
-  tbl.appendChild(row('Channels',       audioBuffer.numberOfChannels));
+  tbl.appendChild(row('Channels',       audioBuffer.numberOfChannels + describeChannels(audioBuffer.numberOfChannels)));
   if (header.bitDepth)  tbl.appendChild(row('Bit depth',     header.bitDepth + ' bit'));
   if (header.bitrate)   tbl.appendChild(row('Bitrate',       (header.bitrate / 1000).toFixed(0) + ' kbps'));
   tbl.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',

@@ -5,8 +5,19 @@
 
 import { makeSpectrogramPanel, makePlayer, buildHistogramCard } from './audio.js';
 import { renderPhoto } from './photo.js';
-import { el, row, rowHelp, fmtBytes, h3help, sha256Hex, roundFps } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, sha256Row, roundFps } from './util.js';
 import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
+
+// "Download audio (WAV)" link for the extracted-audio cards. Reuses the blob URL
+// already created for the player so no re-encoding is needed.
+function audioDownloadRow(wavUrl, file) {
+  const name = (file.name || 'video').replace(/\.[^/.]+$/, '') + '.wav';
+  const link = el('a', {
+    href: wavUrl, download: name, class: 'anr-btn',
+    style: 'text-decoration:none;display:inline-block;'
+  }, 'Download audio (WAV)');
+  return el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [link]);
+}
 
 // ---------- progress-tracked fetch ----------
 async function fetchWithProgress(url, onProgress) {
@@ -37,8 +48,8 @@ function makeBlobURL(data, type) {
 let ffmpegInstance = null;
 async function loadFFmpeg(onProgress) {
   if (ffmpegInstance) return ffmpegInstance;
-  const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-  const base = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+  const { FFmpeg } = await import(new URL('../vendor/ffmpeg/ffmpeg.js', import.meta.url).href);
+  const base = 'assets/vendor/ffmpeg';
   const coreJS = makeBlobURL(await fetchWithProgress(base + '/ffmpeg-core.js', (p) => onProgress && onProgress(p * 0.3)), 'text/javascript');
   const wasmData = await fetchWithProgress(base + '/ffmpeg-core.wasm', (p) => onProgress && onProgress(0.3 + p * 0.7));
   const wasmURL = makeBlobURL(wasmData, 'application/wasm');
@@ -64,7 +75,7 @@ async function ffmpegExtractAudio(file, container) {
   const ff = await loadFFmpeg((p) => { setBar(p); });
   labelEl.textContent = 'extracting audio';
   setBar(1);
-  const { fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  const { fetchFile } = await import(new URL('../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
   await ff.writeFile('input', await fetchFile(file));
   await ff.exec(['-i', 'input', '-vn', '-acodec', 'pcm_s16le', '-ar', '48000', '-ac', '2', 'output.wav']);
   const data = await ff.readFile('output.wav');
@@ -335,7 +346,7 @@ async function detectFpsFromContainer(file) {
 
 async function detectFpsWithFfmpeg(file, onProgress) {
   const ff = await loadFFmpeg(onProgress);
-  const { fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  const { fetchFile } = await import(new URL('../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
   await ff.writeFile('probe', await fetchFile(file));
   let log = '';
   ff.on('log', ({ message }) => { log += message + '\n'; });
@@ -529,10 +540,9 @@ function seekAndPaint(video, t) {
 async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) {
   const playerCard = el('div', { class: 'anr-card' });
   playerCard.appendChild(el('h3', {}, 'Player'));
-  const playerEl = el('video', { src: url, playsinline: '' });
+  const playerEl = el('video', { src: url, playsinline: '', controls: '' });
   playerEl.setAttribute('webkit-playsinline', '');
-  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline); cursor:pointer;';
-  playerEl.addEventListener('click', () => { if (playerEl.paused) playerEl.play(); else playerEl.pause(); });
+  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
   resultsEl.appendChild(playerCard);
@@ -753,6 +763,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       const apCard = el('div', { class: 'anr-card' });
       apCard.appendChild(el('h3', {}, 'Extracted audio'));
       apCard.appendChild(audioPlayer); apCard.appendChild(makePlayer(audioPlayer));
+      apCard.appendChild(audioDownloadRow(wavUrl, file));
       audioResultsEl.appendChild(apCard);
       const at = el('table', { class: 'anr-readout' });
       at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
@@ -796,10 +807,10 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
   if (file.size <= 500 * 1024 * 1024) {
     const hashCard = el('div', { class: 'anr-card' });
     hashCard.appendChild(el('h3', {}, 'Integrity'));
-    const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' }, 'computing SHA-256…');
-    hashCard.appendChild(hashOut);
+    const hashTbl = el('table', { class: 'anr-readout' });
+    hashTbl.appendChild(sha256Row(file));
+    hashCard.appendChild(hashTbl);
     resultsEl.appendChild(hashCard);
-    sha256Hex(file).then((h) => { hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable'; });
   }
 
   return true;
@@ -1004,6 +1015,7 @@ export async function renderVideo(file, resultsEl) {
         apCard.appendChild(el('h3', {}, 'Extracted audio'));
         apCard.appendChild(audioPlayer);
         apCard.appendChild(makePlayer(audioPlayer));
+        apCard.appendChild(audioDownloadRow(wavUrl, file));
         audioResultsEl.appendChild(apCard);
 
         const audioCard = el('div', { class: 'anr-card' });
@@ -1056,12 +1068,10 @@ export async function renderVideo(file, resultsEl) {
       if (file.size <= 500 * 1024 * 1024) {
         const hashCard = el('div', { class: 'anr-card' });
         hashCard.appendChild(el('h3', {}, 'Integrity'));
-        const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' }, 'computing SHA-256…');
-        hashCard.appendChild(hashOut);
+        const hashTbl = el('table', { class: 'anr-readout' });
+        hashTbl.appendChild(sha256Row(file));
+        hashCard.appendChild(hashTbl);
         resultsEl.appendChild(hashCard);
-        sha256Hex(file).then((h) => {
-          hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable';
-        });
       }
 
       return;
@@ -1140,10 +1150,9 @@ export async function renderVideo(file, resultsEl) {
   playerCard.appendChild(el('h3', {}, 'Player'));
   // playsinline keeps playback inline on iPhone instead of forcing fullscreen;
   // the poster shows the captured first frame right away.
-  const playerEl = el('video', { src: url, playsinline: '', poster: posterUrl });
+  const playerEl = el('video', { src: url, playsinline: '', poster: posterUrl, controls: '' });
   playerEl.setAttribute('webkit-playsinline', '');
-  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline); cursor:pointer;';
-  playerEl.addEventListener('click', () => { if (playerEl.paused) playerEl.play(); else playerEl.pause(); });
+  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
 
@@ -1578,6 +1587,7 @@ export async function renderVideo(file, resultsEl) {
       playerCard.appendChild(el('h3', {}, 'Extracted audio'));
       playerCard.appendChild(audioPlayer);
       playerCard.appendChild(makePlayer(audioPlayer));
+      playerCard.appendChild(audioDownloadRow(wavUrl, file));
       audioResultsEl.appendChild(playerCard);
 
       // Info table
@@ -1672,12 +1682,10 @@ export async function renderVideo(file, resultsEl) {
     const hashCard = el('div', { class: 'anr-card' });
     const [vhH, vhHelp] = h3help('Integrity', '<strong>SHA-256</strong> is a cryptographic hash of the raw file bytes. Any change to the file, even one bit, produces a completely different hash. Useful for verifying a file has not been tampered with.');
     hashCard.appendChild(vhH); hashCard.appendChild(vhHelp);
-    const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' }, 'computing SHA-256…');
-    hashCard.appendChild(hashOut);
+    const hashTbl = el('table', { class: 'anr-readout' });
+    hashTbl.appendChild(sha256Row(file));
+    hashCard.appendChild(hashTbl);
     resultsEl.appendChild(hashCard);
-    sha256Hex(file).then((h) => {
-      hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable';
-    });
   }
 }
 

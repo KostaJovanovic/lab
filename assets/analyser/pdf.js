@@ -2,10 +2,13 @@
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
 import { el, row, fmtBytes } from './util.js';
+import { renderPhoto } from './photo.js';
 
-const PDFJS_URL      = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs';
-const WORKER_URL     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
-const TESSERACT_URL  = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
+// Resolved against this module's URL so the dynamic import() gets a valid
+// absolute specifier (a bare "assets/..." path is not a resolvable module id).
+const PDFJS_URL      = new URL('../vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
+const WORKER_URL     = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+const TESSERACT_URL  = 'assets/vendor/tesseract/tesseract.min.js';
 
 let pdfjsLib = null;
 
@@ -14,6 +17,58 @@ async function loadPdfJs() {
   pdfjsLib = await import(PDFJS_URL);
   pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
   return pdfjsLib;
+}
+
+// Resolve a PDF image XObject by name from a page's object store. pdf.js stores
+// these asynchronously; race against a timeout so a never-resolving name can't
+// hang the whole extraction.
+function getPdfImage(page, name) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      if (page.objs.has && page.objs.has(name)) { finish(page.objs.get(name)); return; }
+      page.objs.get(name, finish);
+    } catch (_) { finish(null); }
+    setTimeout(() => finish(null), 4000);
+  });
+}
+
+// Convert a pdf.js image object (bitmap, or raw data with an ImageKind) to a
+// canvas. Handles RGBA/RGB/1-bpp-grayscale; returns null for anything exotic.
+function pdfImageToCanvas(img) {
+  if (!img) return null;
+  const cv = document.createElement('canvas');
+  const bitmap = (typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) ? img
+    : (img.bitmap instanceof ImageBitmap ? img.bitmap : null);
+  if (bitmap) {
+    cv.width = bitmap.width; cv.height = bitmap.height;
+    cv.getContext('2d').drawImage(bitmap, 0, 0);
+    return cv;
+  }
+  const w = img.width, h = img.height, data = img.data;
+  if (!w || !h || !data) return null;
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const out = ctx.createImageData(w, h);
+  const px = w * h;
+  if (img.kind === 3 || data.length >= px * 4) {
+    out.data.set(data.subarray(0, px * 4));
+  } else if (img.kind === 2 || data.length >= px * 3) {
+    for (let i = 0, j = 0; i < px; i++) {
+      out.data[j++] = data[i * 3]; out.data[j++] = data[i * 3 + 1];
+      out.data[j++] = data[i * 3 + 2]; out.data[j++] = 255;
+    }
+  } else if (img.kind === 1) {
+    const rowBytes = Math.ceil(w / 8);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const bit = (data[y * rowBytes + (x >> 3)] >> (7 - (x & 7))) & 1;
+      const v = bit ? 255 : 0, o = (y * w + x) * 4;
+      out.data[o] = out.data[o + 1] = out.data[o + 2] = v; out.data[o + 3] = 255;
+    }
+  } else return null;
+  ctx.putImageData(out, 0, 0);
+  return cv;
 }
 
 function fmtDate(d) {
@@ -159,7 +214,12 @@ export async function renderPdf(file, resultsEl) {
 
   // --- Thumbnail previews (first 4 pages, click to view full page) ---
   const thumbCard = el('div', { class: 'anr-card' });
-  thumbCard.appendChild(el('h3', {}, 'Page previews'));
+  const thumbHeadRow = el('div', { style: 'display:flex;align-items:center;gap:10px;' });
+  thumbHeadRow.appendChild(el('h3', {}, 'Page previews'));
+  const openPdfBtn = el('button', { type: 'button', class: 'anr-btn', style: 'font-size:11px;padding:3px 10px;' }, 'Open in browser');
+  openPdfBtn.addEventListener('click', () => window.open(URL.createObjectURL(file), '_blank'));
+  thumbHeadRow.appendChild(openPdfBtn);
+  thumbCard.appendChild(thumbHeadRow);
   const thumbContainer = el('div', {
     style: 'display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-start;'
   });
@@ -227,32 +287,245 @@ export async function renderPdf(file, resultsEl) {
     showPage(startPage);
   }
 
-  const pagesToRender = Math.min(pdf.numPages, 4);
-  for (let i = 1; i <= pagesToRender; i++) {
+  // Render a page to a high-resolution canvas (for photo analysis / OCR).
+  async function renderPageHiRes(pageNum) {
+    const pg = await pdf.getPage(pageNum);
+    const vp = pg.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2000 / Math.max(vp.width, vp.height));
+    const sv = pg.getViewport({ scale });
+    const cv = document.createElement('canvas');
+    cv.width = Math.floor(sv.width);
+    cv.height = Math.floor(sv.height);
+    await pg.render({ canvasContext: cv.getContext('2d'), viewport: sv }).promise;
+    return cv;
+  }
+
+  // Lightweight overlay used to show a single page's OCR result.
+  function showOcrOverlay(pageNum, text) {
+    const overlay = el('div', {
+      style: 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;'
+    });
+    const inner = el('div', {
+      style: 'background:var(--bg);max-width:90vw;max-height:90vh;overflow:auto;padding:24px;border:1px solid var(--hairline);position:relative;width:760px;'
+    });
+    const closeBtn = el('button', {
+      type: 'button',
+      style: 'position:absolute;top:8px;right:12px;background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--fg);'
+    }, '×');
+    inner.appendChild(closeBtn);
+    inner.appendChild(el('h3', { style: 'margin-bottom:12px;' }, 'OCR — Page ' + pageNum));
+    const pre = el('pre', { class: 'anr-ocr-text', style: 'white-space:pre-wrap;font-size:13px;margin:0;' });
+    pre.textContent = text || '(no text detected)';
+    inner.appendChild(pre);
+    overlay.appendChild(inner);
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+    function close() { overlay.remove(); document.body.style.overflow = ''; }
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+  }
+
+  let thumbsRendered = 0;
+  async function renderThumb(pageNum) {
     try {
-      const page = await pdf.getPage(i);
+      const page = await pdf.getPage(pageNum);
       const vp = page.getViewport({ scale: 1 });
       const scale = 200 / vp.width;
       const scaled = page.getViewport({ scale });
       const canvas = el('canvas', {
         width: String(Math.floor(scaled.width)),
         height: String(Math.floor(scaled.height)),
-        style: 'border: 1px solid var(--hairline); cursor: pointer;'
+        style: 'border: 1px solid var(--hairline); cursor: pointer; display:block;'
       });
       const ctx = canvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport: scaled }).promise;
-      const pageNum = i;
       canvas.addEventListener('click', () => openPageViewer(pageNum));
-      const wrapper = el('div', { style: 'text-align: center;' }, [
+
+      // Hover actions: analyse the page as a photo, or OCR just this page.
+      const actions = el('div', {
+        style: 'position:absolute;top:6px;left:6px;right:6px;display:flex;gap:6px;justify-content:center;' +
+               'opacity:0;transition:opacity 0.15s;pointer-events:none;'
+      });
+      const btnStyle = 'font-size:10px;padding:2px 6px;background:var(--bg);border:1px solid var(--hairline);' +
+                       'color:var(--fg);cursor:pointer;font-family:var(--font-mono);';
+      const analyseBtn = el('button', { type: 'button', style: btnStyle }, 'Analyse');
+      const ocrBtn = el('button', { type: 'button', style: btnStyle }, 'OCR');
+      const pngBtn = el('button', { type: 'button', style: btnStyle }, 'PNG');
+      actions.appendChild(analyseBtn);
+      actions.appendChild(ocrBtn);
+      actions.appendChild(pngBtn);
+
+      pngBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        pngBtn.textContent = '…';
+        try {
+          const cv = await renderPageHiRes(pageNum);
+          cv.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = el('a', { href: url, download: file.name.replace(/\.pdf$/i, '') + '-page-' + pageNum + '.png' });
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            pngBtn.textContent = 'PNG';
+          }, 'image/png');
+        } catch (_) { pngBtn.textContent = 'PNG'; }
+      });
+
+      analyseBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        analyseBtn.textContent = '…';
+        try {
+          const cv = await renderPageHiRes(pageNum);
+          cv.toBlob((blob) => {
+            const photoFile = new File([blob], 'page-' + pageNum + '.png', { type: 'image/png' });
+            const photoResults = document.getElementById('photoResults');
+            const photoSection = document.getElementById('photo');
+            if (photoSection) photoSection.hidden = false;
+            if (photoResults) {
+              photoResults.hidden = false;
+              renderPhoto(photoFile, photoResults);
+              photoResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            analyseBtn.textContent = 'Analyse';
+          }, 'image/png');
+        } catch (_) { analyseBtn.textContent = 'Analyse'; }
+      });
+
+      ocrBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        ocrBtn.textContent = '…';
+        try {
+          if (!window.Tesseract) {
+            const s = document.createElement('script');
+            s.src = TESSERACT_URL;
+            await new Promise((res, rej) => { s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+          }
+          const cv = await renderPageHiRes(pageNum);
+          const worker = await window.Tesseract.createWorker('eng', undefined, {
+            workerPath: 'assets/vendor/tesseract/worker.min.js',
+            langPath: 'assets/vendor/tesseract'
+          });
+          const result = await worker.recognize(cv);
+          await worker.terminate();
+          showOcrOverlay(pageNum, (result.data.text || '').trim());
+        } catch (_) {
+          showOcrOverlay(pageNum, '(OCR failed)');
+        }
+        ocrBtn.textContent = 'OCR';
+      });
+
+      const wrapper = el('div', { style: 'text-align: center; position: relative;' }, [
         canvas,
-        el('div', { style: 'font-size: 11px; margin-top: 4px; opacity: 0.7;' }, `Page ${i}`)
+        actions,
+        el('div', { style: 'font-size: 11px; margin-top: 4px; opacity: 0.7;' }, `Page ${pageNum}`)
       ]);
+      wrapper.addEventListener('mouseenter', () => { actions.style.opacity = '1'; actions.style.pointerEvents = 'auto'; });
+      wrapper.addEventListener('mouseleave', () => { actions.style.opacity = '0'; actions.style.pointerEvents = 'none'; });
       thumbContainer.appendChild(wrapper);
     } catch (_) {}
   }
 
+  const initialPages = Math.min(pdf.numPages, 4);
+  for (let i = 1; i <= initialPages; i++) await renderThumb(i);
+  thumbsRendered = initialPages;
+
+  const thumbBtnRow = el('div', { class: 'anr-btn-row' });
+  const thumbMoreBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Show next 3 pages');
+  const thumbAllBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Show all');
+
+  function updateThumbBtns() {
+    if (thumbsRendered >= pdf.numPages) {
+      thumbBtnRow.hidden = true;
+    } else {
+      thumbBtnRow.hidden = false;
+      thumbMoreBtn.textContent = `Show next 3 pages (${thumbsRendered}/${pdf.numPages})`;
+    }
+  }
+
+  thumbMoreBtn.addEventListener('click', async () => {
+    const end = Math.min(thumbsRendered + 3, pdf.numPages);
+    for (let i = thumbsRendered + 1; i <= end; i++) await renderThumb(i);
+    thumbsRendered = end;
+    updateThumbBtns();
+  });
+  thumbAllBtn.addEventListener('click', async () => {
+    thumbAllBtn.disabled = true;
+    thumbMoreBtn.disabled = true;
+    for (let i = thumbsRendered + 1; i <= pdf.numPages; i++) await renderThumb(i);
+    thumbsRendered = pdf.numPages;
+    updateThumbBtns();
+  });
+
+  thumbBtnRow.appendChild(thumbMoreBtn);
+  thumbBtnRow.appendChild(thumbAllBtn);
+  updateThumbBtns();
+
   thumbCard.appendChild(thumbContainer);
+  thumbCard.appendChild(thumbBtnRow);
   resultsEl.appendChild(thumbCard);
+
+  // --- Embedded image extraction ---
+  const imgCard = el('div', { class: 'anr-card' });
+  imgCard.appendChild(el('h3', {}, 'Embedded images'));
+  imgCard.appendChild(el('p', { class: 'anr-hint', style: 'font-size:12px;margin:0 0 10px;' },
+    'Pull the original raster images embedded in the PDF (logos, photos, scans) — separate from the rendered page previews above.'));
+  const imgExtractBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Extract embedded images');
+  const imgStatus = el('span', { class: 'anr-hint', style: 'font-size:12px;margin-left:10px;' }, '');
+  const imgGrid = el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;' });
+  imgCard.appendChild(el('div', { class: 'anr-btn-row' }, [imgExtractBtn, imgStatus]));
+  imgCard.appendChild(imgGrid);
+  resultsEl.appendChild(imgCard);
+
+  imgExtractBtn.addEventListener('click', async () => {
+    imgExtractBtn.disabled = true;
+    imgGrid.innerHTML = '';
+    imgStatus.textContent = 'Scanning…';
+    let found = 0;
+    const seen = new Set();
+    try {
+      const OPS = lib.OPS;
+      for (let p = 1; p <= pdf.numPages; p++) {
+        imgStatus.textContent = 'Scanning page ' + p + ' / ' + pdf.numPages + '…';
+        const page = await pdf.getPage(p);
+        const ops = await page.getOperatorList();
+        for (let i = 0; i < ops.fnArray.length; i++) {
+          const fn = ops.fnArray[i];
+          if (fn !== OPS.paintImageXObject && fn !== OPS.paintImageXObjectRepeat) continue;
+          const name = ops.argsArray[i][0];
+          if (typeof name !== 'string' || seen.has(name)) continue;
+          seen.add(name);
+          const imgObj = await getPdfImage(page, name);
+          const cv = imgObj && pdfImageToCanvas(imgObj);
+          if (!cv) continue;
+          found++;
+          const link = el('a', {
+            href: '#', title: 'Download', download: file.name.replace(/\.pdf$/i, '') + '-img-' + found + '.png',
+            style: 'display:block;text-align:center;text-decoration:none;color:var(--muted);font-size:11px;'
+          });
+          cv.style.cssText = 'max-width:120px;max-height:120px;border:1px solid var(--hairline);display:block;background:#fff;';
+          link.appendChild(cv);
+          link.appendChild(el('div', { style: 'margin-top:4px;' }, cv.width + '×' + cv.height));
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            cv.toBlob((b) => {
+              const url = URL.createObjectURL(b);
+              const a = el('a', { href: url, download: link.getAttribute('download') });
+              document.body.appendChild(a); a.click(); a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }, 'image/png');
+          });
+          imgGrid.appendChild(link);
+          if (found >= 300) break;
+        }
+        if (found >= 300) break;
+      }
+      imgStatus.textContent = found ? found + ' image' + (found === 1 ? '' : 's') + ' found — click to download' : 'No embedded raster images found.';
+    } catch (e) {
+      imgStatus.textContent = 'Extraction failed: ' + (e && e.message);
+    }
+    imgExtractBtn.disabled = false;
+  });
 
   // --- OCR scan (render pages as images → Tesseract) ---
   const ocrCard = el('div', { class: 'anr-card' });
@@ -346,7 +619,10 @@ export async function renderPdf(file, resultsEl) {
         cv.width = Math.floor(scaled.width);
         cv.height = Math.floor(scaled.height);
         await page.render({ canvasContext: cv.getContext('2d'), viewport: scaled }).promise;
-        const worker = await T.createWorker('eng');
+        const worker = await T.createWorker('eng', undefined, {
+          workerPath: 'assets/vendor/tesseract/worker.min.js',
+          langPath: 'assets/vendor/tesseract'
+        });
         const result = await worker.recognize(cv);
         await worker.terminate();
         const text = (result.data.text || '').trim();

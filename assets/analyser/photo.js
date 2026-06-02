@@ -7,14 +7,14 @@
    - On-device OCR via lazy-loaded Tesseract.js with language picker
    - SHA-256 file hash */
 
-import { el, row, rowHelp, fmtBytes, h3help, fileExt, sha256Hex, loadScript, loadCss } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, fileExt, sha256Row, loadScript, loadCss } from './util.js';
 import { HEIC_EXTS, RAW_EXTS } from './formats.js';
 import { convertHeic, extractRawPreview, convertWithImageMagick } from './photo-convert.js';
 
-const JSQR_URL      = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
-const LEAFLET_CSS   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-const LEAFLET_JS    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+const JSQR_URL      = 'assets/vendor/jsQR.js';
+const TESSERACT_URL = 'assets/vendor/tesseract/tesseract.min.js';
+const LEAFLET_CSS   = 'assets/vendor/leaflet/leaflet.css';
+const LEAFLET_JS    = 'assets/vendor/leaflet/leaflet.js';
 
 const TESSERACT_LANGS = [
   ['eng', 'English', '4 MB'],
@@ -617,7 +617,11 @@ function makeOcrCard(file, img) {
 
     try {
       const T = await ensureTesseract();
-      activeWorker = await T.createWorker(langState.value, undefined, { logger: setProgress });
+      activeWorker = await T.createWorker(langState.value, undefined, {
+        logger: setProgress,
+        workerPath: 'assets/vendor/tesseract/worker.min.js',
+        langPath: 'assets/vendor/tesseract'
+      });
       progressLabel.textContent = 'Recognising…';
       const r = await activeWorker.recognize(ocrInput);
       await activeWorker.terminate();
@@ -1336,13 +1340,9 @@ export async function renderPhoto(file, resultsEl) {
   const hashTbl = el('table', { class: 'anr-readout' });
   hashTbl.appendChild(rowHelp('pHash', phash,
     'Perceptual hash — a fingerprint of image content. Similar images produce similar hashes, even after resizing or compression.'));
-  const shaRow = row('SHA-256', 'computing…');
-  hashTbl.appendChild(shaRow);
+  hashTbl.appendChild(sha256Row(file));
   hashCard.appendChild(hashTbl);
   resultsEl.appendChild(hashCard);
-  sha256Hex(file).then((h) => {
-    shaRow.querySelector('td').textContent = h || 'unavailable';
-  });
 
   // ---- LSB steganography analysis ----
   const lsbCard = el('div', { class: 'anr-card' });

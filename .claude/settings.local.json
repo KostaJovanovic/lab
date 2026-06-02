@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "PowerShell(magick *)",
-      "Bash(rtk ls *)"
+      "Bash(rtk ls *)",
+      "Bash(git -C \"C:/Users/Kosta/OneDrive - Flatsoft/Projekti/file analyser\" ls-files)"
     ]
   },
   "spinnerTipsEnabled": false

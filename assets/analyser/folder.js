@@ -2,7 +2,7 @@
    Recursively walks a dropped folder via webkitGetAsEntry
    and renders a quick summary: file count, total size, type breakdown, tree. */
 
-import { el, row, fmtBytes } from './util.js';
+import { el, row, fmtBytes, buildFileTree } from './util.js';
 
 function readEntries(reader) {
   return new Promise((resolve, reject) => {
@@ -64,50 +64,6 @@ function extOf(name) {
   return m ? m[1].toLowerCase() : '';
 }
 
-function buildTree(files, folderName) {
-  const tree = {};
-  for (const f of files) {
-    const parts = f.path.split('/');
-    let node = tree;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!node[parts[i]]) node[parts[i]] = {};
-      node = node[parts[i]];
-    }
-    node[parts[parts.length - 1]] = f.size;
-  }
-
-  function renderNode(obj, depth) {
-    const lines = [];
-    const keys = Object.keys(obj).sort((a, b) => {
-      const aDir = typeof obj[a] === 'object';
-      const bDir = typeof obj[b] === 'object';
-      if (aDir !== bDir) return aDir ? -1 : 1;
-      return a.localeCompare(b);
-    });
-    for (const key of keys) {
-      const val = obj[key];
-      const indent = '  '.repeat(depth);
-      if (typeof val === 'object') {
-        const count = countInObj(val);
-        lines.push(indent + key + '/  (' + count + ')');
-        lines.push(...renderNode(val, depth + 1));
-      } else {
-        lines.push(indent + key + '  ' + fmtBytes(val));
-      }
-    }
-    return lines;
-  }
-
-  function countInObj(obj) {
-    let n = 0;
-    for (const v of Object.values(obj)) {
-      n += typeof v === 'object' ? countInObj(v) : 1;
-    }
-    return n;
-  }
-
-  return renderNode(tree, 0).join('\n');
-}
 
 export function renderFolder(files, resultsEl) {
   resultsEl.hidden = false;
@@ -172,14 +128,22 @@ export function renderFolder(files, resultsEl) {
     resultsEl.appendChild(extCard);
   }
 
-  // Tree card
+  // Tree card — interactive, collapsible
   const treeCard = el('div', { class: 'anr-card' });
   treeCard.appendChild(el('h3', {}, 'File tree'));
-  const treeText = buildTree(files, folderName);
-  const pre = el('pre', { class: 'anr-pre-scroll' });
-  pre.style.fontSize = '11px';
-  pre.style.lineHeight = '1.6';
-  pre.textContent = treeText;
-  treeCard.appendChild(pre);
+  const tree = {};
+  for (const f of files) {
+    const parts = f.path.split('/');
+    let node = tree;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node[parts[i]] || typeof node[parts[i]] !== 'object') node[parts[i]] = {};
+      node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = f.size;
+  }
+  treeCard.appendChild(buildFileTree(tree, {
+    isDir: (v) => v !== null && typeof v === 'object',
+    fileSize: (v) => v
+  }));
   resultsEl.appendChild(treeCard);
 }

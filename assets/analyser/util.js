@@ -78,6 +78,97 @@ export async function sha256Hex(file) {
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export function sha256Row(file) {
+  const hashRow = row('SHA-256', '');
+  const td = hashRow.querySelector('td');
+  const bar = el('div', {
+    style: 'height:3px;margin-top:4px;background:var(--rule);border-radius:2px;overflow:hidden;'
+  });
+  const fill = el('div', {
+    style: 'height:100%;width:30%;background:var(--accent);animation:anr-sha-slide 1s ease-in-out infinite alternate;'
+  });
+  bar.appendChild(fill);
+  td.textContent = 'computing…';
+  td.appendChild(bar);
+  if (!document.getElementById('anr-sha-keyframes')) {
+    const style = document.createElement('style');
+    style.id = 'anr-sha-keyframes';
+    style.textContent = '@keyframes anr-sha-slide{from{transform:translateX(0)}to{transform:translateX(233%)}}';
+    document.head.appendChild(style);
+  }
+  sha256Hex(file).then(h => {
+    td.textContent = h || 'unavailable';
+    td.style.wordBreak = 'break-all';
+  });
+  return hashRow;
+}
+
+// Build a collapsible directory tree from a nested object. Directories are
+// rendered as <details>/<summary> nodes (closed by default, children rendered
+// lazily on first expand); files as plain rows. Shared by folder.js and
+// archive.js. Callers supply:
+//   isDir(value)   — true if value is a directory node (a sub-object)
+//   fileSize(value) — byte size for a file node (number)
+export function buildFileTree(obj, opts) {
+  const isDir = opts.isDir;
+  const fileSize = opts.fileSize;
+
+  function countAndSize(node) {
+    let files = 0, bytes = 0;
+    for (const v of Object.values(node)) {
+      if (isDir(v)) { const r = countAndSize(v); files += r.files; bytes += r.bytes; }
+      else { files++; bytes += fileSize(v) || 0; }
+    }
+    return { files, bytes };
+  }
+
+  function sortedKeys(node) {
+    return Object.keys(node).sort((a, b) => {
+      const ad = isDir(node[a]), bd = isDir(node[b]);
+      if (ad !== bd) return ad ? -1 : 1;
+      return a.localeCompare(b);
+    });
+  }
+
+  function renderNode(node) {
+    const frag = document.createDocumentFragment();
+    for (const key of sortedKeys(node)) {
+      const val = node[key];
+      if (isDir(val)) {
+        const { files, bytes } = countAndSize(val);
+        const details = el('details', { class: 'anr-tree-dir' });
+        const summary = el('summary', { class: 'anr-tree-summary' }, [
+          el('span', { class: 'anr-tree-name' }, key),
+          el('span', { class: 'anr-tree-meta' }, files + (files === 1 ? ' file · ' : ' files · ') + fmtBytes(bytes))
+        ]);
+        details.appendChild(summary);
+        let filled = false;
+        details.addEventListener('toggle', () => {
+          if (details.open && !filled) {
+            filled = true;
+            const kids = el('div', { class: 'anr-tree-children' });
+            kids.appendChild(renderNode(val));
+            details.appendChild(kids);
+          }
+        });
+        frag.appendChild(details);
+      } else {
+        frag.appendChild(el('div', { class: 'anr-tree-file' }, [
+          el('span', { class: 'anr-tree-name' }, key),
+          el('span', { class: 'anr-tree-meta' }, fmtBytes(fileSize(val) || 0))
+        ]));
+      }
+    }
+    return frag;
+  }
+
+  const rootTotals = countAndSize(obj);
+  const wrap = el('div', { class: 'anr-tree' });
+  wrap.appendChild(renderNode(obj));
+  wrap._totals = rootTotals;
+  return wrap;
+}
+
 // Lazy-load an external stylesheet/script by injecting a <link>/<script> tag,
 // resolving once it's ready (and immediately if already present). Used to pull
 // in heavy optional libraries (Leaflet, Tesseract, heic2any, jsQR) on demand.

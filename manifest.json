@@ -2,14 +2,15 @@
   "name": "Analyser ~ Kosta's Corner",
   "short_name": "Analyser",
   "description": "Drop a photo or sound file and see what's inside. Runs entirely on your phone.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#B3BAB3",
   "theme_color": "#445f74",
   "icons": [
-    { "src": "assets/icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "assets/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -1,9 +1,9 @@
 /* Analyser - archive module
    Lazy-loads fflate from CDN to inspect ZIP archives without full extraction. */
 
-import { el, row, fmtBytes } from './util.js';
+import { el, row, fmtBytes, buildFileTree } from './util.js';
 
-const FFLATE_URL = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js';
+const FFLATE_URL = new URL('../vendor/fflate.js', import.meta.url).href;
 
 let fflateLib = null;
 
@@ -128,38 +128,10 @@ export async function renderArchive(file, resultsEl) {
     }
   }
 
-  function renderTree(obj, indent) {
-    const lines = [];
-    const keys = Object.keys(obj).sort((a, b) => {
-      // Directories first
-      const aIsDir = obj[a] && typeof obj[a] === 'object' && !obj[a].name;
-      const bIsDir = obj[b] && typeof obj[b] === 'object' && !obj[b].name;
-      if (aIsDir && !bIsDir) return -1;
-      if (!aIsDir && bIsDir) return 1;
-      return a.localeCompare(b);
-    });
-    for (const key of keys) {
-      const val = obj[key];
-      const prefix = '  '.repeat(indent);
-      if (val && typeof val === 'object' && !val.name) {
-        // directory
-        lines.push(prefix + key + '/');
-        lines.push(...renderTree(val, indent + 1));
-      } else if (val && val.name) {
-        // file entry
-        lines.push(prefix + key + '  (' + fmtBytes(val.uncompSize) + ')');
-      } else {
-        lines.push(prefix + key);
-      }
-    }
-    return lines;
-  }
-
-  const treeText = renderTree(tree, 0).join('\n');
-  const treePre = el('pre', { class: 'anr-ocr-text' }, treeText || '(empty)');
-  treePre.style.maxHeight = '500px';
-  treePre.style.overflow = 'auto';
-  treeCard.appendChild(treePre);
+  treeCard.appendChild(buildFileTree(tree, {
+    isDir: (v) => v && typeof v === 'object' && !v.name,
+    fileSize: (v) => (v && v.uncompSize) || 0
+  }));
   resultsEl.appendChild(treeCard);
 
   // --- Preview small text files ---

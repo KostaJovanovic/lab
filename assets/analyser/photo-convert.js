@@ -7,9 +7,9 @@
 
 import { el, loadScript } from './util.js';
 
-const HEIC2ANY_URL    = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
-const MAGICK_WASM_URL = 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.40/dist/index.mjs';
-const MAGICK_WASM_DIR = 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.40/dist/';
+const HEIC2ANY_URL    = 'assets/vendor/heic2any.min.js';
+const MAGICK_WASM_URL = new URL('../vendor/imagemagick/index.mjs', import.meta.url).href;
+const MAGICK_WASM_DIR = 'assets/vendor/imagemagick/';
 
 // Fetch with a 0..1 progress callback driven by Content-Length. Falls back to a
 // plain arrayBuffer read when the length/stream isn't available.

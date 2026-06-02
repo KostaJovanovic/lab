@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 28;
+const COMMIT_COUNT = 29;
 const VERSION_OFFSET = 25;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -17,6 +17,10 @@ import { renderCsv } from './csv.js';
 import { renderUnknown } from './unknown.js';
 import { renderProprietary, isProprietaryExt } from './proprietary.js';
 import { renderDocx } from './docx.js';
+import { renderXlsx } from './xlsx.js';
+import { renderEpub } from './epub.js';
+import { renderPptx } from './pptx.js';
+import { renderStl } from './stl.js';
 import { initSearch } from './search.js';
 import { fileExt, el } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
@@ -72,6 +76,10 @@ function classifyFile(file) {
   if (t.startsWith('video/')) return 'video';
   if (CSV_EXTS.has(ext) || t === 'text/csv' || t === 'text/tab-separated-values') return 'csv';
   if (ext === 'docx') return 'docx';
+  if (ext === 'xlsx') return 'xlsx';
+  if (ext === 'epub') return 'epub';
+  if (ext === 'pptx') return 'pptx';
+  if (ext === 'stl') return 'stl';
   if (PHOTO_EXTS.has(ext)) return 'photo';
   if (AUDIO_EXTS.has(ext)) return 'audio';
   if (VIDEO_EXTS.has(ext)) return 'video';
@@ -193,6 +201,21 @@ function boot() {
       }
     }
 
+    const sectionPhoto = $('photo');
+    const sectionAudio = $('audio');
+    const sectionVideo = $('video');
+    const mediaSections = [sectionPhoto, sectionAudio, sectionVideo];
+    const isMedia = kind === 'photo' || kind === 'audio' || kind === 'video';
+    if (isMedia) {
+      mediaSections.forEach(s => { if (s) s.hidden = false; });
+    } else {
+      const ext = fileExt(file.name);
+      const keepPhoto = ext === 'exe' || ext === 'dll';
+      if (sectionPhoto) sectionPhoto.hidden = !keepPhoto;
+      if (sectionAudio) sectionAudio.hidden = true;
+      if (sectionVideo) sectionVideo.hidden = true;
+    }
+
     if (kind === 'photo') {
       markNav('#photo');
       markAnalysed('photo');
@@ -214,6 +237,18 @@ function boot() {
     } else if (kind === 'docx') {
       scrollTo('#unknownResults');
       renderDocx(file, unknownResults);
+    } else if (kind === 'xlsx') {
+      scrollTo('#unknownResults');
+      renderXlsx(file, unknownResults);
+    } else if (kind === 'epub') {
+      scrollTo('#unknownResults');
+      renderEpub(file, unknownResults);
+    } else if (kind === 'pptx') {
+      scrollTo('#unknownResults');
+      renderPptx(file, unknownResults);
+    } else if (kind === 'stl') {
+      scrollTo('#unknownResults');
+      renderStl(file, unknownResults);
     } else if (kind === 'pdf') {
       scrollTo('#unknownResults');
       renderPdf(file, unknownResults);
@@ -640,8 +675,8 @@ function boot() {
   }
 
   // ----- Offline download buttons -----
-  const TESS_DATA = 'https://cdn.jsdelivr.net/npm/tesseract.js-data@5.0.0/tessdata_fast';
-  const TESS_WORKER = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/worker.min.js';
+  const TESS_DATA = 'assets/vendor/tesseract';
+  const TESS_WORKER = 'assets/vendor/tesseract/worker.min.js';
 
   const TIERS = {
     essentials: [
@@ -652,32 +687,32 @@ function boot() {
       './assets/analyser/pdf.js', './assets/analyser/archive.js', './assets/analyser/svg.js',
       './assets/analyser/csv.js', './assets/analyser/unknown.js', './assets/analyser/proprietary.js',
       './assets/analyser/folder.js', './assets/analyser/navigate.js',
-      './assets/favicon.svg', './assets/icon.png',
-      'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',
+      './assets/favicon.svg', './assets/icon.png', './assets/icon-192.png', './assets/icon-512.png',
+      './assets/vendor/exifr.umd.js',
       './assets/fonts/geist-latin.woff2', './assets/fonts/geist-latin-ext.woff2',
       './assets/fonts/geist-cyrillic.woff2', './assets/fonts/geist-cyrillic-ext.woff2',
       './assets/fonts/geist-vietnamese.woff2',
       './assets/fonts/geist-mono-latin.woff2', './assets/fonts/geist-mono-latin-ext.woff2',
       './assets/fonts/geist-mono-cyrillic.woff2', './assets/fonts/geist-mono-cyrillic-ext.woff2',
       './assets/fonts/geist-mono-symbols.woff2', './assets/fonts/geist-mono-vietnamese.woff2',
-      'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.40/dist/index.mjs',
-      'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.40/dist/magick.wasm',
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js',
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js',
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm',
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js'
+      './assets/vendor/imagemagick/index.mjs',
+      './assets/vendor/imagemagick/magick.wasm',
+      './assets/vendor/ffmpeg/ffmpeg.js',
+      './assets/vendor/ffmpeg/ffmpeg-core.js',
+      './assets/vendor/ffmpeg/ffmpeg-core.wasm',
+      './assets/vendor/ffmpeg/ffmpeg-util.js'
     ],
     everything: [
-      'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
-      'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',
+      './assets/vendor/jsQR.js',
+      './assets/vendor/tesseract/tesseract.min.js',
       TESS_WORKER,
       TESS_DATA + '/eng.traineddata.gz',
-      'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-      'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-      'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
-      'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs',
-      'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs',
-      'https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js'
+      './assets/vendor/leaflet/leaflet.css',
+      './assets/vendor/leaflet/leaflet.js',
+      './assets/vendor/heic2any.min.js',
+      './assets/vendor/pdfjs/pdf.min.mjs',
+      './assets/vendor/pdfjs/pdf.worker.min.mjs',
+      './assets/vendor/fflate.js'
     ],
     complete: [
       'srp', 'srp_latn', 'hrv', 'deu', 'fra', 'ita', 'spa', 'rus', 'ell', 'ara',

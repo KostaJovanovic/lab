@@ -2,7 +2,7 @@
    Reads .docx (Office Open XML) and renders a simplified document view
    with metadata, formatted text, tables, and text extraction. */
 
-import { el, row, fmtBytes, sha256Hex } from './util.js';
+import { el, row, fmtBytes, sha256Row } from './util.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -326,13 +326,10 @@ export async function renderDocx(file, container) {
     if (file.size <= 500 * 1024 * 1024) {
       const hashCard = el('div', { class: 'anr-card' });
       hashCard.appendChild(el('h3', {}, 'Integrity'));
-      const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' },
-        'computing SHA-256…');
-      hashCard.appendChild(hashOut);
+      const hashTbl = el('table', { class: 'anr-readout' });
+      hashTbl.appendChild(sha256Row(file));
+      hashCard.appendChild(hashTbl);
       container.appendChild(hashCard);
-      sha256Hex(file).then(h => {
-        hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable';
-      });
     }
   } catch (e) {
     container.innerHTML = '';

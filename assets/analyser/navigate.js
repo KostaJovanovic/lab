@@ -68,6 +68,7 @@
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
 
     var url = new URL(href, location.href).href;
+    url = url.replace(/\/index\.html(?=[\?#]|$)/, '/');
     if (url === location.href) return;
 
     e.preventDefault();
