@@ -96,6 +96,27 @@ button { font-family: inherit; }
   width: 100%;
 }
 
+/* On displays wider than the 1440px content column there's empty margin on
+   either side, which makes the page edges read as "floating". These two fixed
+   hairlines sit at the column's left/right edges and run the full height, from
+   the (sticky) navbar down, marking where the site ends. Only rendered once the
+   viewport is wider than the content, so narrower screens are unaffected. */
+@media (min-width: 1441px) {
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--hairline);
+    z-index: 25;
+    pointer-events: none;
+  }
+  body::before { left: calc(50% - 720px); }
+  body::after { right: calc(50% - 720px); }
+}
+
 /* ---------- HEADER ---------- */
 .site-header {
   padding: clamp(40px, 6vw, 80px) 0 clamp(28px, 4vw, 48px);
@@ -2428,8 +2449,10 @@ details[open] summary::after { content: "\2212"; }
 .anr-sel-label { font-size: 0.85em; opacity: 0.8; }
 .anr-btn-sm { font-size: 0.82em; padding: 3px 10px; }
 
-/* Hidden video probe for frame capture. Kept renderable (NOT display:none) and
-   in the DOM so iOS Safari allocates a decode surface and actually paints. */
+/* Hidden video probe for off-screen frame capture. Kept renderable (NOT
+   display:none) and in the DOM so the browser gives it a decode surface. iOS
+   Safari often won't decode something this small/hidden; video.js handles that
+   by falling back to a visible player. */
 .anr-video-probe {
   position: fixed;
   left: 0;

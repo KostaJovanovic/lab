@@ -77,3 +77,16 @@ export async function sha256Hex(file) {
   const hash = await crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// Snap a measured frame rate to the nearest standard rate when it's within
+// 0.5 fps (so 29.96 reads as 29.97), otherwise keep two decimals. Shared by the
+// video module and its container parser.
+export function roundFps(raw) {
+  const standard = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120, 240];
+  let closest = raw, minDiff = Infinity;
+  for (const s of standard) {
+    const d = Math.abs(raw - s);
+    if (d < minDiff) { minDiff = d; closest = s; }
+  }
+  return minDiff < 0.5 ? closest : Math.round(raw * 100) / 100;
+}

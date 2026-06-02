@@ -5,7 +5,8 @@
 
 import { makeSpectrogramPanel, makePlayer, buildHistogramCard } from './audio.js';
 import { renderPhoto } from './photo.js';
-import { el, row, rowHelp, fmtBytes, h3help, sha256Hex } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, sha256Hex, roundFps } from './util.js';
+import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
 
 // ---------- progress-tracked fetch ----------
 async function fetchWithProgress(url, onProgress) {
@@ -244,151 +245,6 @@ function extractPcmFromMp4(arrayBuffer) {
 
 // ---------- container detection from magic bytes ----------
 
-async function parseAviHeader(file) {
-  const size = Math.min(file.size, 8192);
-  const buf = await file.slice(0, size).arrayBuffer();
-  const view = new DataView(buf);
-  const u8 = new Uint8Array(buf);
-  const tag = (o) => String.fromCharCode(u8[o], u8[o+1], u8[o+2], u8[o+3]);
-  if (tag(0) !== 'RIFF' || tag(8) !== 'AVI ') return null;
-
-  const info = {};
-  let lastStreamType = null;
-  let pos = 12;
-  while (pos + 8 < size) {
-    const ckId = tag(pos);
-    const ckSize = view.getUint32(pos + 4, true);
-    if (ckId === 'avih' && pos + 8 + 56 <= size) {
-      const d = pos + 8;
-      info.microSecPerFrame = view.getUint32(d, true);
-      info.totalFrames = view.getUint32(d + 16, true);
-      info.width = view.getUint32(d + 32, true);
-      info.height = view.getUint32(d + 36, true);
-      if (info.microSecPerFrame > 0) {
-        info.fps = roundFps(1000000 / info.microSecPerFrame);
-        info.duration = info.totalFrames * info.microSecPerFrame / 1000000;
-      }
-    }
-    if (ckId === 'strh' && pos + 8 + 56 <= size) {
-      const d = pos + 8;
-      const fccType = tag(d);
-      const fccHandler = tag(d + 4);
-      lastStreamType = fccType;
-      if (fccType === 'vids') info.codec = fccHandler.trim() || undefined;
-      if (fccType === 'auds') info.audioCodec = fccHandler.trim() || undefined;
-    }
-    if (ckId === 'strf' && lastStreamType === 'auds' && pos + 8 + 16 <= size) {
-      const d = pos + 8;
-      info.audioFormat = {
-        formatTag: view.getUint16(d, true),
-        channels: view.getUint16(d + 2, true),
-        sampleRate: view.getUint32(d + 4, true),
-        avgBytesPerSec: view.getUint32(d + 8, true),
-        blockAlign: view.getUint16(d + 12, true),
-        bitsPerSample: view.getUint16(d + 14, true)
-      };
-    }
-    if (ckId === 'LIST') { pos += 12; continue; }
-    pos += 8 + ckSize + (ckSize & 1);
-  }
-  return info.width ? info : null;
-}
-
-async function extractAviData(file, aviInfo) {
-  if (file.size > 500 * 1024 * 1024) return null;
-  const buf = await file.arrayBuffer();
-  const view = new DataView(buf);
-  const u8 = new Uint8Array(buf);
-  const tag = (o) => (o + 4 <= buf.byteLength)
-    ? String.fromCharCode(u8[o], u8[o+1], u8[o+2], u8[o+3]) : '';
-
-  let moviStart = -1, moviEnd = -1, pos = 12;
-  while (pos + 12 < buf.byteLength) {
-    const ckId = tag(pos);
-    const ckSize = view.getUint32(pos + 4, true);
-    if (ckSize === 0 || pos + ckSize > buf.byteLength + 8) break;
-    if (ckId === 'LIST' && tag(pos + 8) === 'movi') {
-      moviStart = pos + 12;
-      moviEnd = Math.min(pos + 8 + ckSize, buf.byteLength);
-      break;
-    }
-    if (ckId === 'LIST') { pos += 12; continue; }
-    pos += 8 + ckSize + (ckSize & 1);
-  }
-  if (moviStart < 0) return null;
-
-  const audioChunks = [], videoFrames = [];
-  pos = moviStart;
-  while (pos + 8 <= moviEnd) {
-    const ckId = tag(pos);
-    const ckSize = view.getUint32(pos + 4, true);
-    const dataStart = pos + 8;
-    if (dataStart + ckSize > buf.byteLength || ckSize === 0) break;
-    if ((ckId === '00dc' || ckId === '00db') && ckSize > 2)
-      videoFrames.push(buf.slice(dataStart, dataStart + ckSize));
-    if (ckId === '01wb' && ckSize > 0)
-      audioChunks.push(new Uint8Array(buf, dataStart, ckSize));
-    if (ckId === 'LIST') { pos += 12; continue; }
-    pos += 8 + ckSize + (ckSize & 1);
-  }
-
-  const result = { videoFrames };
-  const fmt = aviInfo && aviInfo.audioFormat;
-  if (audioChunks.length && fmt && fmt.formatTag === 1 && fmt.bitsPerSample) {
-    const totalSize = audioChunks.reduce((s, c) => s + c.length, 0);
-    const pcm = new Uint8Array(totalSize);
-    let off = 0;
-    for (const c of audioChunks) { pcm.set(c, off); off += c.length; }
-    const bytesPerSample = fmt.bitsPerSample / 8;
-    const frameSize = bytesPerSample * fmt.channels;
-    const totalFrames = Math.floor(totalSize / frameSize);
-    if (totalFrames > 0) {
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
-      const audioBuf = ac.createBuffer(fmt.channels, totalFrames, fmt.sampleRate);
-      const pcmView = new DataView(pcm.buffer);
-      for (let ch = 0; ch < fmt.channels; ch++) {
-        const chData = audioBuf.getChannelData(ch);
-        for (let i = 0; i < totalFrames; i++) {
-          const bytePos = i * frameSize + ch * bytesPerSample;
-          if (bytePos + bytesPerSample > totalSize) break;
-          if (bytesPerSample === 2) chData[i] = pcmView.getInt16(bytePos, true) / 0x8000;
-          else if (bytesPerSample === 1) chData[i] = (pcmView.getUint8(bytePos) - 128) / 128;
-        }
-      }
-      result.audioBuffer = audioBuf;
-    }
-  }
-  return result;
-}
-
-function encodeWav(audioBuf) {
-  const ch = audioBuf.numberOfChannels, sr = audioBuf.sampleRate, len = audioBuf.length;
-  const block = ch * 2, dataSize = len * block;
-  const buf = new ArrayBuffer(44 + dataSize);
-  const v = new DataView(buf);
-  let o = 0;
-  const ws = (s) => { for (let i = 0; i < s.length; i++) v.setUint8(o++, s.charCodeAt(i)); };
-  ws('RIFF'); v.setUint32(o, 36 + dataSize, true); o += 4; ws('WAVEfmt ');
-  v.setUint32(o, 16, true); o += 4;
-  v.setUint16(o, 1, true); o += 2;
-  v.setUint16(o, ch, true); o += 2;
-  v.setUint32(o, sr, true); o += 4;
-  v.setUint32(o, sr * block, true); o += 4;
-  v.setUint16(o, block, true); o += 2;
-  v.setUint16(o, 16, true); o += 2;
-  ws('data'); v.setUint32(o, dataSize, true); o += 4;
-  const chData = [];
-  for (let c = 0; c < ch; c++) chData.push(audioBuf.getChannelData(c));
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < ch; c++) {
-      let s = Math.max(-1, Math.min(1, chData[c][i]));
-      v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-      o += 2;
-    }
-  }
-  return new Blob([buf], { type: 'audio/wav' });
-}
-
 async function peekVideoContainer(file) {
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   const ascii = (s, l) => String.fromCharCode(...head.slice(s, s + l));
@@ -421,16 +277,6 @@ async function peekVideoContainer(file) {
 }
 
 // ---------- frame rate detection ----------
-
-function roundFps(raw) {
-  const standard = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120, 240];
-  let closest = raw, minDiff = Infinity;
-  for (const s of standard) {
-    const d = Math.abs(raw - s);
-    if (d < minDiff) { minDiff = d; closest = s; }
-  }
-  return minDiff < 0.5 ? closest : Math.round(raw * 100) / 100;
-}
 
 async function detectFpsFromContainer(file) {
   if (file.size < 12) return null;
@@ -774,9 +620,12 @@ export async function renderVideo(file, resultsEl) {
 
   const url = URL.createObjectURL(file);
 
-  // The probe must be IN THE DOM (and not display:none) for iOS Safari to give
-  // it a decode surface — otherwise frames never paint and captures are black.
-  // It's parked 1px/near-transparent in the corner via .anr-video-probe.
+  // The probe is kept IN THE DOM (not display:none) so the browser gives it a
+  // decode surface for off-screen frame capture — otherwise frames never paint
+  // and captures come out black. It's parked 1px/near-transparent in the corner
+  // via .anr-video-probe. iOS Safari often refuses to decode something this
+  // small/hidden anyway; when the probe never loads, the catch block below falls
+  // back to a real visible player (renderVisibleVideoFallback).
   const probe = el('video', { class: 'anr-video-probe' });
   probe.muted = true;
   probe.defaultMuted = true;

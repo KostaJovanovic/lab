@@ -18,6 +18,7 @@ const SHELL = [
   './assets/analyser/audio-analysis.js',
   './assets/analyser/audio-codec.js',
   './assets/analyser/video.js',
+  './assets/analyser/video-avi.js',
   './assets/analyser/spectrogram.js',
   './assets/analyser/pdf.js',
   './assets/analyser/archive.js',
