@@ -112,9 +112,12 @@ button { font-family: inherit; }
     background: var(--hairline);
     z-index: 25;
     pointer-events: none;
+    animation: none;
+    will-change: auto;
+    inset: auto;
   }
-  body::before { left: calc(50% - 720px); }
-  body::after { right: calc(50% - 720px); }
+  body::before { left: calc(50% - 720px); top: 0; bottom: 0; }
+  body::after { right: calc(50% - 720px); top: 0; bottom: 0; }
 }
 
 /* ---------- HEADER ---------- */
