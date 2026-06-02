@@ -4,8 +4,8 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 30;
-const VERSION_OFFSET = 25;
+const COMMIT_COUNT = 31;
+const VERSION_OFFSET = 31;
 
 import { initPhoto, renderPhoto } from './photo.js';
 import { initAudio, renderAudio } from './audio.js';
