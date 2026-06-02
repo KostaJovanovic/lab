@@ -724,8 +724,8 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   // --- controls ---
   const controls = el('div', { class: 'anr-controls' });
   const toggle = el('div', { class: 'anr-toggle' });
-  const btnLog = el('button', { type: 'button', class: 'is-active' }, 'LOG');
-  const btnLin = el('button', { type: 'button' }, 'LINEAR');
+  const btnLog = el('button', { type: 'button' }, 'LOG');
+  const btnLin = el('button', { type: 'button', class: 'is-active' }, 'LINEAR');
   toggle.appendChild(btnLog); toggle.appendChild(btnLin);
 
   const fftSel  = el('select', {}, ['256','512','1024','2048','4096','8192'].map((v) => el('option', { value: v }, v)));
@@ -736,10 +736,11 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   const zoomSel = el('select', {}, ['1','1.5','2','3','4','6','8','12','16'].map((v) => el('option', { value: v }, v + 'x')));
   zoomSel.value = '1';
   const heightSel = el('select', {}, ['240','320','420','560','720','900'].map((v) => el('option', { value: v }, v + 'px')));
-  heightSel.value = '420';
+  heightSel.value = '320';
 
-  const saveBtn = el('button', { type: 'button', class: 'anr-fs-btn' }, 'Save PNG');
-  const fsBtn   = el('button', { type: 'button', class: 'anr-fs-btn' }, 'Fullscreen');
+  const sIco = (svg) => { const s = el('span', { html: svg, style: 'display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;' }); return s; };
+  const saveBtn = el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v8M3 6l4 4 4-4"/><path d="M1 11v2h12v-2"/></svg>'), 'Save PNG']);
+  const fsBtn   = el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']);
 
   controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Axis'),   toggle]));
   controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'FFT'),    fftSel]));
@@ -794,8 +795,8 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   card.appendChild(status);
 
   let state = {
-    scale: 'log', cmap: 'magma', fftSize: 2048, winName: 'hann',
-    zoom: 1, height: 420
+    scale: 'linear', cmap: 'magma', fftSize: 2048, winName: 'hann',
+    zoom: 1, height: 320
   };
   let cached = null;
 
@@ -1347,8 +1348,8 @@ async function startLive(resultsEl, liveBtn) {
 
   const controls = el('div', { class: 'anr-controls' });
   const toggle = el('div', { class: 'anr-toggle' });
-  const btnLog = el('button', { type: 'button', class: 'is-active' }, 'LOG');
-  const btnLin = el('button', { type: 'button' }, 'LINEAR');
+  const btnLog = el('button', { type: 'button' }, 'LOG');
+  const btnLin = el('button', { type: 'button', class: 'is-active' }, 'LINEAR');
   toggle.appendChild(btnLog); toggle.appendChild(btnLin);
 
   const fftSel    = el('select', {}, ['512','1024','2048','4096','8192'].map((v) => el('option', { value: v }, v)));
@@ -1356,14 +1357,14 @@ async function startLive(resultsEl, liveBtn) {
   const cmapSel   = el('select', {}, Object.keys(colormaps).map((v) => el('option', { value: v }, v)));
   cmapSel.value = 'magma';
   const heightSel = el('select', {}, ['240','320','420','560','720','900'].map((v) => el('option', { value: v }, v + 'px')));
-  heightSel.value = '420';
-  const speedSel  = el('select', {}, [['1','Slow'],['2','Normal'],['3','Fast'],['4','Faster'],['6','Fastest']].map(([v,l]) => el('option', { value: v }, l)));
-  speedSel.value = '2';
-  const saveBtn   = el('button', { type: 'button', class: 'anr-fs-btn' }, 'Save PNG');
-  const fsBtn     = el('button', { type: 'button', class: 'anr-fs-btn' }, 'Fullscreen');
-  const recBtn    = el('button', { type: 'button', class: 'anr-btn' }, '● Record');
-  const pauseBtn  = el('button', { type: 'button', class: 'anr-btn' }, 'Pause');
-  const stopBtn   = el('button', { type: 'button', class: 'anr-btn' }, 'Stop');
+  heightSel.value = '320';
+  const speedSel  = el('select', {}, [['0.5','Slowest'],['1','Slow'],['2','Normal'],['3','Fast'],['4','Faster'],['6','Fastest']].map(([v,l]) => el('option', { value: v }, l)));
+  speedSel.value = '1';
+  const ico = (svg) => { const s = el('span', { html: svg, style: 'display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;' }); return s; };
+  const saveBtn   = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v8M3 6l4 4 4-4"/><path d="M1 11v2h12v-2"/></svg>'), 'Save PNG']);
+  const fsBtn     = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']);
+  const recBtn    = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>'), 'Record']);
+  const pauseBtn  = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1" width="3.5" height="12"/><rect x="8.5" y="1" width="3.5" height="12"/></svg>'), 'Pause']);
 
   controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Axis'),   toggle]));
   controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'FFT'),    fftSel]));
@@ -1374,7 +1375,6 @@ async function startLive(resultsEl, liveBtn) {
   controls.appendChild(el('div', { class: 'anr-control' }, [fsBtn]));
   controls.appendChild(el('div', { class: 'anr-control' }, [recBtn]));
   controls.appendChild(el('div', { class: 'anr-control' }, [pauseBtn]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [stopBtn]));
   card.appendChild(controls);
 
   // --- body (yaxis + scroll/canvas), no x-axis (no fixed time in live mode) ---
@@ -1390,7 +1390,7 @@ async function startLive(resultsEl, liveBtn) {
   resultsEl.appendChild(card);
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  let state = { scale: 'log', cmap: 'magma', height: 420 };
+  let state = { scale: 'linear', cmap: 'magma', height: 320 };
 
   function isFs() { return document.fullscreenElement === card; }
   function availableWidth()  { return Math.max(200, (wrap.clientWidth || 600) - 48); }
@@ -1469,11 +1469,12 @@ async function startLive(resultsEl, liveBtn) {
   window.addEventListener('resize', onWinResize);
 
   let dbData = new Float32Array(analyser.frequencyBinCount);
-  let colW = 2;
+  let colW = 1;
+  let colAccum = 0;
   let stopped = false;
   let paused = false;
   liveBtn.classList.add('is-active');
-  speedSel.addEventListener('change', () => { colW = parseInt(speedSel.value, 10); });
+  speedSel.addEventListener('change', () => { colW = parseFloat(speedSel.value); });
 
   function tick() {
     if (stopped) return;
@@ -1482,19 +1483,24 @@ async function startLive(resultsEl, liveBtn) {
     if (dbData.length !== bins) dbData = new Float32Array(bins);
     analyser.getFloatFrequencyData(dbData);
 
-    const w = canvas.width, h = canvas.height;
-    if (w <= colW || h <= 0) return requestAnimationFrame(tick);
+    colAccum += colW;
+    const drawW = Math.floor(colAccum);
+    if (drawW < 1) return requestAnimationFrame(tick);
+    colAccum -= drawW;
 
-    const img = ctxC.getImageData(colW, 0, w - colW, h);
+    const w = canvas.width, h = canvas.height;
+    if (w <= drawW || h <= 0) return requestAnimationFrame(tick);
+
+    const img = ctxC.getImageData(drawW, 0, w - drawW, h);
     ctxC.putImageData(img, 0, 0);
     ctxC.fillStyle = '#0a0a0a';
-    ctxC.fillRect(w - colW, 0, colW, h);
+    ctxC.fillRect(w - drawW, 0, drawW, h);
 
     const cmap = colormaps[state.cmap] || colormaps.viridis;
     const nyq = ac.sampleRate / 2;
     const dbFloor = -100, dbCeil = -10;
     const range = dbCeil - dbFloor;
-    const colImg = ctxC.createImageData(colW, h);
+    const colImg = ctxC.createImageData(drawW, h);
 
     for (let y = 0; y < h; y++) {
       let binF;
@@ -1515,15 +1521,15 @@ async function startLive(resultsEl, liveBtn) {
       let t = (db - dbFloor) / range;
       if (t < 0) t = 0; else if (t > 1) t = 1;
       const [r, g, bl] = cmap(t);
-      for (let x = 0; x < colW; x++) {
-        const o = (y * colW + x) * 4;
+      for (let x = 0; x < drawW; x++) {
+        const o = (y * drawW + x) * 4;
         colImg.data[o]     = r;
         colImg.data[o + 1] = g;
         colImg.data[o + 2] = bl;
         colImg.data[o + 3] = 255;
       }
     }
-    ctxC.putImageData(colImg, w - colW, 0);
+    ctxC.putImageData(colImg, w - drawW, 0);
 
     requestAnimationFrame(tick);
   }
@@ -1540,7 +1546,10 @@ async function startLive(resultsEl, liveBtn) {
 
   pauseBtn.addEventListener('click', () => {
     paused = !paused;
-    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    const pauseIco = paused
+      ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 13,7 2,13"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1" width="3.5" height="12"/><rect x="8.5" y="1" width="3.5" height="12"/></svg>';
+    pauseBtn.innerHTML = '<span style="display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;">' + pauseIco + '</span>' + (paused ? 'Resume' : 'Pause');
   });
 
   let liveRec = null;
@@ -1556,7 +1565,7 @@ async function startLive(resultsEl, liveBtn) {
     liveRec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     liveRec.onstop = async () => {
       recBtn.classList.remove('is-recording');
-      recBtn.textContent = '● Record';
+      recBtn.innerHTML = '<span style="display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg></span>Record';
       const blob = new Blob(chunks, { type: mime || 'audio/webm' });
       const ext = (mime.match(/audio\/(\w+)/) || [, 'webm'])[1];
       const file = new File([blob], 'recording.' + ext, { type: blob.type });
@@ -1572,10 +1581,11 @@ async function startLive(resultsEl, liveBtn) {
     };
     liveRec.start();
     recBtn.classList.add('is-recording');
-    recBtn.textContent = '■ Stop rec';
+    recBtn.innerHTML = '<span style="display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10"/></svg></span>Stop rec';
   });
 
-  stopBtn.addEventListener('click', () => {
+  function closeLive() {
+    if (stopped) return;
     stopped = true;
     liveBtn.classList.remove('is-active');
     stream.getTracks().forEach((t) => t.stop());
@@ -1583,12 +1593,14 @@ async function startLive(resultsEl, liveBtn) {
     document.removeEventListener('fullscreenchange', onFsChange);
     document.removeEventListener('webkitfullscreenchange', onFsChange);
     window.removeEventListener('resize', onWinResize);
+    liveBtn.removeEventListener('click', closeLive);
     if (document.fullscreenElement === card) {
       (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     }
     card.remove();
     if (!resultsEl.children.length) resultsEl.hidden = true;
-  });
+  }
+  liveBtn.addEventListener('click', closeLive);
 }
 
 // --- Setup ---
