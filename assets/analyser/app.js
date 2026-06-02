@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 25;
+const COMMIT_COUNT = 27;
 const VERSION_OFFSET = 25;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -384,9 +384,52 @@ function boot() {
     a.style.cursor = 'default';
   });
 
+  // ----- Storage with 7-day expiry -----
+  const ANR_TTL = 7 * 24 * 60 * 60 * 1000;
+  const ANR_REFRESH = 24 * 60 * 60 * 1000;
+
+  function anrSet(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      localStorage.setItem(key + ':ts', Date.now().toString());
+    } catch (e) { /* quota or private mode */ }
+  }
+
+  function anrGet(key) {
+    try {
+      var ts = parseInt(localStorage.getItem(key + ':ts'), 10);
+      if (!ts || Date.now() - ts > ANR_TTL) {
+        localStorage.removeItem(key);
+        localStorage.removeItem(key + ':ts');
+        return null;
+      }
+      return localStorage.getItem(key);
+    } catch (e) { return null; }
+  }
+
+  function anrSweep() {
+    try {
+      var now = Date.now();
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (!k || !k.startsWith('anr-') || k.endsWith(':ts')) continue;
+        var ts = parseInt(localStorage.getItem(k + ':ts'), 10);
+        if (!ts || now - ts > ANR_TTL) {
+          localStorage.removeItem(k);
+          localStorage.removeItem(k + ':ts');
+        } else if (now - ts > ANR_REFRESH) {
+          localStorage.setItem(k + ':ts', now.toString());
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  anrSweep();
+
   // ----- Dark mode toggle -----
-  const saved = localStorage.getItem('anr-theme');
-  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  const saved = anrGet('anr-theme');
+  const effective = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : null);
+  if (effective) document.documentElement.setAttribute('data-theme', effective);
   const darkBtn = $('darkToggle');
   if (darkBtn) {
     darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Disable' : 'Enable';
@@ -394,7 +437,7 @@ function boot() {
       const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       const next = isDark ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('anr-theme', next);
+      anrSet('anr-theme', next);
       darkBtn.textContent = next === 'dark' ? 'Disable' : 'Enable';
     });
   }
@@ -460,8 +503,12 @@ function boot() {
       return letters;
     }
 
+    var sweepRunning = false;
+    var sweepCleanup = 0;
+
     function makeSweep(letters, radius, duration) {
       return function sweep() {
+        sweepRunning = true;
         const rect = mark.getBoundingClientRect();
         const sx = rect.left - radius;
         const ex = rect.right + radius;
@@ -469,6 +516,7 @@ function boot() {
         const span = ex - sx;
         let t0 = null;
         function frame(ts) {
+          if (!sweepRunning) return;
           if (!t0) t0 = ts;
           const p = Math.min(1, (ts - t0) / duration);
           const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -485,7 +533,10 @@ function boot() {
               l.el.style.transition = 'font-weight 0.4s ease';
               l.el.style.fontWeight = l.base;
             }
-            setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
+            sweepCleanup = setTimeout(() => {
+              for (const l of letters) l.el.style.transition = '';
+              sweepRunning = false;
+            }, 500);
           }
         }
         requestAnimationFrame(frame);
@@ -508,10 +559,13 @@ function boot() {
       }
 
       mark.addEventListener('mouseenter', () => {
+        if (sweepRunning) {
+          sweepRunning = false;
+          clearTimeout(sweepCleanup);
+          for (const l of letters) l.el.style.transition = '';
+        }
         inside = true;
-        for (const l of letters) l.el.style.transition = 'font-weight 0.15s ease';
         raf = requestAnimationFrame(tick);
-        setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 150);
       });
       mark.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
       mark.addEventListener('mouseleave', () => {
@@ -530,6 +584,8 @@ function boot() {
       setTimeout(sweep, 800);
       setInterval(sweep, 8000);
     }
+
+    setInterval(anrSweep, ANR_REFRESH);
 
     boot._once = true;
   } // end one-time guard

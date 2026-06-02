@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="assets/fonts.css">
   <link rel="stylesheet" href="assets/analyser.css">
-  <script>try{var t=localStorage.getItem('anr-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+  <script>try{var t=localStorage.getItem('anr-theme'),s=parseInt(localStorage.getItem('anr-theme:ts'),10);if(t&&(!s||Date.now()-s>604800000)){localStorage.removeItem('anr-theme');localStorage.removeItem('anr-theme:ts');t=null;}if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
 

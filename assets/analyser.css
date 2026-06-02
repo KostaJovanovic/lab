@@ -224,13 +224,15 @@ button { font-family: inherit; }
   z-index: 20;
   background: var(--bg);
   border-bottom: 1px solid var(--hairline);
-  display: flex;
+  display: grid;
+  grid-template-columns: 48px 1fr 1fr 1fr auto;
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--pad-x);
 }
+body:has(.about-page) .site-nav { grid-template-columns: 48px repeat(4, 1fr) auto; }
 .nav-link {
-  flex: 1 1 0;
+  min-width: 0;
   padding: 16px 4px;
   text-decoration: none;
   color: var(--fg);
@@ -261,7 +263,6 @@ button { font-family: inherit; }
 .nav-home {
   display: flex;
   align-items: stretch;
-  flex: 0 0 48px;
   border-left: 1px solid var(--rule);
   border-right: 1px solid var(--rule);
 }
@@ -283,10 +284,8 @@ button { font-family: inherit; }
 .nav-home-btn:hover { opacity: 1; }
 
 .nav-search {
-  margin-left: auto;
   display: flex;
   align-items: stretch;
-  flex: 0 0 auto;
   border-left: 1px solid var(--rule);
   border-right: 1px solid var(--rule);
 }
@@ -2310,8 +2309,8 @@ details[open] summary::after { content: "\2212"; }
   .anr-control select { min-height: 36px; padding: 6px 8px; }
   /* Tighten the nav so home + 3 links + search fit on narrow phones (~360px)
      without the search button overflowing off the right edge. */
-  .site-nav { padding-left: 14px; padding-right: 14px; }
-  .nav-link { padding: 14px 4px; gap: 6px; min-width: 0; }
+  .site-nav { display: flex; padding-left: 14px; padding-right: 14px; }
+  .nav-link { flex: 1 1 0; padding: 14px 4px; gap: 6px; min-width: 0; }
   .site-about-link { min-height: 36px; display: inline-flex; align-items: center; }
   .nav-search {}
   .nav-search.is-open .nav-search-btn { display: block; }
