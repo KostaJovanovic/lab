@@ -62,10 +62,10 @@
       <div class="anr-dropzone quickdrop-zone" id="photoDrop" data-kind="photo">
         <label class="anr-dropzone-inner" for="photoInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
-          <strong>Drop a photo</strong>
+          <strong>Drop a photo or video</strong>
           <p>or <span class="anr-pick-link">tap to pick</span></p>
-          <input type="file" accept="image/*" id="photoInput" hidden>
-          <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; WEBP &middot; RAW</p>
+          <input type="file" accept="image/*,video/*" id="photoInput" hidden>
+          <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; RAW<br>MP4 &middot; MOV &middot; MKV &middot; WEBM &middot; AVI</p>
         </label>
       </div>
 
@@ -83,17 +83,63 @@
         </div>
       </div>
 
-      <div class="anr-dropzone quickdrop-zone" id="videoDrop" data-kind="video">
+      <div class="anr-dropzone quickdrop-zone" id="videoDrop" data-kind="video" style="position:relative">
         <label class="anr-dropzone-inner" for="videoInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
-          <strong>Drop a video</strong>
+          <strong>Drop any file</strong>
           <p>or <span class="anr-pick-link">tap to pick</span></p>
-          <input type="file" accept="video/*" id="videoInput" hidden>
-          <p class="anr-hint">MP4 &middot; MOV &middot; WEBM &middot; MKV &middot; AVI</p>
+          <input type="file" id="videoInput" hidden>
+          <p class="anr-hint">PDF &middot; ZIP &middot; CSV &middot; SVG &middot; 200+ formats</p>
+          <p class="anr-hint" style="opacity:0.5">Analysis may be limited for some formats</p>
         </label>
+        <button type="button" class="fmt-help-btn" id="fmtHelpBtn" aria-label="Supported formats">Info</button>
       </div>
     </div>
   </section>
+
+  <div id="fmtOverlay" class="fmt-overlay" hidden>
+    <div class="fmt-overlay-inner">
+      <div class="fmt-overlay-header">
+        <h3>Supported formats</h3>
+        <button type="button" class="fmt-overlay-close" id="fmtOverlayClose">&times;</button>
+      </div>
+      <input type="text" class="fmt-overlay-search" id="fmtSearch" placeholder="Search formats..." autocomplete="off" spellcheck="false">
+      <div class="fmt-overlay-body" id="fmtBody">
+        <p class="fmt-section-label">Full analysis</p>
+        <table class="anr-readout fmt-table">
+          <tr data-fmt data-tags="image picture camera photograph sony nikon canon fuji olympus pentax sigma samsung apple google pixel"><th>Photo</th><td>JPG JPEG JIF JFIF PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F</td></tr>
+          <tr data-fmt data-tags="audio music podcast recording microphone"><th>Sound</th><td>MP3 WAV M4A AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA MIDI</td></tr>
+          <tr data-fmt data-tags="movie film clip recording screen"><th>Video</th><td>MP4 MOV AVI MKV WebM WMV FLV 3GP MPG MPEG MTS M2TS TS VOB OGV</td></tr>
+          <tr data-fmt data-tags="adobe acrobat document"><th>PDF</th><td>PDF</td></tr>
+          <tr data-fmt data-tags="compressed zip"><th>Archives</th><td>ZIP</td></tr>
+          <tr data-fmt data-tags="spreadsheet vector markup data table"><th>Data</th><td>CSV TSV SVG</td></tr>
+          <tr data-fmt data-tags="programming development website react typescript javascript node"><th>Web / code</th><td>HTML CSS JS TS TSX JSX JSON YAML XML MD</td></tr>
+        </table>
+        <p class="fmt-section-label">Identification + basic metadata</p>
+        <table class="anr-readout fmt-table">
+          <tr data-fmt data-tags="microsoft office word excel powerpoint apple iwork libreoffice openoffice google docs sheets slides"><th>Documents</th><td>DOC DOCX XLS XLSX PPT PPTX PPSX ODT ODS ODP ODG Pages Numbers Keynote</td></tr>
+          <tr data-fmt data-tags="photoshop illustrator indesign after effects premiere pro audition xd animate flash lightroom substance"><th>Adobe</th><td>PSD PSB AI INDD INDT IDML AEP AET PRPROJ MOGRT SESX XD FLA SWF XMP LRtemplate LRcat ACV ACO ASL ABR GRD PAT</td></tr>
+          <tr data-fmt data-tags="figma sketch affinity photo designer publisher procreate gimp krita paint.net substance painter"><th>Design</th><td>FIG Sketch afphoto afdesign afpub Procreate XCF KRA PDN SPP SBSAR SBS</td></tr>
+          <tr data-fmt data-tags="autocad autodesk solidworks fusion 360 inventor rhinoceros rhino sketchup trimble 3ds max cinema 4d maxon houdini sidefx zbrush pixologic maya catia dassault eagle kicad electronic"><th>CAD</th><td>DWG DXF DWT SLDPRT SLDASM SLDDRW F3D F3Z IPT IAM IDW 3DM SKP 3DS MAX C4D HIP ZPR ZTL MA MB CATPART CATPRODUCT PRT ASM BRD SCH KiCad</td></tr>
+          <tr data-fmt data-tags="parasolid acis exchange neutral format"><th>CAD exchange</th><td>STEP STP IGES IGS SAT X_T X_B</td></tr>
+          <tr data-fmt data-tags="blender mesh model 3d printing prusa bambu cura slicer wavefront autodesk pixar apple unity unreal"><th>3D / printing</th><td>STL OBJ FBX glTF GLB PLY USDZ USD USDA 3MF AMF BLEND</td></tr>
+          <tr data-fmt data-tags="winrar 7zip compressed archive tar gzip bzip zstandard"><th>Archives</th><td>RAR 7Z TAR GZ BZ2 XZ ZST TGZ</td></tr>
+          <tr data-fmt data-tags="font typeface typography truetype opentype web woff"><th>Fonts</th><td>TTF OTF WOFF WOFF2 TTC</td></tr>
+          <tr data-fmt data-tags="ebook kindle amazon reader kobo calibre"><th>eBooks</th><td>EPUB MOBI AZW AZW3 FB2 DJVU</td></tr>
+          <tr data-fmt data-tags="subtitle caption closed captions srt webvtt"><th>Subtitles</th><td>SRT VTT ASS SSA SUB</td></tr>
+          <tr data-fmt data-tags="ableton fl studio fruity loops reaper logic pro tools cubase garageband steinberg daw"><th>Music production</th><td>ALS ALP FLP RPP LOGIC LOGICX PTX CPR BAND</td></tr>
+          <tr data-fmt data-tags="sqlite microsoft access database sql"><th>Databases</th><td>SQLite DB MDB ACCDB</td></tr>
+          <tr data-fmt data-tags="geographic gis mapping google earth shapefile esri garmin strava"><th>GIS / mapping</th><td>SHP KML KMZ GPX GeoJSON</td></tr>
+          <tr data-fmt data-tags="virtual machine disk image hyper-v vmware virtualbox qemu boot"><th>Disk images</th><td>ISO IMG VHD VHDX VMDK QCOW2 VDI</td></tr>
+          <tr data-fmt data-tags="unity unreal godot game development asset"><th>Game engines</th><td>UNITYPACKAGE UASSET UMAP GODOT TSCN TRES</td></tr>
+          <tr data-fmt data-tags="configuration settings dotenv toml ini"><th>Config</th><td>TOML INI ENV CONF CFG PROPERTIES</td></tr>
+          <tr data-fmt data-tags="windows android apple mac macos linux program application installer package"><th>Executables</th><td>EXE DLL MSI APK IPA DMG AppImage</td></tr>
+          <tr data-fmt data-tags="davinci resolve blackmagic"><th>Video editing</th><td>DRP</td></tr>
+          <tr data-fmt data-tags="bittorrent peer to peer p2p download"><th>Other</th><td>TORRENT</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <div id="unknownResults" class="anr-results anr-unknown-results" hidden></div>
 
@@ -195,7 +241,7 @@
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. ~30 MB, loaded only when needed.</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a>. Fast ZIP decompression in the browser.</dd></div>
-      <div><dt>File ID</dt><dd>Built-in identification for 100+ proprietary formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, and more. Extracts metadata from headers where possible.</dd></div>
+      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, and more. Extracts metadata from headers where possible.</dd></div>
       <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell. Use the buttons above to pre-cache heavy dependencies.</dd></div>
     </dl>
   </details>

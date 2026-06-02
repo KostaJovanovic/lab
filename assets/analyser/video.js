@@ -244,6 +244,151 @@ function extractPcmFromMp4(arrayBuffer) {
 
 // ---------- container detection from magic bytes ----------
 
+async function parseAviHeader(file) {
+  const size = Math.min(file.size, 8192);
+  const buf = await file.slice(0, size).arrayBuffer();
+  const view = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  const tag = (o) => String.fromCharCode(u8[o], u8[o+1], u8[o+2], u8[o+3]);
+  if (tag(0) !== 'RIFF' || tag(8) !== 'AVI ') return null;
+
+  const info = {};
+  let lastStreamType = null;
+  let pos = 12;
+  while (pos + 8 < size) {
+    const ckId = tag(pos);
+    const ckSize = view.getUint32(pos + 4, true);
+    if (ckId === 'avih' && pos + 8 + 56 <= size) {
+      const d = pos + 8;
+      info.microSecPerFrame = view.getUint32(d, true);
+      info.totalFrames = view.getUint32(d + 16, true);
+      info.width = view.getUint32(d + 32, true);
+      info.height = view.getUint32(d + 36, true);
+      if (info.microSecPerFrame > 0) {
+        info.fps = roundFps(1000000 / info.microSecPerFrame);
+        info.duration = info.totalFrames * info.microSecPerFrame / 1000000;
+      }
+    }
+    if (ckId === 'strh' && pos + 8 + 56 <= size) {
+      const d = pos + 8;
+      const fccType = tag(d);
+      const fccHandler = tag(d + 4);
+      lastStreamType = fccType;
+      if (fccType === 'vids') info.codec = fccHandler.trim() || undefined;
+      if (fccType === 'auds') info.audioCodec = fccHandler.trim() || undefined;
+    }
+    if (ckId === 'strf' && lastStreamType === 'auds' && pos + 8 + 16 <= size) {
+      const d = pos + 8;
+      info.audioFormat = {
+        formatTag: view.getUint16(d, true),
+        channels: view.getUint16(d + 2, true),
+        sampleRate: view.getUint32(d + 4, true),
+        avgBytesPerSec: view.getUint32(d + 8, true),
+        blockAlign: view.getUint16(d + 12, true),
+        bitsPerSample: view.getUint16(d + 14, true)
+      };
+    }
+    if (ckId === 'LIST') { pos += 12; continue; }
+    pos += 8 + ckSize + (ckSize & 1);
+  }
+  return info.width ? info : null;
+}
+
+async function extractAviData(file, aviInfo) {
+  if (file.size > 500 * 1024 * 1024) return null;
+  const buf = await file.arrayBuffer();
+  const view = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  const tag = (o) => (o + 4 <= buf.byteLength)
+    ? String.fromCharCode(u8[o], u8[o+1], u8[o+2], u8[o+3]) : '';
+
+  let moviStart = -1, moviEnd = -1, pos = 12;
+  while (pos + 12 < buf.byteLength) {
+    const ckId = tag(pos);
+    const ckSize = view.getUint32(pos + 4, true);
+    if (ckSize === 0 || pos + ckSize > buf.byteLength + 8) break;
+    if (ckId === 'LIST' && tag(pos + 8) === 'movi') {
+      moviStart = pos + 12;
+      moviEnd = Math.min(pos + 8 + ckSize, buf.byteLength);
+      break;
+    }
+    if (ckId === 'LIST') { pos += 12; continue; }
+    pos += 8 + ckSize + (ckSize & 1);
+  }
+  if (moviStart < 0) return null;
+
+  const audioChunks = [], videoFrames = [];
+  pos = moviStart;
+  while (pos + 8 <= moviEnd) {
+    const ckId = tag(pos);
+    const ckSize = view.getUint32(pos + 4, true);
+    const dataStart = pos + 8;
+    if (dataStart + ckSize > buf.byteLength || ckSize === 0) break;
+    if ((ckId === '00dc' || ckId === '00db') && ckSize > 2)
+      videoFrames.push(buf.slice(dataStart, dataStart + ckSize));
+    if (ckId === '01wb' && ckSize > 0)
+      audioChunks.push(new Uint8Array(buf, dataStart, ckSize));
+    if (ckId === 'LIST') { pos += 12; continue; }
+    pos += 8 + ckSize + (ckSize & 1);
+  }
+
+  const result = { videoFrames };
+  const fmt = aviInfo && aviInfo.audioFormat;
+  if (audioChunks.length && fmt && fmt.formatTag === 1 && fmt.bitsPerSample) {
+    const totalSize = audioChunks.reduce((s, c) => s + c.length, 0);
+    const pcm = new Uint8Array(totalSize);
+    let off = 0;
+    for (const c of audioChunks) { pcm.set(c, off); off += c.length; }
+    const bytesPerSample = fmt.bitsPerSample / 8;
+    const frameSize = bytesPerSample * fmt.channels;
+    const totalFrames = Math.floor(totalSize / frameSize);
+    if (totalFrames > 0) {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuf = ac.createBuffer(fmt.channels, totalFrames, fmt.sampleRate);
+      const pcmView = new DataView(pcm.buffer);
+      for (let ch = 0; ch < fmt.channels; ch++) {
+        const chData = audioBuf.getChannelData(ch);
+        for (let i = 0; i < totalFrames; i++) {
+          const bytePos = i * frameSize + ch * bytesPerSample;
+          if (bytePos + bytesPerSample > totalSize) break;
+          if (bytesPerSample === 2) chData[i] = pcmView.getInt16(bytePos, true) / 0x8000;
+          else if (bytesPerSample === 1) chData[i] = (pcmView.getUint8(bytePos) - 128) / 128;
+        }
+      }
+      result.audioBuffer = audioBuf;
+    }
+  }
+  return result;
+}
+
+function encodeWav(audioBuf) {
+  const ch = audioBuf.numberOfChannels, sr = audioBuf.sampleRate, len = audioBuf.length;
+  const block = ch * 2, dataSize = len * block;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  let o = 0;
+  const ws = (s) => { for (let i = 0; i < s.length; i++) v.setUint8(o++, s.charCodeAt(i)); };
+  ws('RIFF'); v.setUint32(o, 36 + dataSize, true); o += 4; ws('WAVEfmt ');
+  v.setUint32(o, 16, true); o += 4;
+  v.setUint16(o, 1, true); o += 2;
+  v.setUint16(o, ch, true); o += 2;
+  v.setUint32(o, sr, true); o += 4;
+  v.setUint32(o, sr * block, true); o += 4;
+  v.setUint16(o, block, true); o += 2;
+  v.setUint16(o, 16, true); o += 2;
+  ws('data'); v.setUint32(o, dataSize, true); o += 4;
+  const chData = [];
+  for (let c = 0; c < ch; c++) chData.push(audioBuf.getChannelData(c));
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < ch; c++) {
+      let s = Math.max(-1, Math.min(1, chData[c][i]));
+      v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      o += 2;
+    }
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
 async function peekVideoContainer(file) {
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   const ascii = (s, l) => String.fromCharCode(...head.slice(s, s + l));
@@ -565,6 +710,214 @@ export async function renderVideo(file, resultsEl) {
   } catch (_) {
     probe.remove();
     resultsEl.innerHTML = '';
+
+    let avi = null;
+    try { avi = await parseAviHeader(file); } catch (_) {}
+
+    if (avi) {
+      resultsEl.appendChild(el('div', { class: 'anr-info' },
+        'Your browser cannot play this codec. Analysis extracted from file data.'));
+
+      const infoCard = el('div', { class: 'anr-card' });
+      infoCard.appendChild(el('h3', {}, 'File info'));
+      const tbl = el('table', { class: 'anr-readout' });
+      tbl.appendChild(row('Name', file.name));
+      tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
+      tbl.appendChild(row('MIME', file.type || '-'));
+      tbl.appendChild(row('Container', header.container || 'AVI'));
+      if (avi.codec) tbl.appendChild(row('Video codec', avi.codec.toUpperCase()));
+      if (avi.audioCodec) tbl.appendChild(row('Audio codec', avi.audioCodec.toUpperCase()));
+      tbl.appendChild(row('Resolution', `${avi.width} × ${avi.height} px`));
+      tbl.appendChild(row('Aspect ratio', aspectRatio(avi.width, avi.height)));
+      if (avi.duration) tbl.appendChild(row('Duration', formatDuration(avi.duration)));
+      if (avi.fps) tbl.appendChild(row('Frame rate', avi.fps + ' fps'));
+      if (avi.totalFrames) tbl.appendChild(row('Total frames', avi.totalFrames.toLocaleString()));
+      const bitrate = avi.duration && avi.duration > 0
+        ? (file.size * 8 / avi.duration / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / avi.duration / 1_000_000).toFixed(2) + ' Mbps)'
+        : '-';
+      tbl.appendChild(row('Bitrate (total)', bitrate));
+      if (avi.width && avi.height)
+        tbl.appendChild(row('Frame size', ((avi.width * avi.height) / 1_000_000).toFixed(2) + ' MP'));
+      if (avi.audioFormat)
+        tbl.appendChild(row('Audio', `${avi.audioFormat.sampleRate} Hz, ${avi.audioFormat.bitsPerSample}-bit, ${avi.audioFormat.channels}ch`));
+      infoCard.appendChild(tbl);
+      resultsEl.appendChild(infoCard);
+
+      let aviData = null;
+      try { aviData = await extractAviData(file, avi); } catch (_) {}
+
+      // MJPEG frame viewer
+      if (aviData && aviData.videoFrames.length) {
+        const frames = aviData.videoFrames;
+        const frameCard = el('div', { class: 'anr-card' });
+        frameCard.appendChild(el('h3', {}, 'Frames'));
+        frameCard.appendChild(el('p', { class: 'anr-hint' },
+          frames.length + ' MJPEG frame' + (frames.length > 1 ? 's' : '') + ' extracted'));
+
+        const frameImg = el('img', {
+          style: 'max-width:100%; max-height:480px; display:block; border:1px solid var(--hairline); background:#0a0a0a;',
+          alt: 'Frame 1'
+        });
+        frameImg.src = URL.createObjectURL(new Blob([frames[0]], { type: 'image/jpeg' }));
+        frameCard.appendChild(frameImg);
+
+        let currentFrame = 0;
+        const frameLabel = el('span', { class: 'anr-hint' }, `Frame 1 / ${frames.length}`);
+        function showFrame(idx) {
+          currentFrame = idx;
+          URL.revokeObjectURL(frameImg.src);
+          frameImg.src = URL.createObjectURL(new Blob([frames[idx]], { type: 'image/jpeg' }));
+          frameImg.alt = `Frame ${idx + 1}`;
+          frameLabel.textContent = `Frame ${idx + 1} / ${frames.length}`;
+        }
+
+        const prevBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+          if (currentFrame > 0) showFrame(currentFrame - 1);
+        }}, '← Prev');
+        const nextBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+          if (currentFrame < frames.length - 1) showFrame(currentFrame + 1);
+        }}, 'Next →');
+        const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+          const blob = new Blob([frames[currentFrame]], { type: 'image/jpeg' });
+          const frameFile = new File([blob], `frame_${currentFrame}.jpg`, { type: 'image/jpeg' });
+          const photoResults = document.getElementById('photoResults');
+          if (photoResults) {
+            renderPhoto(frameFile, photoResults);
+            const photoSection = document.getElementById('photo');
+            if (photoSection) window.scrollTo({ top: photoSection.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
+          }
+        }}, 'Analyse frame');
+
+        if (frames.length > 1)
+          frameCard.appendChild(el('div', { class: 'anr-frame-grid', style: 'margin-top:10px;' },
+            [frameLabel, analyseBtn, prevBtn, nextBtn]));
+        else
+          frameCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:10px;' }, [analyseBtn]));
+
+        if (frames.length >= 8) {
+          const sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
+          const sheetOut = el('div');
+          sheetBtn.addEventListener('click', async () => {
+            sheetBtn.disabled = true;
+            sheetBtn.textContent = 'Generating…';
+            const cols = 4, rows = 2, total = cols * rows;
+            const tw = Math.round(avi.width * (320 / Math.max(avi.width, avi.height)));
+            const th = Math.round(avi.height * (320 / Math.max(avi.width, avi.height)));
+            const pad = 4;
+            const gridCanvas = document.createElement('canvas');
+            gridCanvas.width = cols * tw + (cols + 1) * pad;
+            gridCanvas.height = rows * th + (rows + 1) * pad;
+            const ctx = gridCanvas.getContext('2d');
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, gridCanvas.width, gridCanvas.height);
+            for (let i = 0; i < total; i++) {
+              const fi = Math.floor(i * (frames.length - 1) / (total - 1));
+              const img = new Image();
+              img.src = URL.createObjectURL(new Blob([frames[fi]], { type: 'image/jpeg' }));
+              await new Promise(r => { img.onload = r; img.onerror = r; });
+              const c = i % cols, r = Math.floor(i / cols);
+              ctx.drawImage(img, pad + c * (tw + pad), pad + r * (th + pad), tw, th);
+              URL.revokeObjectURL(img.src);
+            }
+            sheetOut.innerHTML = '';
+            sheetOut.appendChild(el('img', {
+              src: gridCanvas.toDataURL('image/png'), alt: 'Contact sheet',
+              style: 'max-width:100%; margin-top:10px; border:1px solid var(--hairline); display:block;'
+            }));
+            sheetBtn.disabled = false;
+            sheetBtn.textContent = 'Generate contact sheet';
+          });
+          frameCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [sheetBtn]));
+          frameCard.appendChild(sheetOut);
+        }
+        resultsEl.appendChild(frameCard);
+
+        // Auto-analyse first frame
+        const photoResultsEl = document.getElementById('photoResults');
+        if (photoResultsEl) {
+          const blob = new Blob([frames[0]], { type: 'image/jpeg' });
+          const frameFile = new File([blob], 'frame_0.000s.jpg', { type: 'image/jpeg' });
+          renderPhoto(frameFile, photoResultsEl);
+        }
+      }
+
+      // Audio from direct PCM extraction
+      const audioResultsEl = document.getElementById('audioResults');
+      if (audioResultsEl && aviData && aviData.audioBuffer) {
+        audioResultsEl.hidden = false;
+        const audioBuf = aviData.audioBuffer;
+        const mono = getMono(audioBuf);
+        const stats = computeStats(mono);
+        const wavBlob = encodeWav(audioBuf);
+        const wavUrl = URL.createObjectURL(wavBlob);
+
+        const audioPlayer = el('audio', { src: wavUrl });
+        audioPlayer.style.display = 'none';
+        const apCard = el('div', { class: 'anr-card' });
+        apCard.appendChild(el('h3', {}, 'Extracted audio'));
+        apCard.appendChild(audioPlayer);
+        apCard.appendChild(makePlayer(audioPlayer));
+        audioResultsEl.appendChild(apCard);
+
+        const audioCard = el('div', { class: 'anr-card' });
+        audioCard.appendChild(el('h3', {}, 'Audio track'));
+        const at = el('table', { class: 'anr-readout' });
+        at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
+        at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
+        at.appendChild(row('Channels', audioBuf.numberOfChannels));
+        at.appendChild(row('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)'));
+        at.appendChild(row('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)'));
+        at.appendChild(row('Samples', mono.length.toLocaleString()));
+        audioCard.appendChild(at);
+
+        const waveWrap = el('div', { style: 'position:relative; width:100%;' });
+        const waveCanvas = el('canvas', { class: 'anr-waveform' });
+        waveCanvas.width = 1024; waveCanvas.height = 80;
+        renderWaveform(waveCanvas, mono);
+        const waveLine = el('div', { class: 'anr-playhead' });
+        waveLine.style.cssText = 'pointer-events:auto; width:7px; margin-left:-3px; cursor:col-resize; background:transparent; border-left:1px solid #fff;';
+        waveWrap.appendChild(waveCanvas);
+        waveWrap.appendChild(waveLine);
+        audioCard.appendChild(waveWrap);
+        audioResultsEl.appendChild(audioCard);
+
+        audioResultsEl.appendChild(buildHistogramCard(mono));
+        const basename = (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio';
+        audioResultsEl.appendChild(makeSpectrogramPanel(mono, audioBuf.sampleRate, { basename, audioEl: audioPlayer, signal: renderSignal }));
+
+        const audioDuration = audioBuf.duration;
+        function tickPlayhead() {
+          const pct = audioDuration > 0 ? (audioPlayer.currentTime / audioDuration) * 100 : 0;
+          waveLine.style.left = pct + '%';
+          if (!audioPlayer.paused) requestAnimationFrame(tickPlayhead);
+        }
+        audioPlayer.addEventListener('play', () => requestAnimationFrame(tickPlayhead));
+        audioPlayer.addEventListener('pause', tickPlayhead);
+        audioPlayer.addEventListener('seeked', tickPlayhead);
+        waveCanvas.style.cursor = 'pointer';
+        waveCanvas.addEventListener('click', (e) => {
+          const rect = waveCanvas.getBoundingClientRect();
+          const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          audioPlayer.currentTime = frac * audioDuration;
+          tickPlayhead();
+        });
+      }
+
+      // SHA-256
+      if (file.size <= 500 * 1024 * 1024) {
+        const hashCard = el('div', { class: 'anr-card' });
+        hashCard.appendChild(el('h3', {}, 'Integrity'));
+        const hashOut = el('p', { class: 'anr-hint', style: 'word-break:break-all;' }, 'computing SHA-256…');
+        hashCard.appendChild(hashOut);
+        resultsEl.appendChild(hashCard);
+        sha256Hex(file).then((h) => {
+          hashOut.textContent = h ? 'SHA-256: ' + h : 'SHA-256 unavailable';
+        });
+      }
+
+      return;
+    }
+
     resultsEl.appendChild(el('div', { class: 'anr-error' },
       'Could not load this video. Format may not be supported by your browser.'));
     return;
@@ -601,6 +954,18 @@ export async function renderVideo(file, resultsEl) {
   }
 
   // Auto-analyse first frame in the photo section
+  const photoResultsEl = document.getElementById('photoResults');
+  if (photoResultsEl) {
+    let lastPhotoHeight = photoResultsEl.offsetHeight;
+    const photoScrollComp = new ResizeObserver(() => {
+      const newHeight = photoResultsEl.offsetHeight;
+      const delta = newHeight - lastPhotoHeight;
+      if (delta > 0) window.scrollBy(0, delta);
+      lastPhotoHeight = newHeight;
+    });
+    photoScrollComp.observe(photoResultsEl);
+    renderSignal.addEventListener('abort', () => photoScrollComp.disconnect());
+  }
   if (vw && vh) {
     const fcv = document.createElement('canvas');
     fcv.width = vw; fcv.height = vh;
@@ -608,8 +973,7 @@ export async function renderVideo(file, resultsEl) {
     fcv.toBlob(blob => {
       if (!blob) return;
       const frameFile = new File([blob], `frame_0.000s.png`, { type: 'image/png' });
-      const photoResults = document.getElementById('photoResults');
-      if (photoResults) renderPhoto(frameFile, photoResults);
+      if (photoResultsEl) renderPhoto(frameFile, photoResultsEl);
     }, 'image/png');
   }
 

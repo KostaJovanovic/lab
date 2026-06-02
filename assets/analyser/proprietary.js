@@ -161,6 +161,91 @@ const FORMATS = {
   // DaVinci Resolve
   drp:     { app: 'DaVinci Resolve Project', icon: 'DR' },
 
+  // Music production
+  als:     { app: 'Ableton Live Set', icon: 'ABL' },
+  alp:     { app: 'Ableton Live Pack', icon: 'ABL' },
+  flp:     { app: 'FL Studio Project', icon: 'FL', magic: [0x46, 0x4C, 0x68, 0x64] },
+  rpp:     { app: 'Reaper Project', icon: 'RPP', parse: 'text' },
+  'rpp-bak': { app: 'Reaper Project Backup', icon: 'RPP', parse: 'text' },
+  logic:   { app: 'Logic Pro Project', icon: 'LGC' },
+  logicx:  { app: 'Logic Pro X Project', icon: 'LGC' },
+  ptx:     { app: 'Pro Tools Session', icon: 'PT' },
+  cpr:     { app: 'Steinberg Cubase Project', icon: 'CUB' },
+  band:    { app: 'GarageBand Project', icon: 'GB' },
+
+  // Archives
+  rar:     { app: 'RAR Archive', icon: 'RAR', magic: [0x52, 0x61, 0x72, 0x21] },
+  '7z':    { app: '7-Zip Archive', icon: '7Z', magic: [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C] },
+  tar:     { app: 'Tar Archive', icon: 'TAR' },
+  gz:      { app: 'Gzip Archive', icon: 'GZ', magic: [0x1F, 0x8B] },
+  bz2:     { app: 'Bzip2 Archive', icon: 'BZ2', magic: [0x42, 0x5A, 0x68] },
+  xz:      { app: 'XZ Archive', icon: 'XZ', magic: [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] },
+  zst:     { app: 'Zstandard Archive', icon: 'ZST', magic: [0x28, 0xB5, 0x2F, 0xFD] },
+  tgz:     { app: 'Gzipped Tar Archive', icon: 'TGZ', magic: [0x1F, 0x8B] },
+
+  // Disk images
+  iso:     { app: 'ISO Disk Image', icon: 'ISO' },
+  img:     { app: 'Disk Image', icon: 'IMG' },
+  vhd:     { app: 'Virtual Hard Disk (Hyper-V)', icon: 'VHD' },
+  vhdx:    { app: 'Virtual Hard Disk v2 (Hyper-V)', icon: 'VHD' },
+  vmdk:    { app: 'VMware Virtual Disk', icon: 'VMD' },
+  qcow2:   { app: 'QEMU Copy-on-Write Disk', icon: 'QCW' },
+  vdi:     { app: 'VirtualBox Disk Image', icon: 'VDI' },
+
+  // Fonts
+  ttf:     { app: 'TrueType Font', icon: 'TTF', magic: [0x00, 0x01, 0x00, 0x00] },
+  otf:     { app: 'OpenType Font', icon: 'OTF', magic: [0x4F, 0x54, 0x54, 0x4F] },
+  woff:    { app: 'Web Open Font Format', icon: 'WF', magic: [0x77, 0x4F, 0x46, 0x46] },
+  woff2:   { app: 'Web Open Font Format 2', icon: 'WF2', magic: [0x77, 0x4F, 0x46, 0x32] },
+  ttc:     { app: 'TrueType Font Collection', icon: 'TTC' },
+
+  // eBooks
+  epub:    { app: 'EPUB eBook', icon: 'EPB', zip: true },
+  mobi:    { app: 'Kindle / Mobipocket eBook', icon: 'MOB' },
+  azw3:    { app: 'Kindle Format 8 eBook', icon: 'AZW' },
+  azw:     { app: 'Kindle eBook', icon: 'AZW' },
+  fb2:     { app: 'FictionBook eBook', icon: 'FB2', parse: 'xml' },
+  djvu:    { app: 'DjVu Document', icon: 'DJV' },
+
+  // Subtitles
+  srt:     { app: 'SubRip Subtitle', icon: 'SRT', parse: 'text' },
+  vtt:     { app: 'WebVTT Subtitle', icon: 'VTT', parse: 'text' },
+  ass:     { app: 'Advanced SubStation Alpha', icon: 'ASS', parse: 'text' },
+  ssa:     { app: 'SubStation Alpha', icon: 'SSA', parse: 'text' },
+  sub:     { app: 'MicroDVD / VobSub Subtitle', icon: 'SUB', parse: 'text' },
+
+  // Database
+  sqlite:  { app: 'SQLite Database', icon: 'SQL', magic: [0x53, 0x51, 0x4C, 0x69, 0x74, 0x65] },
+  db:      { app: 'Database File', icon: 'DB' },
+  mdb:     { app: 'Microsoft Access Database', icon: 'MDB' },
+  accdb:   { app: 'Microsoft Access Database', icon: 'MDB' },
+
+  // GIS / Mapping
+  shp:     { app: 'ESRI Shapefile', icon: 'SHP' },
+  kml:     { app: 'Keyhole Markup Language (Google Earth)', icon: 'KML', parse: 'xml' },
+  kmz:     { app: 'KML Archive (Google Earth)', icon: 'KMZ', zip: true },
+  gpx:     { app: 'GPS Exchange Format', icon: 'GPX', parse: 'xml' },
+  geojson: { app: 'GeoJSON', icon: 'GEO', parse: 'text' },
+
+  // Game engines
+  unitypackage: { app: 'Unity Asset Package', icon: 'UNI' },
+  uasset:  { app: 'Unreal Engine Asset', icon: 'UE' },
+  umap:    { app: 'Unreal Engine Map', icon: 'UE' },
+  godot:   { app: 'Godot Project', icon: 'GOD', parse: 'text' },
+  tscn:    { app: 'Godot Scene', icon: 'GOD', parse: 'text' },
+  tres:    { app: 'Godot Resource', icon: 'GOD', parse: 'text' },
+
+  // Torrent
+  torrent: { app: 'BitTorrent Metainfo', icon: 'TOR' },
+
+  // Config
+  toml:    { app: 'TOML Config', icon: 'TML', parse: 'text' },
+  ini:     { app: 'INI Config', icon: 'INI', parse: 'text' },
+  env:     { app: 'Environment Variables', icon: 'ENV', parse: 'text' },
+  conf:    { app: 'Configuration File', icon: 'CNF', parse: 'text' },
+  cfg:     { app: 'Configuration File', icon: 'CFG', parse: 'text' },
+  properties: { app: 'Java Properties', icon: 'PRP', parse: 'text' },
+
   // Executables
   exe:     { app: 'Windows Executable', icon: 'EXE', magic: [0x4D, 0x5A] },
   dll:     { app: 'Windows Dynamic Library', icon: 'DLL', magic: [0x4D, 0x5A] },

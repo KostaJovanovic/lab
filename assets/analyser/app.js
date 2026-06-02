@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 17;
+const COMMIT_COUNT = 18;
 const VERSION_OFFSET = 17;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -18,6 +18,7 @@ import { renderUnknown } from './unknown.js';
 import { renderProprietary, isProprietaryExt } from './proprietary.js';
 import { initSearch } from './search.js';
 import { fileExt } from './util.js';
+import { walkItems, renderFolder } from './folder.js';
 
 function $(id) { return document.getElementById(id); }
 
@@ -234,12 +235,32 @@ function boot() {
       if (!hasFiles(e)) return;
       e.preventDefault();
     });
-    window.addEventListener('drop', (e) => {
+    window.addEventListener('drop', async (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragCounter = 0;
       const drop = $('pageDrop');
       if (drop) drop.hidden = true;
+
+      const folderFiles = await walkItems(e.dataTransfer);
+      if (folderFiles) {
+        if (!$('photoResults')) {
+          window._anrPendingFolder = folderFiles;
+          const home = new URL('index.html', location.href).href;
+          if (location.href !== home) {
+            const link = document.createElement('a');
+            link.href = 'index.html';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+          }
+          return;
+        }
+        const ur = $('unknownResults');
+        if (ur) renderFolder(folderFiles, ur);
+        return;
+      }
+
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || !files.length) return;
 
@@ -261,6 +282,10 @@ function boot() {
   if (window._anrPendingFile && photoResults) {
     handleFile(window._anrPendingFile);
     delete window._anrPendingFile;
+  }
+  if (window._anrPendingFolder && unknownResults) {
+    renderFolder(window._anrPendingFolder, unknownResults);
+    delete window._anrPendingFolder;
   }
 
   // ----- Version number -----
@@ -554,6 +579,44 @@ function boot() {
         b.querySelector('.offline-size').textContent = sizes[tier];
       });
     });
+  }
+
+  // ----- Format help overlay -----
+  const fmtBtn = $('fmtHelpBtn');
+  const fmtOverlay = $('fmtOverlay');
+  const fmtClose = $('fmtOverlayClose');
+  const fmtSearch = $('fmtSearch');
+  if (fmtBtn && fmtOverlay) {
+    fmtBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fmtOverlay.hidden = false;
+      document.body.style.overflow = 'hidden';
+      if (fmtSearch) { fmtSearch.value = ''; fmtSearch.focus(); }
+      fmtOverlay.querySelectorAll('tr[data-fmt]').forEach(r => r.classList.remove('is-hidden'));
+      fmtOverlay.querySelectorAll('.fmt-section-label').forEach(l => l.style.display = '');
+    });
+    function closeFmt() { fmtOverlay.hidden = true; document.body.style.overflow = ''; }
+    if (fmtClose) fmtClose.addEventListener('click', closeFmt);
+    fmtOverlay.addEventListener('click', (e) => { if (e.target === fmtOverlay) closeFmt(); });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !fmtOverlay.hidden) closeFmt(); });
+    if (fmtSearch) {
+      const rows = fmtOverlay.querySelectorAll('tr[data-fmt]');
+      const labels = fmtOverlay.querySelectorAll('.fmt-section-label');
+      fmtSearch.addEventListener('input', () => {
+        const q = fmtSearch.value.trim().toLowerCase();
+        rows.forEach(r => {
+          const text = (r.querySelector('th').textContent + ' ' + r.querySelector('td').textContent + ' ' + (r.dataset.tags || '')).toLowerCase();
+          r.classList.toggle('is-hidden', q && !text.includes(q));
+        });
+        labels.forEach(label => {
+          const table = label.nextElementSibling;
+          if (!table) return;
+          const visible = table.querySelectorAll('tr[data-fmt]:not(.is-hidden)').length;
+          label.style.display = visible ? '' : 'none';
+        });
+      });
+    }
   }
 
   // ----- Search -----

@@ -247,6 +247,7 @@ export function makePlayer(mediaEl) {
   function scrub(clientX) {
     const rect = trackEl.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    fillEl.style.width = (frac * 100) + '%';
     if (seeking) {
       pendingFrac = frac;
     } else {
@@ -276,7 +277,7 @@ export function makePlayer(mediaEl) {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   });
-  function onTouchMove(e) { if (dragging && e.touches[0]) scrub(e.touches[0].clientX); }
+  function onTouchMove(e) { if (dragging && e.touches[0]) { scrub(e.touches[0].clientX); tick(); } }
   function onTouchEnd() {
     dragging = false;
     window.removeEventListener('touchmove', onTouchMove);
@@ -393,16 +394,8 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   wrap.appendChild(yWrap); wrap.appendChild(scrollEl);
   card.appendChild(wrap);
 
-  // Transport: play/pause the source right under the spectrogram.
   if (opts.audioEl) {
-    const playBtn = el('button', { type: 'button', class: 'anr-btn anr-spec-play' }, '▶ Play');
-    const syncPlay = () => { playBtn.textContent = opts.audioEl.paused ? '▶ Play' : '❚❚ Pause'; };
-    playBtn.addEventListener('click', () => { if (opts.audioEl.paused) opts.audioEl.play(); else opts.audioEl.pause(); });
-    opts.audioEl.addEventListener('play', syncPlay);
-    opts.audioEl.addEventListener('pause', syncPlay);
-    opts.audioEl.addEventListener('ended', syncPlay);
-    syncPlay();
-    card.appendChild(el('div', { class: 'anr-spec-transport' }, [playBtn]));
+    card.appendChild(el('div', { class: 'anr-spec-transport' }, [makePlayer(opts.audioEl)]));
   }
 
   const status = el('p', { class: 'anr-hint anr-spec-hint', style: 'margin: 6px 0 0; text-align: right;' }, 'computing...');
@@ -742,7 +735,7 @@ export function buildHistogramCard(samples) {
     'A tall spike at the centre means lots of quiet; energy spread toward the edges means a loud, dynamic signal.');
   histCard.appendChild(ahH); histCard.appendChild(ahHelp);
   const histCanvas = el('canvas', { class: 'anr-histogram' });
-  histCanvas.width = 1024; histCanvas.height = 200;
+  histCanvas.width = 1024; histCanvas.height = 100;
   histCard.appendChild(histCanvas);
 
   const bins = 256;

@@ -24,6 +24,7 @@ const SHELL = [
   './assets/analyser/csv.js',
   './assets/analyser/unknown.js',
   './assets/analyser/proprietary.js',
+  './assets/analyser/folder.js',
   './assets/analyser/navigate.js',
   './assets/favicon.svg',
   './assets/icon.png',

@@ -8,9 +8,9 @@
     var newKicker = doc.querySelector('.site-kicker');
     if (oldKicker && newKicker) oldKicker.textContent = newKicker.textContent;
 
-    var oldMetaDl = document.querySelector('.site-meta dl');
-    var newMetaDl = doc.querySelector('.site-meta dl');
-    if (oldMetaDl && newMetaDl) oldMetaDl.innerHTML = newMetaDl.innerHTML;
+    var oldLastDd = document.querySelector('.site-meta dl dd:last-of-type');
+    var newLastDd = doc.querySelector('.site-meta dl dd:last-of-type');
+    if (oldLastDd && newLastDd) oldLastDd.innerHTML = newLastDd.innerHTML;
 
     var oldNav = document.querySelector('.site-nav');
     var newNav = doc.querySelector('.site-nav');
