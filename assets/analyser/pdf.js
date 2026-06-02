@@ -157,29 +157,92 @@ export async function renderPdf(file, resultsEl) {
     renderVisible();
   });
 
-  // --- Thumbnail previews (first 4 pages) ---
+  // --- Thumbnail previews (first 4 pages, click to view full page) ---
   const thumbCard = el('div', { class: 'anr-card' });
   thumbCard.appendChild(el('h3', {}, 'Page previews'));
   const thumbContainer = el('div', {
     style: 'display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-start;'
   });
 
+  function openPageViewer(startPage) {
+    let overlay = document.getElementById('anr-pdf-viewer');
+    if (!overlay) {
+      overlay = el('div', { id: 'anr-pdf-viewer', class: 'lightbox' });
+      const closeBtn = el('button', { type: 'button', class: 'lightbox-close' }, 'Close');
+      const center = el('div', { class: 'lightbox-center' });
+      const cvWrap = el('div', { class: 'lightbox-img-wrap' });
+      const cv = el('canvas', {});
+      cvWrap.appendChild(cv);
+      const toolbar = el('div', { class: 'lightbox-toolbar' });
+      const meta = el('p', { class: 'lightbox-meta' });
+      center.appendChild(cvWrap);
+      center.appendChild(toolbar);
+      center.appendChild(meta);
+      overlay.appendChild(closeBtn);
+      overlay.appendChild(center);
+      function close() { overlay.hidden = true; document.body.style.overflow = ''; }
+      closeBtn.addEventListener('click', close);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+      document.body.appendChild(overlay);
+    }
+    const cvWrap = overlay.querySelector('.lightbox-img-wrap');
+    const cv = cvWrap.querySelector('canvas');
+    const toolbar = overlay.querySelector('.lightbox-toolbar');
+    const meta = overlay.querySelector('.lightbox-meta');
+    toolbar.innerHTML = '';
+
+    let current = startPage;
+    async function showPage(num) {
+      current = num;
+      meta.textContent = 'Page ' + num + ' / ' + pdf.numPages;
+      prevBtn.style.visibility = num > 1 ? 'visible' : 'hidden';
+      nextBtn.style.visibility = num < pdf.numPages ? 'visible' : 'hidden';
+      try {
+        const pg = await pdf.getPage(num);
+        const vp = pg.getViewport({ scale: 1 });
+        const maxW = window.innerWidth * 0.9;
+        const maxH = window.innerHeight * 0.82;
+        const scale = Math.min(maxW / vp.width, maxH / vp.height, 3);
+        const sv = pg.getViewport({ scale });
+        cv.width = Math.floor(sv.width);
+        cv.height = Math.floor(sv.height);
+        cvWrap.style.width = cv.width + 'px';
+        cvWrap.style.height = cv.height + 'px';
+        await pg.render({ canvasContext: cv.getContext('2d'), viewport: sv }).promise;
+      } catch (_) {
+        meta.textContent = 'Page ' + num + ' — could not render';
+      }
+    }
+
+    const prevBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, '← Prev');
+    prevBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current > 1) showPage(current - 1); });
+    const nextBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Next →');
+    nextBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current < pdf.numPages) showPage(current + 1); });
+    toolbar.appendChild(prevBtn);
+    toolbar.appendChild(nextBtn);
+
+    overlay.hidden = false;
+    document.body.style.overflow = 'hidden';
+    showPage(startPage);
+  }
+
   const pagesToRender = Math.min(pdf.numPages, 4);
   for (let i = 1; i <= pagesToRender; i++) {
     try {
       const page = await pdf.getPage(i);
       const vp = page.getViewport({ scale: 1 });
-      // Scale so the thumbnail is ~200px wide
       const scale = 200 / vp.width;
       const scaled = page.getViewport({ scale });
       const canvas = el('canvas', {
         width: String(Math.floor(scaled.width)),
         height: String(Math.floor(scaled.height)),
-        style: 'border: 1px solid var(--hairline); border-radius: 4px;'
+        style: 'border: 1px solid var(--hairline); cursor: pointer;'
       });
       const ctx = canvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport: scaled }).promise;
-
+      const pageNum = i;
+      canvas.addEventListener('click', () => openPageViewer(pageNum));
       const wrapper = el('div', { style: 'text-align: center;' }, [
         canvas,
         el('div', { style: 'font-size: 11px; margin-top: 4px; opacity: 0.7;' }, `Page ${i}`)

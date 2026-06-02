@@ -1,11 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#ffffff"/>
-  <!-- left line -->
-  <line x1="6" y1="14" x2="6" y2="50" stroke="#0a0a0a" stroke-width="3.5" stroke-linecap="square"/>
-  <!-- square (36x36, matching line height) -->
-  <rect x="14" y="14" width="36" height="36" fill="none" stroke="#0a0a0a" stroke-width="3.5"/>
-  <!-- dot -->
-  <circle cx="32" cy="32" r="5.5" fill="#e60023"/>
-  <!-- right line -->
-  <line x1="58" y1="14" x2="58" y2="50" stroke="#0a0a0a" stroke-width="3.5" stroke-linecap="square"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 64 64">
+  <!-- Generator: Adobe Illustrator 29.5.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 137)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #fff;
+      }
+
+      .st1, .st2 {
+        fill: none;
+        stroke: #0a0a0a;
+        stroke-width: 3.5px;
+      }
+
+      .st3 {
+        fill: #e60023;
+      }
+
+      .st2 {
+        stroke-linecap: square;
+      }
+    </style>
+  </defs>
+  <rect class="st0" width="64" height="64" rx="5.97" ry="5.97"/>
+  <line class="st2" x1="6" y1="5.11" x2="6" y2="58.89"/>
+  <rect class="st1" x="12.78" y="6.11" width="38.45" height="51.78"/>
+  <circle class="st3" cx="32" cy="32" r="7.55"/>
+  <line class="st2" x1="58" y1="5.11" x2="58" y2="58.89"/>
 </svg>

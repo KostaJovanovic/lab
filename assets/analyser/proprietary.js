@@ -477,6 +477,343 @@ function parseOle(buf) {
   return { 'OLE version': major + '.' + minor };
 }
 
+// ---------- Font (TTF / OTF) ----------
+async function parseFont(file) {
+  const size = Math.min(file.size, 65536);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  if (buf.length < 12) return null;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const magic = view.getUint32(0);
+  if (magic !== 0x00010000 && magic !== 0x4F54544F) return null;
+  const numTables = view.getUint16(4);
+  let nameOff = 0;
+  for (let i = 0; i < numTables && 12 + i * 16 + 16 <= buf.length; i++) {
+    if (ascii(buf, 12 + i * 16, 4) === 'name') {
+      nameOff = view.getUint32(12 + i * 16 + 8);
+      break;
+    }
+  }
+  if (!nameOff || nameOff + 6 > buf.length) return null;
+  const count = view.getUint16(nameOff + 2);
+  const strOff = nameOff + view.getUint16(nameOff + 4);
+  const wanted = { 1: 'Family', 2: 'Style', 4: 'Full name', 5: 'Version', 8: 'Manufacturer', 9: 'Designer' };
+  const names = {};
+  for (let i = 0; i < count && nameOff + 6 + i * 12 + 12 <= buf.length; i++) {
+    const base = nameOff + 6 + i * 12;
+    const pid = view.getUint16(base);
+    const nid = view.getUint16(base + 6);
+    const len = view.getUint16(base + 8);
+    const off = view.getUint16(base + 10);
+    const label = wanted[nid];
+    if (!label || names[label]) continue;
+    const s = strOff + off;
+    if (s + len > buf.length) continue;
+    let text;
+    if (pid === 3 || pid === 0) {
+      const codes = [];
+      for (let j = 0; j < len - 1; j += 2) codes.push(view.getUint16(s + j));
+      text = String.fromCharCode(...codes);
+    } else {
+      text = ascii(buf, s, len);
+    }
+    if (text.trim()) names[label] = text.trim();
+  }
+  return Object.keys(names).length ? names : null;
+}
+
+// ---------- FL Studio (.flp) ----------
+function parseFlp(buf) {
+  if (buf.length < 10) return null;
+  const sig = ascii(buf, 0, 4);
+  if (sig !== 'FLhd') return null;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const headerLen = view.getUint32(4, true);
+  const format = view.getUint16(8, true);
+  const channels = headerLen >= 10 && buf.length >= 12 ? view.getUint16(10, true) : null;
+  return {
+    'Format version': format,
+    ...(channels != null ? { 'Channels': channels } : {})
+  };
+}
+
+// ---------- RAR ----------
+function parseRar(buf) {
+  if (buf.length < 7) return null;
+  const sig4 = ascii(buf, 0, 4);
+  if (sig4 !== 'Rar!') return null;
+  if (buf[4] === 0x1A && buf[5] === 0x07 && buf[6] === 0x01) return { 'RAR version': '5.x' };
+  if (buf[4] === 0x1A && buf[5] === 0x07 && buf[6] === 0x00) return { 'RAR version': '4.x / earlier' };
+  return { 'RAR version': 'unknown' };
+}
+
+// ---------- 7-Zip ----------
+function parse7z(buf) {
+  if (buf.length < 12) return null;
+  if (buf[0] !== 0x37 || buf[1] !== 0x7A || buf[2] !== 0xBC || buf[3] !== 0xAF) return null;
+  return { '7z version': buf[6] + '.' + buf[7] };
+}
+
+// ---------- SQLite ----------
+function parseSqlite(buf) {
+  if (buf.length < 100) return null;
+  const sig = ascii(buf, 0, 15);
+  if (sig !== 'SQLite format 3') return null;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const pageSize = view.getUint16(16);
+  const ps = pageSize === 1 ? 65536 : pageSize;
+  const writeVer = buf[18];
+  const readVer = buf[19];
+  const journal = { 1: 'legacy', 2: 'WAL' };
+  return {
+    'Page size': ps.toLocaleString() + ' bytes',
+    'Write format': journal[writeVer] || writeVer,
+    'Read format': journal[readVer] || readVer,
+    'SQLite version': view.getUint32(96) ? String(view.getUint32(96)) : undefined
+  };
+}
+
+// ---------- GIMP XCF ----------
+function parseXcf(buf) {
+  const sig = ascii(buf, 0, 9);
+  if (sig !== 'gimp xcf ') return null;
+  const verStr = ascii(buf, 9, 5).replace(/\0/g, '');
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const width = buf.length >= 18 ? view.getUint32(14) : null;
+  const height = buf.length >= 22 ? view.getUint32(18) : null;
+  const colorMode = buf.length >= 26 ? view.getUint32(22) : null;
+  const modes = { 0: 'RGB', 1: 'Grayscale', 2: 'Indexed' };
+  const result = { 'XCF version': verStr || 'v0 (original)' };
+  if (width && height) result['Dimensions'] = width + ' × ' + height;
+  if (colorMode != null) result['Color mode'] = modes[colorMode] || 'Unknown';
+  return result;
+}
+
+// ---------- ISO 9660 ----------
+function parseIso(buf) {
+  if (buf.length < 100) return null;
+  const id = ascii(buf, 1, 5);
+  if (id === 'CD001') {
+    return {
+      'Format': 'ISO 9660',
+      'System': ascii(buf, 8, 32).trim() || undefined,
+      'Volume': ascii(buf, 40, 32).trim() || undefined
+    };
+  }
+  return null;
+}
+
+// ---------- Adobe InDesign ----------
+function parseIndd(buf) {
+  if (buf.length < 16) return null;
+  const sig = ascii(buf, 0, 16);
+  if (!sig.startsWith('\x06\x06')) return null;
+  return null;
+}
+
+// ---------- ZIP-based doc metadata (DOCX, XLSX, PPTX, EPUB, ODF) ----------
+async function parseZipMeta(file, ext) {
+  try {
+    const size = Math.min(file.size, 131072);
+    const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+    const view = new DataView(buf.buffer);
+    if (buf[0] !== 0x50 || buf[1] !== 0x4B) return null;
+    const entries = [];
+    let pos = 0;
+    while (pos + 30 < buf.length) {
+      if (buf[pos] !== 0x50 || buf[pos + 1] !== 0x4B || buf[pos + 2] !== 0x03 || buf[pos + 3] !== 0x04) break;
+      const method = view.getUint16(pos + 8, true);
+      const compSize = view.getUint32(pos + 18, true);
+      const uncompSize = view.getUint32(pos + 22, true);
+      const nameLen = view.getUint16(pos + 26, true);
+      const extraLen = view.getUint16(pos + 28, true);
+      const name = ascii(buf, pos + 30, nameLen);
+      const dataStart = pos + 30 + nameLen + extraLen;
+      entries.push({ name, method, compSize, uncompSize, dataStart });
+      pos = dataStart + compSize;
+    }
+    const readEntry = async (entry) => {
+      const raw = buf.slice(entry.dataStart, entry.dataStart + entry.compSize);
+      if (entry.method === 0) return new TextDecoder().decode(raw);
+      if (entry.method === 8 && typeof DecompressionStream !== 'undefined') {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(raw);
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const total = chunks.reduce((s, c) => s + c.length, 0);
+        const out = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { out.set(c, off); off += c.length; }
+        return new TextDecoder().decode(out);
+      }
+      return null;
+    };
+    const fields = {};
+    const coreEntry = entries.find(e => e.name === 'docProps/core.xml');
+    if (coreEntry) {
+      const xml = await readEntry(coreEntry);
+      if (xml) {
+        const grab = (tag) => { const m = xml.match(new RegExp('<(?:dc:|cp:)?' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
+        const creator = grab('creator');
+        const title = grab('title');
+        const created = grab('created');
+        const modified = grab('modified');
+        const lastBy = grab('lastModifiedBy');
+        const revision = grab('revision');
+        if (creator) fields['Author'] = creator;
+        if (title) fields['Title'] = title;
+        if (lastBy) fields['Last modified by'] = lastBy;
+        if (created) fields['Created'] = created;
+        if (modified) fields['Modified'] = modified;
+        if (revision) fields['Revision'] = revision;
+      }
+    }
+    const appEntry = entries.find(e => e.name === 'docProps/app.xml');
+    if (appEntry) {
+      const xml = await readEntry(appEntry);
+      if (xml) {
+        const grab = (tag) => { const m = xml.match(new RegExp('<' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
+        const app = grab('Application');
+        const appVer = grab('AppVersion');
+        const pages = grab('Pages');
+        const words = grab('Words');
+        const slides = grab('Slides');
+        if (app) fields['Application'] = app + (appVer ? ' ' + appVer : '');
+        if (pages) fields['Pages'] = pages;
+        if (words) fields['Words'] = words;
+        if (slides) fields['Slides'] = slides;
+      }
+    }
+    // EPUB: META-INF/container.xml -> content.opf
+    if (ext === 'epub') {
+      const opfEntry = entries.find(e => e.name.endsWith('.opf'));
+      if (opfEntry) {
+        const xml = await readEntry(opfEntry);
+        if (xml) {
+          const grab = (tag) => { const m = xml.match(new RegExp('<dc:' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
+          const title = grab('title');
+          const creator = grab('creator');
+          const publisher = grab('publisher');
+          const lang = grab('language');
+          const date = grab('date');
+          if (title) fields['Title'] = title;
+          if (creator) fields['Author'] = creator;
+          if (publisher) fields['Publisher'] = publisher;
+          if (lang) fields['Language'] = lang;
+          if (date) fields['Date'] = date;
+        }
+      }
+    }
+    // ODF (ODT/ODS/ODP): meta.xml
+    const metaEntry = entries.find(e => e.name === 'meta.xml');
+    if (metaEntry) {
+      const xml = await readEntry(metaEntry);
+      if (xml) {
+        const grab = (tag) => { const m = xml.match(new RegExp('<meta:' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
+        const gen = grab('generator');
+        const created = grab('creation-date');
+        if (gen) fields['Generator'] = gen;
+        if (created && !fields['Created']) fields['Created'] = created;
+        const dcGrab = (tag) => { const m = xml.match(new RegExp('<dc:' + tag + '[^>]*>([^<]+)<')); return m ? m[1].trim() : null; };
+        const title = dcGrab('title');
+        const creator = dcGrab('creator');
+        if (title && !fields['Title']) fields['Title'] = title;
+        if (creator && !fields['Author']) fields['Author'] = creator;
+      }
+    }
+    return Object.keys(fields).length ? fields : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- Generic text version detection ----------
+async function parseTextVersion(file) {
+  try {
+    const text = await file.slice(0, 4096).text();
+    const lines = text.split('\n').slice(0, 20);
+    const fields = {};
+    for (const line of lines) {
+      const ver = line.match(/(?:version|ver)[:\s=]+([0-9][0-9.a-z-]*)/i);
+      if (ver && !fields['Version']) fields['Version'] = ver[1];
+      const gen = line.match(/(?:generator|creator|created.?(?:with|by)|application)[:\s=]+(.{2,60})/i);
+      if (gen && !fields['Creator']) fields['Creator'] = gen[1].trim().replace(/[";]/g, '');
+    }
+    return Object.keys(fields).length ? fields : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- Gzipped XML project (Ableton .als, Premiere .prproj) ----------
+async function parseGzipXmlProject(file, ext) {
+  try {
+    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+    if (head[0] !== 0x1F || head[1] !== 0x8B) return null;
+    if (typeof DecompressionStream === 'undefined') return null;
+    const chunk = file.slice(0, Math.min(file.size, 65536));
+    const ds = new DecompressionStream('gzip');
+    const reader = chunk.stream().pipeThrough(ds).getReader();
+    let xml = '';
+    while (xml.length < 8192) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      xml += new TextDecoder().decode(value, { stream: true });
+    }
+    reader.cancel().catch(() => {});
+    const fields = {};
+    if (ext === 'als' || ext === 'alp') {
+      const ver = xml.match(/Creator="([^"]+)"/);
+      if (ver) fields['Creator'] = ver[1];
+      const schema = xml.match(/SchemaChangeCount="(\d+)"/);
+      if (schema) fields['Schema version'] = schema[1];
+    } else if (ext === 'prproj') {
+      const ver = xml.match(/Version="([^"]+)"/);
+      if (ver) fields['Project version'] = ver[1];
+      const build = xml.match(/<Build>([^<]+)</);
+      if (build) fields['Build'] = build[1];
+    }
+    return Object.keys(fields).length ? fields : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- Torrent ----------
+async function parseTorrent(file) {
+  try {
+    const text = await file.slice(0, 8192).text();
+    const fields = {};
+    const announce = text.match(/8:announce(\d+):/);
+    if (announce) {
+      const len = parseInt(announce[1], 10);
+      const idx = text.indexOf(announce[0]) + announce[0].length;
+      fields['Tracker'] = text.slice(idx, idx + len);
+    }
+    const name = text.match(/4:name(\d+):/);
+    if (name) {
+      const len = parseInt(name[1], 10);
+      const idx = text.indexOf(name[0]) + name[0].length;
+      fields['Name'] = text.slice(idx, idx + Math.min(len, 200));
+    }
+    const createdBy = text.match(/10:created by(\d+):/);
+    if (createdBy) {
+      const len = parseInt(createdBy[1], 10);
+      const idx = text.indexOf(createdBy[0]) + createdBy[0].length;
+      fields['Created by'] = text.slice(idx, idx + Math.min(len, 100));
+    }
+    return Object.keys(fields).length ? fields : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 // ---------- STEP / IGES text peek ----------
 async function parseTextCad(file, format) {
   try {
@@ -524,7 +861,7 @@ export async function renderProprietary(file, container) {
   tbl.appendChild(row('Size', fmtBytes(file.size)));
 
   // Read header bytes for magic-based parsing
-  const head = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+  const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
   let extra = null;
 
   if (ext === 'psd' || ext === 'psb') extra = parsePsd(head);
@@ -535,6 +872,20 @@ export async function renderProprietary(file, container) {
   else if (ext === 'stl') extra = parseStl(head);
   else if (ext === 'swf') extra = parseSwf(head);
   else if (ext === 'exe' || ext === 'dll') extra = parsePe(head);
+  else if (ext === 'ttf' || ext === 'otf') extra = await parseFont(file);
+  else if (ext === 'flp') extra = parseFlp(head);
+  else if (ext === 'rar') extra = parseRar(head);
+  else if (ext === '7z') extra = parse7z(head);
+  else if (ext === 'sqlite' || ext === 'db') extra = parseSqlite(head);
+  else if (ext === 'xcf') extra = parseXcf(head);
+  else if (ext === 'torrent') extra = await parseTorrent(file);
+  else if (ext === 'als' || ext === 'alp' || ext === 'prproj') extra = await parseGzipXmlProject(file, ext);
+
+  // ISO: primary volume descriptor at sector 16 (32768 bytes)
+  if (!extra && ext === 'iso' && file.size > 32868) {
+    const isoBuf = new Uint8Array(await file.slice(32768, 32868).arrayBuffer());
+    extra = parseIso(isoBuf);
+  }
 
   // OLE-based formats (SolidWorks, old Office)
   if (!extra && (head[0] === 0xD0 && head[1] === 0xCF)) {
@@ -544,6 +895,12 @@ export async function renderProprietary(file, container) {
   // Text-based CAD exchange
   if (!extra && (ext === 'step' || ext === 'stp')) extra = await parseTextCad(file, 'STEP');
   if (!extra && (ext === 'iges' || ext === 'igs')) extra = await parseTextCad(file, 'IGES');
+
+  // ZIP-based document formats
+  if (!extra && fmt.zip) extra = await parseZipMeta(file, ext);
+
+  // Generic text/XML version detection for formats without a dedicated parser
+  if (!extra && (fmt.parse === 'text' || fmt.parse === 'xml')) extra = await parseTextVersion(file);
 
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
@@ -583,12 +940,41 @@ export async function renderProprietary(file, container) {
   // Text / code preview for web files
   if (fmt.parse === 'text' || fmt.parse === 'html') {
     try {
-      const text = await file.slice(0, 50000).text();
-      const lines = text.split('\n');
-      const totalLines = (await file.text()).split('\n').length;
-      tbl.insertBefore(row('Lines', totalLines.toLocaleString()), hashRow);
+      const fullText = await file.text();
+      const lines = fullText.split('\n');
+      tbl.insertBefore(row('Lines', lines.length.toLocaleString()), hashRow);
+
+      // HTML: sandboxed rendered preview
+      if (fmt.parse === 'html') {
+        const previewDet = el('details', { style: 'margin-top: 14px;', open: '' });
+        previewDet.appendChild(el('summary', {}, 'Rendered preview'));
+        const blob = new Blob([fullText], { type: 'text/html;charset=utf-8' });
+        const iframe = el('iframe', {
+          src: URL.createObjectURL(blob),
+          sandbox: 'allow-same-origin',
+          style: 'width:100%;height:400px;border:1px solid var(--rule);background:#fff;margin-top:8px'
+        });
+        previewDet.appendChild(iframe);
+        card.appendChild(previewDet);
+      }
+
       const det = el('details', { style: 'margin-top: 14px;' });
-      det.appendChild(el('summary', {}, 'Preview (first 200 lines)'));
+      const summary = el('summary', { style: 'display:flex;align-items:center;gap:10px' });
+      summary.appendChild(document.createTextNode('Source (first 200 lines)'));
+      const openBtn = el('button', {
+        type: 'button',
+        class: 'anr-open-tab',
+        style: 'font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;' +
+               'background:transparent;border:1px solid var(--hairline);color:var(--muted);padding:2px 8px;cursor:pointer'
+      }, 'Open full');
+      openBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const b = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+        window.open(URL.createObjectURL(b), '_blank');
+      });
+      summary.appendChild(openBtn);
+      det.appendChild(summary);
       const pre = el('pre', { class: 'anr-code', style: 'max-height:400px; overflow:auto; font-size:12px;' });
       pre.textContent = lines.slice(0, 200).join('\n');
       det.appendChild(pre);

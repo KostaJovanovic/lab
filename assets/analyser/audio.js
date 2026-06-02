@@ -11,7 +11,7 @@ import {
   computeStats, computeCentroid, computeLufs,
   detectPitch, detectBPM, computeStereoStats
 } from './audio-analysis.js';
-import { peekContainer, adtsToM4a } from './audio-codec.js';
+import { peekContainer, adtsToM4a, readTagBPM } from './audio-codec.js';
 import { makePlayer } from './audio-player.js';
 
 // Re-exported so existing importers (e.g. video.js) can keep importing the
@@ -803,9 +803,18 @@ export async function renderAudio(file, resultsEl, opts = {}) {
     tbl.appendChild(rowHelp('Pitch', 'N/A',
       'Fundamental frequency via autocorrelation. Could not detect a clear pitch in this audio.'));
   }
-  const bpm = detectBPM(mono, audioBuffer.sampleRate);
-  tbl.appendChild(rowHelp('BPM', bpm != null ? bpm + ' BPM' : 'N/A',
-    'Beats per minute via onset envelope analysis. Most reliable on rhythmic material with a clear beat.'));
+  const tagBpm = await readTagBPM(file).catch(() => null);
+  const estBpm = detectBPM(mono, audioBuffer.sampleRate);
+  const bpmVal = tagBpm || estBpm;
+  const bpmIsTag = tagBpm != null;
+  const bpmRow = rowHelp('BPM', bpmVal != null ? bpmVal + ' BPM' : 'N/A',
+    bpmIsTag ? 'Beats per minute read from file metadata.'
+             : 'Beats per minute via onset envelope analysis. Most reliable on rhythmic material with a clear beat.');
+  if (bpmVal != null && !bpmIsTag) {
+    const td = bpmRow.querySelector('td');
+    td.appendChild(el('span', { style: 'font-size:0.8em;color:var(--muted);margin-left:4px' }, '(est)'));
+  }
+  tbl.appendChild(bpmRow);
   tbl.appendChild(row('Total samples',  mono.length.toLocaleString()));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);

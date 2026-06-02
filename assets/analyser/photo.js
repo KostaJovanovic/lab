@@ -642,49 +642,82 @@ function renderLsbPlanes(img, container) {
 
   const wrap = el('div', { style: 'display:flex; gap:12px; flex-wrap:wrap;' });
 
-  for (const ch of channels) {
+  let fullSrcs = null;
+  function ensureFullRes() {
+    if (fullSrcs) return fullSrcs;
+    const fullCv = document.createElement('canvas');
+    fullCv.width = img.naturalWidth; fullCv.height = img.naturalHeight;
+    const fCtx = fullCv.getContext('2d', { willReadFrequently: true });
+    fCtx.drawImage(img, 0, 0);
+    const fullData = fCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data;
+    fullSrcs = channels.map(ch => {
+      const plane = makeLsbPlane(fullData, img.naturalWidth, img.naturalHeight, ch.offset);
+      return plane.toDataURL('image/png');
+    });
+    return fullSrcs;
+  }
+
+  function openLsbLightbox(startIdx) {
+    const lb = ensureLightbox();
+    const lbWrap = lb.querySelector('.lightbox-img-wrap');
+    const lbImg = lbWrap.querySelector('img:first-child');
+    const toolbar = lb.querySelector('.lightbox-toolbar');
+    const meta = lb.querySelector('.lightbox-meta');
+    toolbar.innerHTML = '';
+    lbWrap.classList.remove('anr-checkerboard');
+    const overlays = lbWrap.querySelectorAll('.lightbox-peaking');
+    overlays.forEach(o => { o.hidden = true; });
+    lbWrap.querySelector('.lightbox-focus-map').hidden = true;
+    lbWrap.querySelector('.lightbox-focus-dot').hidden = true;
+
+    let idx = startIdx;
+    function show(i) {
+      idx = i;
+      const ch = channels[idx];
+      const srcs = ensureFullRes();
+      lbImg.src = srcs[idx];
+      lbImg.onload = () => sizeWrap(lbWrap, img.naturalWidth, img.naturalHeight);
+      meta.textContent = 'LSB bit plane: ' + ch.label + '  (' + img.naturalWidth + ' × ' + img.naturalHeight + ')';
+      prevBtn.style.visibility = idx > 0 ? 'visible' : 'hidden';
+      nextBtn.style.visibility = idx < channels.length - 1 ? 'visible' : 'hidden';
+      label.textContent = ch.label + ' (' + (idx + 1) + '/' + channels.length + ')';
+    }
+
+    const prevBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, '← Prev');
+    prevBtn.addEventListener('click', (e) => { e.stopPropagation(); if (idx > 0) show(idx - 1); });
+    const nextBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Next →');
+    nextBtn.addEventListener('click', (e) => { e.stopPropagation(); if (idx < channels.length - 1) show(idx + 1); });
+    const label = el('span', { style: 'color:#fff;font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;align-self:center' });
+    const saveBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Save PNG');
+    saveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = el('a', { href: ensureFullRes()[idx], download: 'lsb_' + channels[idx].label.toLowerCase() + '.png' });
+      document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+    });
+
+    toolbar.appendChild(prevBtn);
+    toolbar.appendChild(label);
+    toolbar.appendChild(nextBtn);
+    toolbar.appendChild(saveBtn);
+
+    // Preview src first, full-res loaded in show()
+    const previewSrc = makeLsbPlane(srcData, w, h, channels[idx].offset).toDataURL('image/png');
+    lbImg.src = previewSrc;
+    meta.textContent = 'LSB bit plane: ' + channels[idx].label + '  (loading full resolution…)';
+    lb.hidden = false;
+    document.body.style.overflow = 'hidden';
+    sizeWrap(lbWrap, w, h);
+    show(idx);
+  }
+
+  for (let ci = 0; ci < channels.length; ci++) {
+    const ch = channels[ci];
     const cv = makeLsbPlane(srcData, w, h, ch.offset);
     cv.style.maxWidth = '100%';
     cv.style.imageRendering = 'pixelated';
-
     cv.style.cursor = 'zoom-in';
-    cv.addEventListener('click', () => {
-      const previewSrc = cv.toDataURL('image/png');
-      const caption = 'LSB bit plane: ' + ch.label + '  (' + img.naturalWidth + ' × ' + img.naturalHeight + ')';
-      openLightbox(previewSrc, 'LSB ' + ch.label + ' plane', 'Loading full resolution…');
-      setTimeout(() => {
-        const fullCv = document.createElement('canvas');
-        fullCv.width = img.naturalWidth; fullCv.height = img.naturalHeight;
-        const fCtx = fullCv.getContext('2d', { willReadFrequently: true });
-        fCtx.drawImage(img, 0, 0);
-        const fullData = fCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data;
-        const fullPlane = makeLsbPlane(fullData, img.naturalWidth, img.naturalHeight, ch.offset);
-        const fullSrc = fullPlane.toDataURL('image/png');
-        if (lightboxEl && !lightboxEl.hidden) {
-          const lbImg = lightboxEl.querySelector('.lightbox-img-wrap img:first-child');
-          if (lbImg) {
-            lbImg.src = fullSrc;
-            lbImg.onload = () => {
-              const wrap = lightboxEl.querySelector('.lightbox-img-wrap');
-              if (wrap) sizeWrap(wrap, img.naturalWidth, img.naturalHeight);
-            };
-          }
-          const meta = lightboxEl.querySelector('.lightbox-meta');
-          if (meta) meta.textContent = caption;
-          const toolbar = lightboxEl.querySelector('.lightbox-toolbar');
-          if (toolbar) {
-            const saveBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Save PNG');
-            saveBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              const a = el('a', { href: fullSrc, download: 'lsb_' + ch.label.toLowerCase() + '.png' });
-              document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
-            });
-            toolbar.appendChild(saveBtn);
-          }
-        }
-      }, 50);
-    });
-
+    const chIdx = ci;
+    cv.addEventListener('click', () => openLsbLightbox(chIdx));
     const col = el('div', { style: 'flex:1; min-width:100px; text-align:center;' }, [
       el('div', { style: 'font-weight:600; margin-bottom:4px; font-size:13px;' }, ch.label),
       cv
@@ -841,7 +874,7 @@ function computeExposureOverlay(imgEl, canvas, mode) {
   ctx.putImageData(out, 0, 0);
 }
 
-function openLightbox(src, alt, metaText, focusOpts) {
+function openLightbox(src, alt, metaText, focusOpts, showAlpha) {
   const lb = ensureLightbox();
   const wrap = lb.querySelector('.lightbox-img-wrap');
   const lbImg = wrap.querySelector('img:first-child');
@@ -849,6 +882,7 @@ function openLightbox(src, alt, metaText, focusOpts) {
   const dot = wrap.querySelector('.lightbox-focus-dot');
   const toolbar = lb.querySelector('.lightbox-toolbar');
   toolbar.innerHTML = '';
+  wrap.classList.remove('anr-checkerboard');
   lbImg.src = src;
   lbImg.alt = alt || '';
   lbImg.onload = () => { sizeWrap(wrap, lbImg.naturalWidth, lbImg.naturalHeight); };
@@ -892,6 +926,18 @@ function openLightbox(src, alt, metaText, focusOpts) {
   toolbar.appendChild(peakBtn);
   toolbar.appendChild(hlBtn);
 
+  toolbar.appendChild(shBtn);
+
+  if (showAlpha) {
+    const alphaBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Transparency');
+    alphaBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      wrap.classList.toggle('anr-checkerboard');
+      alphaBtn.classList.toggle('is-active', wrap.classList.contains('anr-checkerboard'));
+    });
+    toolbar.appendChild(alphaBtn);
+  }
+
   if (focusOpts) {
     const mapSrc = focusOpts.focusCv.toDataURL();
     mapOverlay.src = mapSrc;
@@ -909,11 +955,8 @@ function openLightbox(src, alt, metaText, focusOpts) {
       dot.hidden = !dot.hidden;
       ptBtn.classList.toggle('is-active', !dot.hidden);
     });
-    toolbar.appendChild(shBtn);
     toolbar.appendChild(mapBtn);
     toolbar.appendChild(ptBtn);
-  } else {
-    toolbar.appendChild(shBtn);
   }
   lb.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -992,6 +1035,11 @@ export async function renderPhoto(file, resultsEl) {
   const blockSize = Math.max(4, Math.round(Math.min(pixData.width, pixData.height) / 48));
   const focus = detectFocusRegion(pixData, blockSize);
 
+  let hasAlpha = false;
+  for (let i = 3; i < pixData.data.length; i += 16) {
+    if (pixData.data[i] < 250) { hasAlpha = true; break; }
+  }
+
   resultsEl.innerHTML = '';
 
   // ---- Preview thumb in section-meta column ----
@@ -1004,9 +1052,10 @@ export async function renderPhoto(file, resultsEl) {
     thumbImg.addEventListener('click', () => {
       const fpPctX = (focus.focusX / pixData.width * 100).toFixed(2);
       const fpPctY = (focus.focusY / pixData.height * 100).toFixed(2);
-      openLightbox(url, file.name, lightboxCaption, { focusCv, fpX: parseFloat(fpPctX), fpY: parseFloat(fpPctY) });
+      openLightbox(url, file.name, lightboxCaption, { focusCv, fpX: parseFloat(fpPctX), fpY: parseFloat(fpPctY) }, hasAlpha);
     });
     const imgWrap = el('div', { class: 'anr-preview-img-wrap' });
+    if (hasAlpha) imgWrap.classList.add('anr-checkerboard');
     imgWrap.appendChild(thumbImg);
     thumb.appendChild(imgWrap);
     thumb.appendChild(el('p', { class: 'section-meta-preview-caption' },

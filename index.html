@@ -72,7 +72,7 @@
         <label class="anr-dropzone-inner" for="audioInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
           <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> a sound</strong>
-          <input type="file" accept="audio/*" id="audioInput" hidden>
+          <input type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.opus,.aac,.wma,.aiff,.amr,.mp2,.mid,.midi" id="audioInput" hidden>
           <p class="anr-hint">MP3 &middot; WAV &middot; M4A &middot; FLAC &middot; OGG &middot; OPUS</p>
         </label>
         <div class="anr-audio-modes">
@@ -201,18 +201,18 @@
       <div><dt>Map</dt><dd><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> with <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> tiles. Loaded only if the photo has GPS.</dd></div>
       <div><dt>HEIC</dt><dd><a href="https://github.com/alexcorvi/heic2any" target="_blank" rel="noopener">heic2any</a>. Converts HEIC/HEIF to JPEG in the browser.</dd></div>
       <div><dt>RAW</dt><dd><a href="https://github.com/dlemstra/magick-wasm" target="_blank" rel="noopener">magick-wasm</a>. ImageMagick compiled to WASM. Converts ARW, CR2, CR3, NEF, and other RAW formats. ~15 MB, loaded only when needed.</dd></div>
-      <div><dt>Audio</dt><dd>Native Web Audio API plus a hand-written radix-2 FFT for spectrogram and analysis.</dd></div>
-      <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback.</dd></div>
+      <div><dt>Audio</dt><dd>Native Web Audio API plus a hand-written radix-2 FFT for spectrogram and analysis. BPM read from ID3/MP4 tags when available, estimated via onset detection otherwise.</dd></div>
+      <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback. Automatic scene detection with confidence scoring. iOS visible-player fallback.</dd></div>
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. ~30 MB, loaded only when needed.</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a>. Fast ZIP decompression in the browser.</dd></div>
-      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, and more. Extracts metadata from headers where possible.</dd></div>
+      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, fonts, and more. Extracts version, author, and metadata from headers, ZIP manifests, ID3 tags, and gzipped XML projects.</dd></div>
       <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell. Use the buttons above to pre-cache heavy dependencies.</dd></div>
     </dl>
   </details>
   <div class="footer-row footer-bottom">
     <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
-    <!-- Email shown obfuscated to deter scrapers; app.js wires the real mailto. -->
+    <!-- Email shown obfuscated to deter scrapers; display-only, no mailto link. -->
     <p class="footer-meta">Contact: <a class="footer-contact">valjdakosta[at]gmail[dot]com</a></p>
   </div>
 </footer>

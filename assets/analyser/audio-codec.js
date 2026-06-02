@@ -102,3 +102,59 @@ export function adtsToM4a(arrayBuffer) {
   bx('mdat',8+rawSize); for(const f of frameData){ out.set(f,o); o+=f.length; }
   return out.buffer;
 }
+
+// --- Read BPM from file metadata (ID3v2 TBPM / MP4 tmpo) ---
+export async function readTagBPM(file) {
+  const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+
+  // ID3v2 TBPM frame
+  if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) {
+    const ver = head[3];
+    const tagSize = ((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14) |
+                    ((head[8] & 0x7F) << 7) | (head[9] & 0x7F);
+    const needed = Math.min(tagSize + 10, file.size, 65536);
+    const buf = needed > head.length
+      ? new Uint8Array(await file.slice(0, needed).arrayBuffer()) : head;
+    let pos = 10;
+    const idLen = ver === 2 ? 3 : 4;
+    const hdrLen = ver === 2 ? 6 : 10;
+    const target = ver === 2 ? 'TBP' : 'TBPM';
+    while (pos + hdrLen < buf.length && pos < tagSize + 10) {
+      const id = String.fromCharCode(...buf.slice(pos, pos + idLen));
+      if (id[0] === '\0') break;
+      let sz;
+      if (ver === 2) sz = (buf[pos + 3] << 16) | (buf[pos + 4] << 8) | buf[pos + 5];
+      else if (ver === 4) sz = ((buf[pos + 4] & 0x7F) << 21) | ((buf[pos + 5] & 0x7F) << 14) |
+                               ((buf[pos + 6] & 0x7F) << 7) | (buf[pos + 7] & 0x7F);
+      else sz = (buf[pos + 4] << 24) | (buf[pos + 5] << 16) | (buf[pos + 6] << 8) | buf[pos + 7];
+      if (sz <= 0 || pos + hdrLen + sz > buf.length) break;
+      if (id === target) {
+        const data = buf.slice(pos + hdrLen, pos + hdrLen + sz);
+        const enc = data[0];
+        let text;
+        if (enc === 0 || enc === 3) text = String.fromCharCode(...data.slice(1));
+        else text = new TextDecoder(enc === 2 ? 'utf-16be' : 'utf-16').decode(data.slice(1));
+        const val = parseInt(text.replace(/\0/g, ''), 10);
+        if (val > 0 && val < 999) return val;
+      }
+      pos += hdrLen + sz;
+    }
+  }
+
+  // MP4/M4A tmpo atom
+  if (head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) {
+    const size = Math.min(file.size, 131072);
+    const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+    for (let i = 0; i + 8 < buf.length; i++) {
+      if (buf[i] === 0x74 && buf[i + 1] === 0x6D && buf[i + 2] === 0x70 && buf[i + 3] === 0x6F) {
+        const dv = new DataView(buf.buffer, i + 4);
+        if (i + 12 <= buf.length) {
+          const val = dv.getUint16(8 - 4, false);
+          if (val > 0 && val < 999) return val;
+        }
+      }
+    }
+  }
+
+  return null;
+}

@@ -501,16 +501,29 @@ button { font-family: inherit; }
 @media (max-width: 700px) {
   .section.is-analysed .section-head,
   .section.is-analysed .section-lede { display: none; }
+  .section.is-analysed .section-meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    gap: 0 10px;
+  }
+  .section.is-analysed .section-num { grid-column: 1; grid-row: 1; }
   .section.is-analysed .section-meta-head {
     display: block;
-    margin: 12px 0 0;
-    font-size: var(--t-body);   /* a bit smaller than the full .section-head */
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    font-size: var(--t-small);
     font-weight: 500;
     line-height: 1.2;
     letter-spacing: -0.02em;
     color: var(--fg);
-    max-width: 22ch;
   }
+  .section.is-analysed .section-kicker {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .section.is-analysed .section-meta-slot { grid-column: 1 / -1; }
 }
 
 @media (max-width: 900px) {
@@ -1936,6 +1949,9 @@ details[open] summary::after { content: "\2212"; }
   position: relative;
   overflow: hidden;
 }
+.anr-checkerboard {
+  background: repeating-conic-gradient(#d0d0d0 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;
+}
 .section-meta-preview img {
   display: block;
   width: 100%;
@@ -2003,6 +2019,7 @@ details[open] summary::after { content: "\2212"; }
 .lightbox-close {
   position: fixed;
   top: 16px; right: 16px;
+  z-index: 10;
   background: transparent;
   border: 1px solid #fff;
   color: #fff;

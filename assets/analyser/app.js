@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 23;
+const COMMIT_COUNT = 24;
 const VERSION_OFFSET = 17;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -372,10 +372,11 @@ function boot() {
   }
 
   // ----- Contact email -----
-  // The footer shows the address obfuscated ("[at]"/"[dot]") so scrapers don't
-  // harvest it from the HTML; build the real mailto: at runtime instead.
+  // Display-only: the footer shows the address obfuscated ("[at]"/"[dot]")
+  // with no clickable mailto: so bots can't scrape a live link.
   document.querySelectorAll('.footer-contact').forEach((a) => {
-    a.href = 'mailto:' + 'valjdakosta' + '@' + 'gmail.com';
+    a.removeAttribute('href');
+    a.style.cursor = 'default';
   });
 
   // ----- Dark mode toggle -----
@@ -438,7 +439,7 @@ function boot() {
       return spans;
     }
 
-    if (title && byline && mark && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
+    function initLetters() {
       title.style.width = title.offsetWidth + 'px';
       title.style.height = title.offsetHeight + 'px';
       byline.style.width = byline.offsetWidth + 'px';
@@ -451,6 +452,11 @@ function boot() {
       title.style.height = '';
       byline.style.width = '';
       byline.style.height = '';
+      return letters;
+    }
+
+    if (title && byline && mark && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
+      const letters = initLetters();
       const RADIUS = 120;
       let mx = -9999, my = -9999, raf = 0, inside = false;
 
@@ -479,6 +485,40 @@ function boot() {
           l.el.style.fontWeight = l.base;
         }
       });
+    } else if (title && byline && mark && window.matchMedia('(pointer: coarse)').matches) {
+      const letters = initLetters();
+      const RADIUS = 80;
+      const DURATION = 3500;
+      function sweep() {
+        const rect = mark.getBoundingClientRect();
+        const sx = rect.left - RADIUS;
+        const ex = rect.right + RADIUS;
+        const cy = rect.top + rect.height * 0.5;
+        const span = ex - sx;
+        let t0 = null;
+        function frame(ts) {
+          if (!t0) t0 = ts;
+          const p = Math.min(1, (ts - t0) / DURATION);
+          const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+          const vx = sx + e * span;
+          for (const l of letters) {
+            const r = l.el.getBoundingClientRect();
+            const d = Math.hypot(vx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+            const f = Math.min(1, d / RADIUS);
+            l.el.style.fontWeight = Math.round(l.base * f + 300 * (1 - f));
+          }
+          if (p < 1) requestAnimationFrame(frame);
+          else {
+            for (const l of letters) {
+              l.el.style.transition = 'font-weight 0.4s ease';
+              l.el.style.fontWeight = l.base;
+            }
+            setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
+          }
+        }
+        requestAnimationFrame(frame);
+      }
+      setTimeout(sweep, 800);
     }
 
     boot._once = true;
