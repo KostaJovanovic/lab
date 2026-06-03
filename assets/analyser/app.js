@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 35;
+const COMMIT_COUNT = 36;
 const VERSION_OFFSET = 32;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -764,16 +764,15 @@ function boot() {
       './assets/vendor/pdfjs/pdf.worker.min.mjs',
       './assets/vendor/fflate.js'
     ],
-    // The 8 bundled extras are served locally; the rest are pulled from the
-    // CDN (not hosted in the repo). Both land in the offline cache, so
-    // "Complete" still gives every OCR language offline.
+    // Only English is bundled (in the "everything" tier); every other OCR
+    // language is pulled from the CDN (not hosted in the repo). They all land
+    // in the offline cache, so "Complete" still gives every language offline.
     complete: [
-      'spa', 'fra', 'deu', 'ita', 'por', 'rus', 'chi_sim', 'jpn'
-    ].map(c => TESS_DATA + '/' + c + '.traineddata.gz').concat(
-      ['srp', 'srp_latn', 'hrv', 'ell', 'ara', 'chi_tra', 'kor', 'heb', 'tur',
-       'ukr', 'pol', 'ron', 'hun', 'ces', 'slk', 'slv', 'bul', 'mkd', 'nld',
-       'swe', 'nor', 'fin', 'dan'].map(c => 'https://tessdata.projectnaptha.com/4.0.0/' + c + '.traineddata.gz')
-    )
+      'spa', 'fra', 'deu', 'ita', 'por', 'rus', 'chi_sim', 'jpn',
+      'srp', 'srp_latn', 'hrv', 'ell', 'ara', 'chi_tra', 'kor', 'heb', 'tur',
+      'ukr', 'pol', 'ron', 'hun', 'ces', 'slk', 'slv', 'bul', 'mkd', 'nld',
+      'swe', 'nor', 'fin', 'dan'
+    ].map(c => 'https://tessdata.projectnaptha.com/4.0.0/' + c + '.traineddata.gz')
   };
 
   document.querySelectorAll('.offline-btn').forEach(btn => {

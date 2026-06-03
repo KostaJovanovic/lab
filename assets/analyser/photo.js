@@ -16,12 +16,12 @@ const TESSERACT_URL = 'assets/vendor/tesseract/tesseract.min.js';
 const LEAFLET_CSS   = 'assets/vendor/leaflet/leaflet.css';
 const LEAFLET_JS    = 'assets/vendor/leaflet/leaflet.js';
 
-// OCR languages. The first group is bundled with the app (works fully
-// offline); the rest are fetched from a CDN on demand and cached by the
+// OCR languages. Only English is bundled with the app (works fully offline);
+// every other language is fetched from a CDN on demand and cached by the
 // service worker after first use. LOCAL_OCR_LANGS decides which langPath a
-// worker uses; the bundled set is kept small to fit Cloudflare's 25 MiB asset
-// cap (the big packs like chi_tra are CDN-only).
-const LOCAL_OCR_LANGS = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'rus', 'chi_sim', 'jpn']);
+// worker uses; keeping only English bundled keeps the repo small and well
+// under Cloudflare's 25 MiB asset cap.
+const LOCAL_OCR_LANGS = new Set(['eng']);
 const TESS_CDN_LANGPATH = 'https://tessdata.projectnaptha.com/4.0.0';
 
 const TESSERACT_LANGS = [
