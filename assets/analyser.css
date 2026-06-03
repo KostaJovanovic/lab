@@ -1251,6 +1251,48 @@ audio { width: 100%; }
   margin-top: 4px;
 }
 
+/* ---------- DROP LOADER (bottom-of-window popup) ---------- */
+@keyframes anr-sha-slide { from { transform: translateX(0); } to { transform: translateX(233%); } }
+.anr-drop-loader {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%) translateY(14px);
+  z-index: 1200;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  padding: 12px 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.anr-drop-loader.is-open { opacity: 1; transform: translateX(-50%) translateY(0); }
+.anr-drop-loader-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+}
+.anr-drop-loader-track {
+  height: 3px;
+  background: var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.anr-drop-loader-fill {
+  height: 100%;
+  width: 30%;
+  background: var(--accent);
+  animation: anr-sha-slide 1s ease-in-out infinite alternate;
+}
+
 /* ---------- OCR ---------- */
 .anr-ocr-text {
   font-family: var(--font-mono);
@@ -1566,6 +1608,7 @@ details[open] summary::after { content: "\2212"; }
 .about-readout { margin-bottom: 0; }
 .about-readout th { width: 120px; white-space: nowrap; }
 .about-exts {
+  display: block;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -1574,6 +1617,20 @@ details[open] summary::after { content: "\2212"; }
   color: var(--fg);
   line-height: 2;
 }
+/* Per-format SEO description under the extension list. Offset anchor targets
+   so #fmt-… / #ext-… deep-links don't hide behind the sticky nav. */
+.about-fmt-desc {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--font-sans);
+  font-size: var(--t-small);
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.about-readout tr { scroll-margin-top: 84px; }
+.about-ext { scroll-margin-top: 84px; }
 .about-formats {
   border-top: 1px solid var(--hairline);
   margin-top: 24px;

@@ -15,13 +15,16 @@ File: `assets/analyser/formats.js`
   `classifyFile()` in app.js.
 - **Display + search**: add (or extend) a row in `FULL_ANALYSIS` (deep analysis)
   or `IDENTIFICATION` (identification-only). Each row is
-  `{ label, exts, tags, note? }`:
+  `{ label, exts, tags, desc }`:
   - `exts` — space-separated extension list (curated casing) shown in the tables.
   - `tags` — extra search keywords: software/brand names and synonyms so a user
     can find SLDPRT by typing "solidworks". This is what makes the overlay search
     by origin work.
-  - `note` — optional prose shown instead of the ext list on the about page
-    (e.g. PDF).
+  - `desc` — one keyword-rich sentence shown under the ext list on the about page.
+    This is the indexable SEO text for "how to open a .X file"-type searches, so
+    name the key software/brands and what Analyser does with the format. The about
+    page also gives each row a `#fmt-<slug>` anchor and each extension token an
+    `#ext-<ext>` anchor (via renderAboutFormats) for deep-linking.
 - **Photo conversion**: if it's a photo needing conversion, also add it to
   `HEIC_EXTS` (heic2any) or `RAW_EXTS` (ImageMagick WASM) in this same file.
 

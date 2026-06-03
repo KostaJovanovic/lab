@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — Not found · Analyser</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="stylesheet" href="assets/analyser.css">
+  <script>try{var t=localStorage.getItem('anr-theme'),s=parseInt(localStorage.getItem('anr-theme:ts'),10);if(t&&(!s||Date.now()-s>604800000)){localStorage.removeItem('anr-theme');localStorage.removeItem('anr-theme:ts');t=null;}if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+  <style>
+    .nf-wrap { min-height: 100vh; display: flex; align-items: center; }
+    .nf { padding: 0 var(--pad-x); max-width: 1440px; margin: 0 auto; width: 100%; }
+    .nf-kicker {
+      font-family: var(--font-mono);
+      font-size: var(--t-tiny);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      display: block;
+      margin-bottom: 16px;
+    }
+    .nf-title { font-size: var(--t-mega); line-height: 0.86; font-weight: 600; letter-spacing: -0.045em; margin: 0; }
+    .nf-sub { margin: 18px 0 28px; max-width: 46ch; color: var(--muted); font-size: clamp(15px, 1.6vw, 18px); line-height: 1.5; }
+    .nf-link {
+      font-family: var(--font-mono);
+      font-size: var(--t-small);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-decoration: none;
+      border: 1px solid var(--rule);
+      padding: 10px 16px;
+      display: inline-block;
+    }
+    .nf-link:hover { background: var(--fg); color: var(--bg); }
+  </style>
+</head>
+<body>
+  <main class="nf-wrap">
+    <div class="nf">
+      <span class="nf-kicker">Error 404</span>
+      <h1 class="nf-title">Not found.</h1>
+      <p class="nf-sub">This page doesn&rsquo;t exist. Head back and drop a file on the home page to see what&rsquo;s inside it &mdash; everything runs locally in your browser, nothing is uploaded.</p>
+      <a class="nf-link" href="/">&larr; Back to Analyser</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 32;
+const COMMIT_COUNT = 33;
 const VERSION_OFFSET = 32;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -62,6 +62,37 @@ function anrConfirm(title, okLabel) {
   });
 }
 
+// ---------- drop loading bar (bottom-of-window popup) ----------
+// Big files take a moment to read/decode before their analysis renders. This
+// shows a small popup at the bottom of the window with an indeterminate bar
+// (same sliding style as the SHA-256 row) while that happens, then hides it
+// when the renderer settles. A short delay before showing keeps quick files
+// from flashing it.
+let _dropLoaderEl = null;
+let _dropLoaderTimer = null;
+
+function showDropLoader(file) {
+  clearTimeout(_dropLoaderTimer);
+  const name = (file && file.name) ? file.name : 'file';
+  _dropLoaderTimer = setTimeout(() => {
+    if (!_dropLoaderEl || !_dropLoaderEl.isConnected) {
+      const fill = el('div', { class: 'anr-drop-loader-fill' });
+      const track = el('div', { class: 'anr-drop-loader-track' }, fill);
+      const label = el('div', { class: 'anr-drop-loader-label' }, '');
+      _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, track]);
+      _dropLoaderEl._label = label;
+      document.body.appendChild(_dropLoaderEl);
+    }
+    _dropLoaderEl._label.textContent = 'Reading ' + name + '…';
+    requestAnimationFrame(() => _dropLoaderEl.classList.add('is-open'));
+  }, 160);
+}
+
+function hideDropLoader() {
+  clearTimeout(_dropLoaderTimer);
+  if (_dropLoaderEl) _dropLoaderEl.classList.remove('is-open');
+}
+
 // ---------- file classification ----------
 // Extension sets live in formats.js (the central catalog). See that file to
 // add a new type — the overlay, about page, and search update automatically.
@@ -114,6 +145,7 @@ function boot() {
 
   async function handleFile(file) {
     if (!file) return;
+    showDropLoader(file);
 
     // Clear all previous results
     photoResults.innerHTML = ''; photoResults.hidden = true;
@@ -216,16 +248,17 @@ function boot() {
       if (sectionVideo) sectionVideo.hidden = true;
     }
 
+    let renderPromise;
     if (kind === 'photo') {
       markNav('#photo');
       markAnalysed('photo');
       scrollTo('#photo');
-      renderPhoto(file, photoResults);
+      renderPromise = renderPhoto(file, photoResults);
     } else if (kind === 'audio') {
       markNav('#audio');
       markAnalysed('audio');
       scrollTo('#audio');
-      renderAudio(file, audioResults);
+      renderPromise = renderAudio(file, audioResults);
     } else if (kind === 'video') {
       markNav('#video');
       markNav('#audio');
@@ -233,41 +266,44 @@ function boot() {
       markAnalysed('video');
       markAnalysed('photo');
       scrollTo('#video');
-      renderVideo(file, videoResults);
+      renderPromise = renderVideo(file, videoResults);
     } else if (kind === 'docx') {
       scrollTo('#unknownResults');
-      renderDocx(file, unknownResults);
+      renderPromise = renderDocx(file, unknownResults);
     } else if (kind === 'xlsx') {
       scrollTo('#unknownResults');
-      renderXlsx(file, unknownResults);
+      renderPromise = renderXlsx(file, unknownResults);
     } else if (kind === 'epub') {
       scrollTo('#unknownResults');
-      renderEpub(file, unknownResults);
+      renderPromise = renderEpub(file, unknownResults);
     } else if (kind === 'pptx') {
       scrollTo('#unknownResults');
-      renderPptx(file, unknownResults);
+      renderPromise = renderPptx(file, unknownResults);
     } else if (kind === 'stl') {
       scrollTo('#unknownResults');
-      renderStl(file, unknownResults);
+      renderPromise = renderStl(file, unknownResults);
     } else if (kind === 'pdf') {
       scrollTo('#unknownResults');
-      renderPdf(file, unknownResults);
+      renderPromise = renderPdf(file, unknownResults);
     } else if (kind === 'zip') {
       scrollTo('#unknownResults');
-      renderArchive(file, unknownResults);
+      renderPromise = renderArchive(file, unknownResults);
     } else if (kind === 'svg') {
       scrollTo('#unknownResults');
-      renderSvg(file, unknownResults);
+      renderPromise = renderSvg(file, unknownResults);
     } else if (kind === 'csv') {
       scrollTo('#unknownResults');
-      renderCsv(file, unknownResults);
+      renderPromise = renderCsv(file, unknownResults);
     } else if (kind === 'proprietary') {
       scrollTo('#unknownResults');
-      renderProprietary(file, unknownResults);
+      renderPromise = renderProprietary(file, unknownResults);
     } else {
       scrollTo('#unknownResults');
-      renderUnknown(file, unknownResults);
+      renderPromise = renderUnknown(file, unknownResults);
     }
+    // Hide the bottom loader once the renderer settles (or immediately if it
+    // wasn't async). Errors still dismiss it so it can't get stuck on screen.
+    Promise.resolve(renderPromise).catch(() => {}).finally(() => hideDropLoader());
   }
   _handleFile = handleFile;
 
@@ -868,6 +904,24 @@ function boot() {
   // index.html has #fmtBody (the overlay); about.html has #aboutFormats.
   renderFmtOverlay($('fmtBody'));
   renderAboutFormats($('aboutFormats'));
+
+  // Deep-links into the (collapsed) supported-formats list: landing on
+  // /about.html#ext-sldprt or #fmt-cad from a search result should expand the
+  // dropdown and scroll to the target.
+  function revealHashTarget() {
+    const id = decodeURIComponent((location.hash || '').slice(1));
+    if (!id) return;
+    const target = document.getElementById(id);
+    if (!target) return;
+    const details = target.closest('details');
+    if (details) details.open = true;
+    requestAnimationFrame(() => target.scrollIntoView({ block: 'center' }));
+  }
+  revealHashTarget();
+  if (!boot._hashWired) {
+    boot._hashWired = true;
+    window.addEventListener('hashchange', revealHashTarget);
+  }
 
   // ----- Format help overlay -----
   const fmtBtn = $('fmtHelpBtn');
