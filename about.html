@@ -569,8 +569,24 @@
 <script type="module" src="assets/analyser/app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
+    // Auto-reload once when an updated service worker takes control, so a new
+    // deploy's HTML/CSS/JS appear without a manual hard-refresh. Guarded on an
+    // existing controller so the very first install doesn't trigger a reload.
+    if (navigator.serviceWorker.controller) {
+      var anrRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (anrRefreshing) return;
+        anrRefreshing = true;
+        window.location.reload();
+      });
+    }
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW failed:', e); });
+      // updateViaCache:'none' stops the browser serving sw.js from its own HTTP
+      // cache, so a newly-deployed service worker is always detected; update()
+      // forces an immediate check instead of waiting for the next navigation.
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        .then(function (reg) { reg.update(); })
+        .catch(function (e) { console.warn('SW failed:', e); });
     });
   }
 </script>
