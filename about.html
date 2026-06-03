@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>About Analyser — Local File Forensics, No Ads or Tracking</title>
+  <title>About Analyser - Local File Forensics, No Ads or Tracking</title>
   <meta name="description" content="Why Analyser exists and how it works: a free, in-browser forensic tool for photos, sound, video &amp; 200+ formats. No ads, no telemetry, nothing uploaded.">
   <link rel="canonical" href="https://lab.valjdakosta.com/about.html">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -11,18 +11,18 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Analyser">
   <meta property="og:locale" content="en_US">
-  <meta property="og:title" content="About Analyser — Local File Forensics, No Ads or Tracking">
+  <meta property="og:title" content="About Analyser - Local File Forensics, No Ads or Tracking">
   <meta property="og:description" content="Why Analyser exists and how it works: a free, in-browser forensic tool for photos, sound, video &amp; 200+ formats. No ads, no telemetry, nothing uploaded.">
   <meta property="og:url" content="https://lab.valjdakosta.com/about.html">
   <meta property="og:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The Analyser wordmark on a faint grid — a free, local, in-browser file metadata and forensics tool.">
+  <meta property="og:image:alt" content="The Analyser wordmark on a faint grid - a free, local, in-browser file metadata and forensics tool.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="About Analyser — Local File Forensics, No Ads or Tracking">
+  <meta name="twitter:title" content="About Analyser - Local File Forensics, No Ads or Tracking">
   <meta name="twitter:description" content="Why Analyser exists and how it works: a free, in-browser forensic tool for photos, sound, video &amp; 200+ formats. No ads, no telemetry, nothing uploaded.">
   <meta name="twitter:image" content="https://lab.valjdakosta.com/assets/banner.jpg">
-  <meta name="twitter:image:alt" content="The Analyser wordmark on a faint grid — a free, local, in-browser file metadata and forensics tool.">
+  <meta name="twitter:image:alt" content="The Analyser wordmark on a faint grid - a free, local, in-browser file metadata and forensics tool.">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.png">
@@ -105,7 +105,7 @@
 
 <nav class="site-nav" aria-label="Primary">
   <div class="nav-home" id="navHomeWrap">
-    <button type="button" class="nav-home-btn" id="navHomeBtn" aria-label="Home — scroll to top"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7.1 7.5 1.8l6 5.3"/><path d="M3.2 6.1V13.2h8.6V6.1"/></svg></button>
+    <button type="button" class="nav-home-btn" id="navHomeBtn" aria-label="Home - scroll to top"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7.1 7.5 1.8l6 5.3"/><path d="M3.2 6.1V13.2h8.6V6.1"/></svg></button>
   </div>
   <a href="#why" class="nav-link"><span class="nav-num">i</span><span>Why</span></a>
   <a href="#when" class="nav-link"><span class="nav-num">ii</span><span>When</span></a>
@@ -137,7 +137,7 @@
   </section>
 
   <!--
-    PATCH NOTES — one entry per git push, newest first.
+    PATCH NOTES - one entry per git push, newest first.
     Latest 3 visible; older ones inside the <details> dropdown.
     Version: 1.(commit_count - 25). Pre-1.0 commits use 0.N.
     Date/time: from `git log --format="%ai"`, local timezone (+0200 CEST).
@@ -156,11 +156,11 @@
           <p class="patch-version">1.5</p>
           <p class="patch-date">3 June 2026, 14:39</p>
           <ul class="patch-list">
-            <li>Folders and ZIP archives now open in an interactive treemap &mdash; every file is sized by how much disk it uses; click a folder to zoom in, click a file to analyse it &mdash; with a file-type breakdown and support for archives nested inside archives</li>
-            <li>Cloud-only files (OneDrive, iCloud, Google Drive, Dropbox) that aren&rsquo;t downloaded to this device yet are now detected and explained &mdash; for both images and other files &mdash; instead of failing with a generic error</li>
+            <li>Folders and ZIP archives now open in an interactive treemap - every file is sized by how much disk it uses; click a folder to zoom in, click a file to analyse it - with a file-type breakdown and support for archives nested inside archives</li>
+            <li>Cloud-only files (OneDrive, iCloud, Google Drive, Dropbox) that aren&rsquo;t downloaded to this device yet are now detected and explained - for both images and other files - instead of failing with a generic error</li>
             <li>Audio files with embedded cover art now show the artwork, which you can open and analyse as a photo</li>
-            <li>Programs and libraries (EXE, DLL) now surface far more detail &mdash; version info, copyright, linker and subsystem versions, and security mitigations &mdash; with the copyright field now read correctly</li>
-            <li>Steam and Valve files (VDF, ACF) are now parsed &mdash; App ID, name, install directory, and the full key tree</li>
+            <li>Programs and libraries (EXE, DLL) now surface far more detail - version info, copyright, linker and subsystem versions, and security mitigations - with the copyright field now read correctly</li>
+            <li>Steam and Valve files (VDF, ACF) are now parsed - App ID, name, install directory, and the full key tree</li>
             <li>Videos no longer briefly play while being analysed on desktop</li>
             <li>Every loading bar now uses the same <code>[////////]</code> style, including the folder, large-file, and checksum bars that used to slide; the folder pop-up bar fills the card and moves at a calmer pace</li>
             <li>New &ldquo;Links&rdquo; button in the header, with a confirmation before leaving the site; the byline and Links now point to link.valjdakosta.com</li>
@@ -174,7 +174,7 @@
           <p class="patch-version">1.4</p>
           <p class="patch-date">3 June 2026, 03:34</p>
           <ul class="patch-list">
-            <li>OCR now bundles only English for offline use; every other language &mdash; including the Serbian variants &mdash; streams from a CDN on demand and is cached after first use, keeping the app&rsquo;s download small</li>
+            <li>OCR now bundles only English for offline use; every other language - including the Serbian variants - streams from a CDN on demand and is cached after first use, keeping the app&rsquo;s download small</li>
             <li>All 32 languages still appear in the picker, with the non-bundled ones marked &ldquo;online&rdquo;</li>
             <li>The &ldquo;Complete&rdquo; offline download still fetches every language, so full offline OCR is unchanged</li>
           </ul>
@@ -184,7 +184,7 @@
           <p class="patch-version">1.3</p>
           <p class="patch-date">3 June 2026, 03:25</p>
           <ul class="patch-list">
-            <li>The video-to-audio extractor (FFmpeg) and the larger OCR language packs now download from a CDN the first time they&rsquo;re needed &mdash; with a progress bar &mdash; then stay cached for offline use, instead of weighing down the first load</li>
+            <li>The video-to-audio extractor (FFmpeg) and the larger OCR language packs now download from a CDN the first time they&rsquo;re needed - with a progress bar - then stay cached for offline use, instead of weighing down the first load</li>
             <li>All 32 OCR languages still appear in the picker: the nine most common stay bundled, the rest are marked &ldquo;online&rdquo; and stream on demand (the Complete download still grabs every language)</li>
             <li>Unknown or mistyped addresses now return to the home page instead of showing a 404</li>
           </ul>
@@ -197,7 +197,7 @@
           <p class="patch-version">1.2</p>
           <p class="patch-date">3 June 2026, 03:02</p>
           <ul class="patch-list">
-            <li>The app now updates itself &mdash; a freshly-deployed version is detected and applied automatically, with no hard-refresh needed</li>
+            <li>The app now updates itself - a freshly-deployed version is detected and applied automatically, with no hard-refresh needed</li>
           </ul>
         </div>
 
@@ -216,10 +216,10 @@
           <p class="patch-date">3 June 2026</p>
           <ul class="patch-list">
             <li>DOCX viewer now renders embedded images inline, alongside the text, tables, and headings</li>
-            <li>Everything needed for offline use is now bundled locally &mdash; OCR and the video-to-audio extractor (FFmpeg) no longer reach out to a CDN and work with no connection</li>
+            <li>Everything needed for offline use is now bundled locally - OCR and the video-to-audio extractor (FFmpeg) no longer reach out to a CDN and work with no connection</li>
             <li>OCR now offers 32 languages to download, including Cyrillic, Greek, Hebrew, Arabic, and CJK scripts</li>
             <li>Offline download tiers rebalanced: Essentials (~46 MB), Everything (~72 MB), Complete with all OCR languages (~290 MB)</li>
-            <li>&ldquo;Clear all site data&rdquo; wipes every cache, database, and stored value &mdash; only your dark-mode preference is kept</li>
+            <li>&ldquo;Clear all site data&rdquo; wipes every cache, database, and stored value - only your dark-mode preference is kept</li>
             <li>The browser&rsquo;s native video player is now hidden everywhere except iPhone, where iOS needs it for playback</li>
             <li>Search-engine and social-sharing support: page descriptions, link previews with a banner image, structured data, sitemap, and robots.txt</li>
           </ul>
@@ -229,11 +229,11 @@
           <p class="patch-version">0.29</p>
           <p class="patch-date">3 June 2026, 00:51</p>
           <ul class="patch-list">
-            <li>Every dependency is now hosted locally (FFmpeg, ImageMagick, Tesseract OCR, PDF.js, Leaflet maps, QR decoding, and more) &mdash; the whole app can run offline with nothing loaded from a CDN</li>
-            <li>Spreadsheet viewer &mdash; opens XLSX workbooks with a tab per sheet</li>
-            <li>E-book reader &mdash; opens EPUB files with chapter-by-chapter navigation</li>
-            <li>Slide viewer &mdash; opens PowerPoint PPTX presentations as slide cards</li>
-            <li>3D model viewer &mdash; opens STL files in an interactive WebGL view with orbit, zoom, spin, and dimensions</li>
+            <li>Every dependency is now hosted locally (FFmpeg, ImageMagick, Tesseract OCR, PDF.js, Leaflet maps, QR decoding, and more) - the whole app can run offline with nothing loaded from a CDN</li>
+            <li>Spreadsheet viewer - opens XLSX workbooks with a tab per sheet</li>
+            <li>E-book reader - opens EPUB files with chapter-by-chapter navigation</li>
+            <li>Slide viewer - opens PowerPoint PPTX presentations as slide cards</li>
+            <li>3D model viewer - opens STL files in an interactive WebGL view with orbit, zoom, spin, and dimensions</li>
             <li>FL Studio projects (.flp): reads version, tempo, title, channels, and plugins</li>
             <li>CNC G-code: identifies the machine, controller, and toolpath alongside the existing 3D-printing analysis</li>
             <li>New identification and metadata for X.509 certificates (.crt), MSI installers, After Effects projects (.aepx), partial downloads (.part), CDP4 data (.cdp), RTF documents, ULTRAKILL saves (.bepis), and Dolby surround codecs (E-AC-3, TrueHD)</li>
@@ -271,11 +271,11 @@
           <p class="patch-version">0.26</p>
           <p class="patch-date">2 June 2026</p>
           <ul class="patch-list">
-            <li>DOCX viewer &mdash; opens Word documents with formatted text, tables, headings, and metadata, similar to the PDF viewer</li>
-            <li>AI detection &mdash; photos are checked for AI-generation markers in metadata (Stable Diffusion, DALL-E, Midjourney, Firefly, etc.)</li>
-            <li>GCode analysis &mdash; detects slicer, printer, filament, layer height, temperatures, print dimensions from 3D printing files</li>
-            <li>Log file origin &mdash; identifies Apache, Nginx, syslog, Python, Java/Log4j, Android logcat, JSON structured, and other log formats</li>
-            <li>iPhone video: full analysis now available &mdash; frame-by-frame navigation, timecode, contact sheet, scene detection, and audio extraction</li>
+            <li>DOCX viewer - opens Word documents with formatted text, tables, headings, and metadata, similar to the PDF viewer</li>
+            <li>AI detection - photos are checked for AI-generation markers in metadata (Stable Diffusion, DALL-E, Midjourney, Firefly, etc.)</li>
+            <li>GCode analysis - detects slicer, printer, filament, layer height, temperatures, print dimensions from 3D printing files</li>
+            <li>Log file origin - identifies Apache, Nginx, syslog, Python, Java/Log4j, Android logcat, JSON structured, and other log formats</li>
+            <li>iPhone video: full analysis now available - frame-by-frame navigation, timecode, contact sheet, scene detection, and audio extraction</li>
             <li>Photo/video file picker on mobile uses explicit extensions instead of MIME wildcards (no more camera popup on iOS)</li>
             <li>Header letter-weight sweep plays once on desktop load; repeats periodically on mobile</li>
             <li>Background grid no longer disappears on wide displays</li>
@@ -292,7 +292,7 @@
             <li>BPM read from file tags (ID3 TBPM, MP4 tmpo) when available; algorithmic estimates marked with (est)</li>
             <li>Transparent images show a checkerboard background; lightbox adds a Transparency toggle</li>
             <li>LSB analysis lightbox uses left/right arrows to cycle R, G, B instead of separate picture controls</li>
-            <li>PDF page previews are clickable &mdash; open in a lightbox with page navigation arrows</li>
+            <li>PDF page previews are clickable - open in a lightbox with page navigation arrows</li>
             <li>HTML files get a sandboxed rendered preview alongside the source</li>
             <li>Text/code previews add an &ldquo;Open full&rdquo; button to view in a new tab</li>
             <li>Mobile: header letter-weight animation on load (left-to-right sweep)</li>
@@ -326,7 +326,7 @@
             <p class="patch-date">2 June 2026, 19:27</p>
             <ul class="patch-list">
               <li>Vertical edge guides on wide displays, marking where the page ends</li>
-              <li>Internal: began modularising the codebase &mdash; AVI container parsing split out, shared helpers consolidated</li>
+              <li>Internal: began modularising the codebase - AVI container parsing split out, shared helpers consolidated</li>
             </ul>
           </div>
 
@@ -334,7 +334,7 @@
             <p class="patch-version">0.20</p>
             <p class="patch-date">2 June 2026, 19:14</p>
             <ul class="patch-list">
-              <li>Central format catalog &mdash; one file now drives the supported-types list, the overlay search, and the about-page tables</li>
+              <li>Central format catalog - one file now drives the supported-types list, the overlay search, and the about-page tables</li>
               <li>iPhone: videos that the off-screen decoder couldn&rsquo;t open now fall back to a working player with metadata and frame capture</li>
               <li>Mobile: tap a section card to pick a file (with a confirmation prompt); the heading moves into the numbered card once a file is analysed</li>
               <li>Dropzone format lists kept to a single row; squared-off supported-formats popup</li>
@@ -608,16 +608,61 @@
 
 </main>
 
-<footer class="site-footer site-footer--about">
+<footer id="about" class="site-footer site-footer--about">
   <div class="footer-about-heading">
     <p class="footer-mark">Everything runs in your browser.</p>
     <p class="footer-meta">No upload, no analytics, no servers in the loop.</p>
   </div>
+  <div class="offline-section" id="offlineSection">
+    <p class="offline-heading">Download for offline use</p>
+    <div class="offline-options">
+      <button type="button" class="offline-btn" data-tier="essentials">
+        <span class="offline-tier">Essentials</span>
+        <span class="offline-desc">Full app (all viewers), fonts, metadata, FFmpeg, ImageMagick</span>
+        <span class="offline-size">~46 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+      <button type="button" class="offline-btn" data-tier="everything">
+        <span class="offline-tier">Everything</span>
+        <span class="offline-desc">Essentials + OCR (English), PDF, maps, QR, HEIC, archives</span>
+        <span class="offline-size">~72 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+      <button type="button" class="offline-btn" data-tier="complete">
+        <span class="offline-tier">Complete</span>
+        <span class="offline-desc">Everything + all OCR languages</span>
+        <span class="offline-size">~290 MB</span>
+        <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
+      </button>
+    </div>
+    <div class="offline-bottom-row">
+      <button type="button" class="offline-install" id="offlineInstall">Install as app</button>
+      <button type="button" class="offline-clear" id="offlineClear">Clear all site data</button>
+      <details class="about-details">
+        <summary>Dependencies</summary>
+    <dl class="about-defs">
+      <div><dt>Metadata</dt><dd><a href="https://github.com/MikeKovarik/exifr" target="_blank" rel="noopener">exifr</a>. EXIF &middot; IPTC &middot; XMP &middot; ICC.</dd></div>
+      <div><dt>OCR</dt><dd><a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">tesseract.js</a>. On-device text recognition with language picker.</dd></div>
+      <div><dt>QR codes</dt><dd><a href="https://github.com/cozmo/jsQR" target="_blank" rel="noopener">jsQR</a>. Scans for QR codes in photos. Loaded only when needed.</dd></div>
+      <div><dt>Map</dt><dd><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> with <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> tiles. Loaded only if the photo has GPS.</dd></div>
+      <div><dt>HEIC</dt><dd><a href="https://github.com/alexcorvi/heic2any" target="_blank" rel="noopener">heic2any</a>. Converts HEIC/HEIF to JPEG in the browser.</dd></div>
+      <div><dt>RAW</dt><dd><a href="https://github.com/dlemstra/magick-wasm" target="_blank" rel="noopener">magick-wasm</a>. ImageMagick compiled to WASM. Converts ARW, CR2, CR3, NEF, and other RAW formats. ~15 MB, loaded only when needed.</dd></div>
+      <div><dt>Audio</dt><dd>Native Web Audio API plus a hand-written radix-2 FFT for spectrogram and analysis. BPM read from ID3/MP4 tags when available, estimated via onset detection otherwise.</dd></div>
+      <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback. Automatic scene detection with confidence scoring. iOS visible-player fallback.</dd></div>
+      <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. The ~31 MB core is fetched from a CDN the first time it's needed (then cached for offline use).</dd></div>
+      <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
+      <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a>. Fast ZIP decompression in the browser.</dd></div>
+      <div><dt>File ID</dt><dd>Built-in identification for 200+ file formats. Adobe, SolidWorks, Fusion 360, AutoCAD, Blender, Office, 3D mesh, executables, fonts, G-Code, log files, and more. Extracts version, author, and metadata from headers, ZIP manifests, ID3 tags, and gzipped XML projects. DOCX documents render with formatted text. AI-generation markers detected in photo metadata.</dd></div>
+      <div><dt>Install</dt><dd>Add to home screen for an offline PWA. Service worker caches the app shell. Use the buttons above to pre-cache heavy dependencies.</dd></div>
+        </dl>
+      </details>
+    </div>
+  </div>
   <div class="footer-row footer-bottom">
-    <p class="footer-meta"><a href="index.html">&larr; Return to main page</a></p>
+    <a href="index.html" class="footer-nav-btn">&larr; Main page</a>
+    <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
     <!-- Email shown obfuscated to deter scrapers; display-only, no mailto link. -->
     <p class="footer-meta">Contact: <a class="footer-contact">valjdakosta[at]gmail[dot]com</a></p>
-    <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
   </div>
 </footer>
 

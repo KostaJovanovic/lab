@@ -821,7 +821,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
       at.appendChild(row('Channels', audioBuf.numberOfChannels));
       at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)', 'Highest sample amplitude.'));
-      at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)', 'Root Mean Square — average signal power.'));
+      at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)', 'Root Mean Square - average signal power.'));
       at.appendChild(row('Samples', mono.length.toLocaleString()));
       audioCard.appendChild(at);
       const waveWrap = el('div', { style: 'position:relative; width:100%;' });
@@ -884,7 +884,7 @@ export async function renderVideo(file, resultsEl) {
   const url = URL.createObjectURL(file);
 
   // The probe is kept IN THE DOM (not display:none) so the browser gives it a
-  // decode surface for off-screen frame capture — otherwise frames never paint
+  // decode surface for off-screen frame capture - otherwise frames never paint
   // and captures come out black. It's parked 1px/near-transparent in the corner
   // via .anr-video-probe. iOS Safari often refuses to decode something this
   // small/hidden anyway; when the probe never loads, the catch block below falls
@@ -909,7 +909,7 @@ export async function renderVideo(file, resultsEl) {
     // iOS/Safari renders a black frame for a video that has never played, so it
     // needs a brief muted play to get frame 0 on screen before we capture it.
     // Every other platform can draw frame 0 straight from `loadeddata`, so we
-    // skip the playback there — no need to spin the video up just to grab a frame
+    // skip the playback there - no need to spin the video up just to grab a frame
     // (this is why videos used to briefly "play" while being analysed on desktop).
     if (isIOS()) {
       try { await probe.play(); } catch (_) {}
@@ -918,7 +918,7 @@ export async function renderVideo(file, resultsEl) {
     } else {
       // Frame 0 is already decoded at `loadeddata`; one rAF lets it settle before
       // we drawImage() it. (whenFramePainted would wait on the *next* presented
-      // frame, which never comes for a paused video — a needless 2s timeout.)
+      // frame, which never comes for a paused video - a needless 2s timeout.)
       await new Promise((r) => requestAnimationFrame(r));
     }
   } catch (_) {
@@ -1083,7 +1083,7 @@ export async function renderVideo(file, resultsEl) {
         at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
           'Highest sample amplitude. dBFS = decibels relative to full scale (0 dBFS = digital maximum).'));
         at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)',
-          'Root Mean Square — average signal power, closer to perceived loudness than peak.'));
+          'Root Mean Square - average signal power, closer to perceived loudness than peak.'));
         at.appendChild(row('Samples', mono.length.toLocaleString()));
         audioCard.appendChild(at);
 
@@ -1128,7 +1128,7 @@ export async function renderVideo(file, resultsEl) {
       return;
     }
 
-    // Not an AVI we can decode — but the probe may simply have failed on iOS.
+    // Not an AVI we can decode - but the probe may simply have failed on iOS.
     // Try a real visible player before declaring the file unplayable.
     const shownFallback = await renderVisibleVideoFallback(file, url, header, resultsEl, renderSignal);
     if (shownFallback) return;
@@ -1144,7 +1144,7 @@ export async function renderVideo(file, resultsEl) {
 
   resultsEl.innerHTML = '';
 
-  // Capture the first frame once, here — reused for the section-meta thumbnail
+  // Capture the first frame once, here - reused for the section-meta thumbnail
   // AND the player poster so the first frame shows immediately on load (the
   // <video> can otherwise render black until played, especially on iOS).
   let posterUrl = '';
@@ -1650,7 +1650,7 @@ export async function renderVideo(file, resultsEl) {
       at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
         'Highest sample amplitude. dBFS = decibels relative to full scale (0 dBFS = digital maximum).'));
       at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)',
-        'Root Mean Square — average signal power, closer to perceived loudness than peak.'));
+        'Root Mean Square - average signal power, closer to perceived loudness than peak.'));
       at.appendChild(row('Samples', mono.length.toLocaleString()));
       audioCard.appendChild(at);
 
@@ -1697,7 +1697,7 @@ export async function renderVideo(file, resultsEl) {
       }
       waveCanvas.addEventListener('click', (e) => seekFromX(e.clientX));
 
-      // Drag playhead on waveform — window listeners live only during a drag.
+      // Drag playhead on waveform - window listeners live only during a drag.
       let waveDragging = false;
       function onWaveMouseMove(e) { if (waveDragging) seekFromX(e.clientX); }
       function onWaveMouseUp() {

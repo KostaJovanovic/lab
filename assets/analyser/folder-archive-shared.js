@@ -114,7 +114,7 @@ export function renderBreakdownCards(items, resultsEl, extraSummaryRows) {
   card.appendChild(tbl);
   resultsEl.appendChild(card);
 
-  // File types card — first 5 visible, rest behind "show more"
+  // File types card - first 5 visible, rest behind "show more"
   if (breakdown.sorted.length) {
     const extCard = el('div', { class: 'anr-card' });
     extCard.appendChild(el('h3', {}, 'File types'));
@@ -147,7 +147,7 @@ export function renderViewToggle(container, items, treeObj, treeOpts, onFileClic
   const card = el('div', { class: 'anr-card' });
   card.appendChild(el('h3', {}, 'Contents'));
 
-  // Controls bar — toggle + legend in one row
+  // Controls bar - toggle + legend in one row
   const controls = el('div', { class: 'anr-view-controls' });
   const toggle = el('div', { class: 'anr-toggle' });
   const btnTreemap = el('button', { class: 'is-active' }, 'Treemap');

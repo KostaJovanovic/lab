@@ -13,8 +13,8 @@
      - the overlay search box indexes the labels, extension lists, and tags
 
    Two kinds of data live here:
-   1. Classification sets (lowercase, exhaustive) — drive routing logic.
-   2. Display catalog (FULL_ANALYSIS / IDENTIFICATION) — curated, nicely-cased
+   1. Classification sets (lowercase, exhaustive) - drive routing logic.
+   2. Display catalog (FULL_ANALYSIS / IDENTIFICATION) - curated, nicely-cased
       lists with search tags, shown in the overlay and about page.
    ----------------------------------------------------------------------------
    HOW TO ADD A FORMAT (read this before editing)
@@ -29,7 +29,7 @@
    e.g. adding ".jpe" as another photo extension.
      1. Add 'jpe' to the matching set (PHOTO_EXTS here).
      2. Add the token to that category's `exts` string in FULL_ANALYSIS
-        (e.g. append "JPE" to the Photo row). Done — overlay, about page, and
+        (e.g. append "JPE" to the Photo row). Done - overlay, about page, and
         search update on next load. No app.js change needed.
      • If it's a photo that needs decoding, also add it to HEIC_EXTS or
        RAW_EXTS so photo.js converts it first.
@@ -48,10 +48,10 @@
    sw.js wiring. The catalog part is still just a FULL_ANALYSIS row here.
 
    Field reference for a catalog row { label, exts, tags, note? }:
-     label — category name (first column)
-     exts  — space-separated extensions, curated casing (e.g. "WebP", "glTF")
-     tags  — extra search keywords: brand/software names + synonyms
-     note  — optional prose shown instead of the ext list on the about page
+     label - category name (first column)
+     exts  - space-separated extensions, curated casing (e.g. "WebP", "glTF")
+     tags  - extra search keywords: brand/software names + synonyms
+     note  - optional prose shown instead of the ext list on the about page
    ============================================================================ */
 
 import { el } from './util.js';
@@ -78,12 +78,12 @@ export const VIDEO_EXTS = new Set([
 export const CSV_EXTS = new Set(['csv', 'tsv']);
 export const SVG_EXTS = new Set(['svg']);
 
-// Photo conversion subsets — used by photo.js to decide which images need
+// Photo conversion subsets - used by photo.js to decide which images need
 // HEIC-to-JPEG (heic2any) or RAW-to-PNG (ImageMagick WASM) conversion first.
 export const HEIC_EXTS = new Set(['heic', 'heif', 'heics', 'heifs']);
 export const RAW_EXTS  = new Set(['arw', 'cr2', 'cr3', 'nef', 'dng', 'raf', 'rw2', 'orf', 'pef', 'sr2', 'srw', 'x3f', 'raw']);
 
-// Document and archive sets — used by folder/archive shared module for
+// Document and archive sets - used by folder/archive shared module for
 // category classification in treemaps and breakdowns.
 export const DOC_EXTS = new Set([
   'pdf','doc','docx','xls','xlsx','ppt','pptx','txt','md','csv','json',
@@ -97,10 +97,10 @@ export const ARCHIVE_EXTS = new Set([
 
 // ---------- display catalog (overlay + about page) ----------
 // Each row: { label, exts, tags, note? }
-//   label — category name shown in the first column
-//   exts  — space-separated extension list (curated casing) for display/search
-//   tags  — extra search keywords (software/brand names, synonyms)
-//   note  — optional prose shown instead of the ext list on the about page
+//   label - category name shown in the first column
+//   exts  - space-separated extension list (curated casing) for display/search
+//   tags  - extra search keywords (software/brand names, synonyms)
+//   note  - optional prose shown instead of the ext list on the about page
 //           (used where a plain extension list undersells what we do, e.g. PDF)
 
 export const FULL_ANALYSIS = [
@@ -108,7 +108,7 @@ export const FULL_ANALYSIS = [
   { label: 'Sound',     exts: 'MP3 WAV M4A M4B AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA MIDI', tags: 'audio music podcast recording microphone audiobook', desc: 'Inspect the waveform, spectrogram, codec, bitrate, channels, and tags of MP3, WAV, FLAC, M4A, AAC, OGG, and Opus audio.' },
   { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP 3G2 MPG MPEG MTS M2TS TS VOB OGV', tags: 'movie film clip recording screen', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track.' },
   { label: 'PDF',       exts: 'PDF', tags: 'adobe acrobat document', desc: 'View pages, extract text and embedded images, run OCR, and read the metadata of PDF documents.' },
-  { label: 'Office docs', exts: 'DOCX XLSX PPTX EPUB', tags: 'microsoft word excel powerpoint slides spreadsheet ebook epub viewer reader', desc: 'Open and read Microsoft Word (DOCX), Excel (XLSX), and PowerPoint (PPTX), plus EPUB e-books — text, tables, slides, and chapters.' },
+  { label: 'Office docs', exts: 'DOCX XLSX PPTX EPUB', tags: 'microsoft word excel powerpoint slides spreadsheet ebook epub viewer reader', desc: 'Open and read Microsoft Word (DOCX), Excel (XLSX), and PowerPoint (PPTX), plus EPUB e-books - text, tables, slides, and chapters.' },
   { label: '3D model',  exts: 'STL', tags: 'stl 3d model mesh print cad solidworks triangle viewer webgl', desc: 'View STL models in an interactive WebGL viewer with triangle count, surface area, and volume.' },
   { label: 'Archives',  exts: 'ZIP', tags: 'compressed zip', desc: 'Browse the file tree and compression details of ZIP archives without extracting them.' },
   { label: 'Data',      exts: 'CSV TSV SVG', tags: 'spreadsheet vector markup data table', desc: 'Preview CSV and TSV tables with per-column stats, and view or rasterise SVG vector graphics.' },
@@ -132,15 +132,15 @@ export const IDENTIFICATION = [
   { label: 'Disk images',     exts: 'ISO IMG VHD VHDX VMDK QCOW2 VDI', tags: 'virtual machine disk image hyper-v vmware virtualbox qemu boot', desc: 'Identify disk and virtual-machine images: ISO, VHD/VHDX (Hyper-V), VMDK (VMware), QCOW2 (QEMU), and VDI (VirtualBox).' },
   { label: 'Game engines',    exts: 'UNITYPACKAGE UASSET UMAP GODOT TSCN TRES', tags: 'unity unreal godot game development asset', desc: 'Identify game-engine assets: Unity (UNITYPACKAGE), Unreal Engine (UASSET, UMAP), and Godot (TSCN, TRES).' },
   { label: 'Game saves',      exts: 'BEPIS', tags: 'ultrakill save game progress slot bepis hakita', desc: 'Identify game save files, including ULTRAKILL saves (BEPIS), and read their stored progress.' },
-  { label: 'Valve / Steam',   exts: 'VDF ACF', tags: 'valve steam keyvalues kv source engine appmanifest libraryfolders loginusers config app manifest', desc: 'Parse Valve KeyValues files (VDF) and Steam app manifests (ACF) — appmanifest, libraryfolders, loginusers, and config — surfacing the App ID, name, install dir, size on disk, and the full key tree.' },
+  { label: 'Valve / Steam',   exts: 'VDF ACF', tags: 'valve steam keyvalues kv source engine appmanifest libraryfolders loginusers config app manifest', desc: 'Parse Valve KeyValues files (VDF) and Steam app manifests (ACF) - appmanifest, libraryfolders, loginusers, and config - surfacing the App ID, name, install dir, size on disk, and the full key tree.' },
   { label: 'Config',          exts: 'TOML INI ENV CONF CFG PROPERTIES', tags: 'configuration settings dotenv toml ini', desc: 'Identify configuration files: TOML, INI, .env, CONF, CFG, and Java properties.' },
   { label: 'Executables',     exts: 'EXE DLL MSI APK IPA DMG AppImage', tags: 'windows android apple mac macos linux program application installer package', desc: 'Identify and read metadata from programs and installers: Windows (EXE, DLL, MSI), Android (APK), iOS (IPA), macOS (DMG), and Linux (AppImage).' },
   { label: 'Video editing',   exts: 'DRP', tags: 'davinci resolve blackmagic', desc: 'Identify DaVinci Resolve (DRP) project files from Blackmagic Design.' },
-  { label: 'CNC / 3D print',  exts: 'GCODE GCO NC NGC TAP CNC', tags: 'gcode cnc 3d printing slicer prusa cura bambu orca simplify3d slic3r mill router lathe laser plasma fusion 360 mastercam grbl fanuc haas vectric carbide lightburn spindle tool', desc: 'Analyse G-code for 3D printers and CNC machines — detect the slicer or CAM tool, machine and controller, toolpath, and print or cut dimensions (Prusa, Bambu, Cura, Fusion 360, Mastercam, GRBL, Fanuc, Haas).' },
-  { label: 'Surround audio',  exts: 'EC3 EAC3 TrueHD THD MLP Atmos', tags: 'dolby digital plus eac3 truehd atmos surround 5.1 7.1 meridian lossless object audio home theatre', desc: 'Identify Dolby surround codecs — Digital Plus (E-AC-3), TrueHD, MLP, and Atmos — with channel-layout detection (5.1, 7.1).' },
-  { label: 'Certificates',    exts: 'CRT CER PEM DER', tags: 'x509 certificate ssl tls https security openssl public key private rsa ec', desc: 'Identify and decode X.509 security certificates (CRT, CER, PEM, DER) — subject, issuer, validity dates, and key details.' },
+  { label: 'CNC / 3D print',  exts: 'GCODE GCO NC NGC TAP CNC', tags: 'gcode cnc 3d printing slicer prusa cura bambu orca simplify3d slic3r mill router lathe laser plasma fusion 360 mastercam grbl fanuc haas vectric carbide lightburn spindle tool', desc: 'Analyse G-code for 3D printers and CNC machines - detect the slicer or CAM tool, machine and controller, toolpath, and print or cut dimensions (Prusa, Bambu, Cura, Fusion 360, Mastercam, GRBL, Fanuc, Haas).' },
+  { label: 'Surround audio',  exts: 'EC3 EAC3 TrueHD THD MLP Atmos', tags: 'dolby digital plus eac3 truehd atmos surround 5.1 7.1 meridian lossless object audio home theatre', desc: 'Identify Dolby surround codecs - Digital Plus (E-AC-3), TrueHD, MLP, and Atmos - with channel-layout detection (5.1, 7.1).' },
+  { label: 'Certificates',    exts: 'CRT CER PEM DER', tags: 'x509 certificate ssl tls https security openssl public key private rsa ec', desc: 'Identify and decode X.509 security certificates (CRT, CER, PEM, DER) - subject, issuer, validity dates, and key details.' },
   { label: 'Engineering',     exts: 'CDP', tags: 'cdp4 comet data platform esa engineering systems concurrent design', desc: 'Identify CDP4 (COMET) concurrent-design engineering files from the ESA systems-engineering toolset.' },
-  { label: 'Logs',            exts: 'LOG', tags: 'log file server apache nginx syslog error debug', desc: 'Identify log files and their origin — Apache, Nginx, syslog, Python, Java/Log4j, and Android logcat.' },
+  { label: 'Logs',            exts: 'LOG', tags: 'log file server apache nginx syslog error debug', desc: 'Identify log files and their origin - Apache, Nginx, syslog, Python, Java/Log4j, and Android logcat.' },
   { label: 'Other',           exts: 'TORRENT PART CRDOWNLOAD', tags: 'bittorrent peer to peer p2p download partial incomplete chrome firefox crdownload', desc: 'Identify BitTorrent files (TORRENT) and their file list, plus partial or incomplete downloads (PART, CRDOWNLOAD).' },
 ];
 

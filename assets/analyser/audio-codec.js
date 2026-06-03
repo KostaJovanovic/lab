@@ -29,7 +29,7 @@ export async function peekContainer(file) {
   if (ascii(0, 4) === 'OggS') return { container: 'OGG' };
   // ID3-tagged MP3
   if (ascii(0, 3) === 'ID3') return { container: 'MP3', codec: 'MPEG Layer 3' };
-  // AAC ADTS — 12-bit sync 0xFFF, layer=0
+  // AAC ADTS - 12-bit sync 0xFFF, layer=0
   if (head[0] === 0xFF && (head[1] & 0xF0) === 0xF0 && (head[1] & 0x06) === 0x00)
     return { container: 'AAC', codec: 'AAC (ADTS)' };
   // Raw MPEG frame (FF Ex/Fx)

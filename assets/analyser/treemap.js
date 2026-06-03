@@ -353,12 +353,12 @@ export function attachTreemapEvents(canvas, wrap, items, opts) {
   const tooltip = el('div', { class: 'anr-treemap-tooltip' });
   wrap.appendChild(tooltip);
 
-  // Breadcrumb (zoom navigation) — sits above the canvas.
+  // Breadcrumb (zoom navigation) - sits above the canvas.
   const breadcrumb = el('div', { class: 'anr-treemap-breadcrumb' });
   breadcrumb.hidden = true;
   wrap.insertBefore(breadcrumb, canvas);
 
-  // Status line (selected file name) — sits below the canvas.
+  // Status line (selected file name) - sits below the canvas.
   const status = el('div', { class: 'anr-treemap-status' }, 'Click a folder to zoom in · click a file to analyse it');
   wrap.appendChild(status);
 

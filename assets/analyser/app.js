@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 38;
+const COMMIT_COUNT = 39;
 const VERSION_OFFSET = 32;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -70,15 +70,26 @@ function anrConfirm(title, okLabel) {
 // from flashing it.
 let _dropLoaderEl = null;
 let _dropLoaderTimer = null;
+let _dropLoaderOnCancel = null;
 
-function showDropLoader(file) {
+function showDropLoader(file, onCancel) {
   clearTimeout(_dropLoaderTimer);
+  _dropLoaderOnCancel = onCancel || null;
   const name = (file && file.name) ? file.name : 'file';
   _dropLoaderTimer = setTimeout(() => {
     if (!_dropLoaderEl || !_dropLoaderEl.isConnected) {
       const bar = asciiBar({ fit: true });
       const label = el('div', { class: 'anr-drop-loader-label' }, '');
-      _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, bar]);
+      // Cancel sits on the same line as the label, pushed to the right; it
+      // hides the popup and aborts the in-flight load (see cancelLoad below).
+      const cancelBtn = el('button', { type: 'button', class: 'anr-drop-loader-cancel' }, 'Cancel');
+      cancelBtn.addEventListener('click', () => {
+        const cb = _dropLoaderOnCancel;
+        hideDropLoader();
+        if (cb) cb();
+      });
+      const head = el('div', { class: 'anr-drop-loader-head' }, [label, cancelBtn]);
+      _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [head, bar]);
       _dropLoaderEl._label = label;
       _dropLoaderEl._bar = bar;
       document.body.appendChild(_dropLoaderEl);
@@ -91,6 +102,7 @@ function showDropLoader(file) {
 
 function hideDropLoader() {
   clearTimeout(_dropLoaderTimer);
+  _dropLoaderOnCancel = null;
   if (_dropLoaderEl) {
     _dropLoaderEl.classList.remove('is-open');
     if (_dropLoaderEl._bar) _dropLoaderEl._bar.stop();
@@ -137,7 +149,7 @@ function showLinkConfirm(anchor) {
 
 // ---------- file classification ----------
 // Extension sets live in formats.js (the central catalog). See that file to
-// add a new type — the overlay, about page, and search update automatically.
+// add a new type - the overlay, about page, and search update automatically.
 
 function classifyFile(file) {
   const t = (file.type || '').toLowerCase();
@@ -205,23 +217,20 @@ function boot() {
 
   let firstFileLoaded = false;
   let dragCounter = 0;
+  // Token for the load currently in flight. Cancelling marks it so the
+  // (uncancellable) renderer's output is suppressed and the loader stays hidden.
+  let _currentToken = null;
 
-  async function handleFile(file) {
-    if (!file) return;
-    // If the "Supported formats" overlay is open, drop/paste/pick dismisses it.
-    const fmtOv = $('fmtOverlay');
-    if (fmtOv && !fmtOv.hidden) { fmtOv.hidden = true; document.body.style.overflow = ''; }
-    showDropLoader(file);
-
-    // Clear all previous results
+  // Reset the result containers, preview slots, and nav/section state back to
+  // the pre-load layout. Shared by a fresh load and by cancelLoad().
+  function clearResultsUI() {
     photoResults.innerHTML = ''; photoResults.hidden = true;
     audioResults.innerHTML = ''; audioResults.hidden = true;
     videoResults.innerHTML = ''; videoResults.hidden = true;
     unknownResults.innerHTML = ''; unknownResults.hidden = true;
 
     // Clear preview slots
-    const previewSlots = ['photoPreview', 'photoOcrSlot', 'photoHistSlot', 'videoPreview'];
-    for (const id of previewSlots) {
+    for (const id of ['photoPreview', 'photoOcrSlot', 'photoHistSlot', 'videoPreview']) {
       const slot = $(id);
       if (slot) slot.innerHTML = '';
     }
@@ -235,15 +244,38 @@ function boot() {
 
     // Clear nav indicators
     document.querySelectorAll('.nav-link.has-data').forEach(link => link.classList.remove('has-data'));
+  }
+
+  // Stop the in-flight load: drop its results and restore the empty page state
+  // (the three analysis sections are explainer sections - visible by default).
+  function cancelLoad(token) {
+    if (!token || token.cancelled) return;
+    token.cancelled = true;
+    if (_currentToken === token) _currentToken = null;
+    clearResultsUI();
+    ['photo', 'audio', 'video'].forEach((id) => { const sec = $(id); if (sec) sec.hidden = false; });
+  }
+
+  async function handleFile(file) {
+    if (!file) return;
+    // If the "Supported formats" overlay is open, drop/paste/pick dismisses it.
+    const fmtOv = $('fmtOverlay');
+    if (fmtOv && !fmtOv.hidden) { fmtOv.hidden = true; document.body.style.overflow = ''; }
+    const token = { cancelled: false };
+    _currentToken = token;
+    showDropLoader(file, () => cancelLoad(token));
+
+    clearResultsUI();
 
     firstFileLoaded = true;
     if (pageDropEl) pageDropEl.hidden = true;
 
     // Probe that the bytes are actually readable before any renderer tries. A
     // cloud-only file (OneDrive/iCloud/etc.) whose sync app can't hydrate it has
-    // a valid name+size but throws on read — show a clear warning instead of a
+    // a valid name+size but throws on read - show a clear warning instead of a
     // generic "could not read" from deep inside a renderer.
     const readErr = await probeReadable(file);
+    if (token.cancelled) return;   // cancelled while probing - don't render
     if (readErr && isUnreadableError(readErr)) {
       hideDropLoader();
       unknownResults.hidden = false;
@@ -342,7 +374,19 @@ function boot() {
     const renderPromise = route.render(file, resultsByName[route.results]);
     // Hide the bottom loader once the renderer settles (or immediately if it
     // wasn't async). Errors still dismiss it so it can't get stuck on screen.
-    Promise.resolve(renderPromise).catch(() => {}).finally(() => hideDropLoader());
+    // If this load was cancelled (or superseded by a newer one) leave the loader
+    // alone - cancelLoad already cleared the UI, and a newer load owns the popup.
+    Promise.resolve(renderPromise).catch(() => {}).finally(() => {
+      if (token.cancelled) {
+        // A cancelled renderer may have appended output after cancelLoad cleared
+        // the UI. Scrub it - but only if no newer load has since taken over
+        // (cancelLoad nulls _currentToken; a fresh load sets it non-null).
+        if (_currentToken === null) clearResultsUI();
+        return;
+      }
+      if (_currentToken !== token) return;   // superseded by a newer load
+      hideDropLoader();
+    });
   }
   _handleFile = handleFile;
   window._anrHandleFile = handleFile;
@@ -400,7 +444,7 @@ function boot() {
         if (kicker) kicker.after(clone); else meta.appendChild(clone);
       }
 
-      // Only the description text opens the picker — never the results/controls
+      // Only the description text opens the picker - never the results/controls
       // below it, which stay interactive.
       section.addEventListener('click', (e) => {
         if (!e.target.closest('.section-head, .section-lede, .section-meta-head, .section-num, .section-kicker')) return;
@@ -444,9 +488,11 @@ function boot() {
           if (en && en.isDirectory) { droppedFolderName = en.name; break; }
         }
       }
-      if (droppedFolderName) showDropLoader({ name: droppedFolderName });
+      const folderToken = { cancelled: false };
+      if (droppedFolderName) showDropLoader({ name: droppedFolderName }, () => { folderToken.cancelled = true; });
 
       const folderFiles = await walkItems(e.dataTransfer);
+      if (folderToken.cancelled) return;   // cancelled during the folder walk
       if (folderFiles) {
         if (!$('photoResults')) {
           window._anrPendingFolder = folderFiles;
@@ -853,7 +899,11 @@ function boot() {
 
       function setBar(frac) {
         const ch = parseFloat(getComputedStyle(bar).fontSize) * 0.6 || 8;
-        const total = Math.max(10, Math.floor((btn.clientWidth - ch * 2 - 32) / ch));
+        // Fit to the bar's own content width - it already excludes the button's
+        // padding, so this adapts to the resized (narrower) mobile buttons
+        // instead of assuming desktop padding. Reserve 2 chars for the [ ].
+        const barW = bar.clientWidth || btn.clientWidth;
+        const total = Math.max(4, Math.floor(barW / ch) - 2);
         const filled = Math.round(Math.max(0, Math.min(1, frac)) * total);
         bar.innerHTML = '[<span class="offline-bar-fill">' +
           '/'.repeat(filled) + '</span>' +
@@ -906,7 +956,13 @@ function boot() {
         ? 'Tap the Share button, then "Add to Home Screen".'
         : 'Open browser menu (⋮), then "Install app" or "Add to Home Screen".';
       installBtn.textContent = msg;
-      setTimeout(() => { installBtn.textContent = 'Install as app'; }, 5000);
+      // Expand full width (mobile only, via CSS) so the long message fits, like
+      // an opened Dependencies. Clear + Dependencies split the row below it.
+      installBtn.classList.add('is-expanded');
+      setTimeout(() => {
+        installBtn.textContent = 'Install as app';
+        installBtn.classList.remove('is-expanded');
+      }, 5000);
     });
   }
   window.addEventListener('appinstalled', () => {

@@ -39,7 +39,7 @@ export async function renderSvg(file, resultsEl) {
   const parseErr = doc.querySelector('parsererror');
 
   if (parseErr) {
-    statsCard.appendChild(el('p', { class: 'anr-hint anr-svg-error' }, 'SVG parse error — stats may be incomplete'));
+    statsCard.appendChild(el('p', { class: 'anr-hint anr-svg-error' }, 'SVG parse error - stats may be incomplete'));
   }
 
   const svgRoot = doc.querySelector('svg');
@@ -165,7 +165,7 @@ export async function renderSvg(file, resultsEl) {
       const label = el('div', { class: 'anr-svg-swatch-label' }, c);
       const swatch = el('div', {
         class: 'anr-svg-swatch',
-        title: c + ' — click to copy',
+        title: c + ' - click to copy',
         onclick: () => {
           navigator.clipboard.writeText(c).then(() => {
             label.textContent = 'copied';

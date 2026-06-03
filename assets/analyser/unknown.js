@@ -190,7 +190,7 @@ export async function renderUnknown(file, resultsEl) {
   resultsEl.innerHTML = '';
 
   const card = el('div', { class: 'anr-card' });
-  card.appendChild(el('h3', {}, 'Unknown file — best-effort inspection'));
+  card.appendChild(el('h3', {}, 'Unknown file - best-effort inspection'));
 
   const tbl = el('table', { class: 'anr-readout' });
   tbl.appendChild(row('Application', 'Unknown'));
@@ -284,7 +284,7 @@ export async function renderUnknown(file, resultsEl) {
         const stats = jsonStats(parsed, 0);
 
         const details = el('details', { open: '' });
-        const summary = el('summary', { class: 'anr-fmt-summary' }, 'JSON — formatted view');
+        const summary = el('summary', { class: 'anr-fmt-summary' }, 'JSON - formatted view');
         details.appendChild(summary);
 
         card.appendChild(el('div', { class: 'anr-readout-section' }, 'JSON statistics'));
@@ -320,7 +320,7 @@ export async function renderUnknown(file, resultsEl) {
       if (parseErr) {
         card.appendChild(el('div', { class: 'anr-readout-section' }, 'XML (parse error)'));
         card.appendChild(el('p', { class: 'anr-hint anr-syn-error' },
-          'XML parse error — showing raw text above'));
+          'XML parse error - showing raw text above'));
       } else {
         const xstats = xmlStats(doc.documentElement, 0);
 
@@ -340,7 +340,7 @@ export async function renderUnknown(file, resultsEl) {
         formattedXml += formatXml(doc.documentElement, 0);
 
         const xmlDetails = el('details', { open: '' });
-        xmlDetails.appendChild(el('summary', { class: 'anr-fmt-summary' }, 'XML — formatted view'));
+        xmlDetails.appendChild(el('summary', { class: 'anr-fmt-summary' }, 'XML - formatted view'));
         const xmlPre = el('pre', { class: 'anr-ocr-text anr-pre-scroll', html: formattedXml });
         xmlDetails.appendChild(xmlPre);
         card.appendChild(xmlDetails);

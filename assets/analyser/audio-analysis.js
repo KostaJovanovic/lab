@@ -1,7 +1,7 @@
 /* Analyser - audio analysis
    Pure-computation routines over decoded sample buffers: level stats,
    spectral centroid, LUFS loudness, pitch (YIN), tempo, and stereo metrics.
-   No DOM, no Web Audio — just arrays in, numbers out. */
+   No DOM, no Web Audio - just arrays in, numbers out. */
 
 export function computeStats(samples) {
   let peak = 0, sumSq = 0, clipped = 0;

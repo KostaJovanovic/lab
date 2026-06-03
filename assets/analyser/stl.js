@@ -1,7 +1,7 @@
 /* Analyser - STL 3D viewer
    Parses binary and ASCII STL, renders an interactive WebGL model (orbit / zoom /
    spin), and reports geometry statistics (triangles, bounding box, surface area,
-   volume). Self-contained — no external 3D library. */
+   volume). Self-contained - no external 3D library. */
 
 import { el, row, fmtBytes, sha256Row, errorCard } from './util.js';
 
@@ -330,6 +330,6 @@ export async function renderStl(file, resultsEl) {
   tbl.appendChild(sha256Row(file));
   statsCard.appendChild(tbl);
   statsCard.appendChild(el('p', { class: 'anr-hint', style: 'font-size:12px;margin-top:8px;' },
-    'STL files carry no unit — dimensions are in the file’s own units (usually mm for 3D printing).'));
+    'STL files carry no unit - dimensions are in the file’s own units (usually mm for 3D printing).'));
   resultsEl.appendChild(statsCard);
 }

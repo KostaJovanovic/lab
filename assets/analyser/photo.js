@@ -529,9 +529,9 @@ async function ensureTesseract() {
 function makeOcrCard(file, img) {
   const card = el('div', { class: 'anr-card' });
   const det = el('details');
-  const ocrHelpText = '<strong>Optical Character Recognition</strong> scans the image for text using <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>, an open-source OCR engine running entirely in your browser.<br><br><strong>How it works:</strong> the image is upscaled if needed, then Tesseract looks for letter-shaped patterns, groups them into words and lines, and assigns a confidence score to each word. Words below 60% confidence are filtered out to reduce noise.<br><br><strong>Limitations:</strong> Tesseract was designed for scanned documents — clean text on plain backgrounds. On photos it will often hallucinate text from textures, foliage, buildings, or noise. Handwriting, stylised fonts, low contrast, small text, and rotated or curved text all reduce accuracy significantly. Results are best on screenshots, signs, printed labels, and document photos.';
+  const ocrHelpText = '<strong>Optical Character Recognition</strong> scans the image for text using <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>, an open-source OCR engine running entirely in your browser.<br><br><strong>How it works:</strong> the image is upscaled if needed, then Tesseract looks for letter-shaped patterns, groups them into words and lines, and assigns a confidence score to each word. Words below 60% confidence are filtered out to reduce noise.<br><br><strong>Limitations:</strong> Tesseract was designed for scanned documents - clean text on plain backgrounds. On photos it will often hallucinate text from textures, foliage, buildings, or noise. Handwriting, stylised fonts, low contrast, small text, and rotated or curved text all reduce accuracy significantly. Results are best on screenshots, signs, printed labels, and document photos.';
   const ocrInfoBtn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info' }, '[?]');
-  const summary = el('summary', {}, ['OCR — Extract text', ocrInfoBtn]);
+  const summary = el('summary', {}, ['OCR - Extract text', ocrInfoBtn]);
   det.appendChild(summary);
   const detContent = el('div');
   const ocrPanel = el('div', { class: 'anr-info-panel', style: 'display:none;', html: ocrHelpText });
@@ -1077,7 +1077,7 @@ export async function renderPhoto(file, resultsEl) {
         imgInfo = await loadImageFromFile(convertedFile);
       } catch (_) {
         resultsEl.innerHTML = '';
-        resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Full decode failed — using embedded preview…'));
+        resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Full decode failed - using embedded preview…'));
         try {
           convertedFile = await extractRawPreview(file);
           imgInfo = await loadImageFromFile(convertedFile);
@@ -1256,7 +1256,7 @@ export async function renderPhoto(file, resultsEl) {
   }
 
   // ---- GPS ----
-  // Number.isFinite (not `!= null`) so NaN/undefined coordinates are rejected —
+  // Number.isFinite (not `!= null`) so NaN/undefined coordinates are rejected -
   // mobile camera photos without a GPS fix were slipping through as NaN and
   // rendering a 0,0 / NaN map. Also skip the 0,0 null-island placeholder.
   if (exif && Number.isFinite(exif.latitude) && Number.isFinite(exif.longitude) && !(exif.latitude === 0 && exif.longitude === 0)) {
@@ -1314,7 +1314,7 @@ export async function renderPhoto(file, resultsEl) {
     const hex = toHex(c);
     const sw = el('div', {
       class: 'anr-swatch',
-      title: hex + '  ' + ((c.count / totalPx) * 100).toFixed(1) + '% — click to copy',
+      title: hex + '  ' + ((c.count / totalPx) * 100).toFixed(1) + '% - click to copy',
       style: 'cursor:pointer;',
       onclick: () => {
         navigator.clipboard.writeText(hex).then(() => {
@@ -1359,7 +1359,7 @@ export async function renderPhoto(file, resultsEl) {
   const phash = computePHash(img);
   const hashTbl = el('table', { class: 'anr-readout' });
   hashTbl.appendChild(rowHelp('pHash', phash,
-    'Perceptual hash — a fingerprint of image content. Similar images produce similar hashes, even after resizing or compression.'));
+    'Perceptual hash - a fingerprint of image content. Similar images produce similar hashes, even after resizing or compression.'));
   hashTbl.appendChild(sha256Row(file));
   hashCard.appendChild(hashTbl);
   resultsEl.appendChild(hashCard);

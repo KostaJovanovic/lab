@@ -80,7 +80,7 @@ export function renderFolder(files, resultsEl) {
   const fileByPath = {};
   for (const f of files) fileByPath[f.path] = f.file;
 
-  // Summary + breakdown cards (with folder name as extra row) — rendered
+  // Summary + breakdown cards (with folder name as extra row) - rendered
   // immediately so the Overview/File-types paint instantly for big folders.
   renderBreakdownCards(items, resultsEl, [
     row('Name', folderName)

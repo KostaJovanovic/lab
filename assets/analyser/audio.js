@@ -701,7 +701,7 @@ function buildWaveformCard(file, mono, audioBuffer, audioEl) {
 export function buildHistogramCard(samples) {
   const histCard = el('div', { class: 'anr-card' });
   const [ahH, ahHelp] = h3help('Histogram',
-    'Amplitude distribution — how often each sample value occurs across the whole clip. ' +
+    'Amplitude distribution - how often each sample value occurs across the whole clip. ' +
     'The horizontal axis is amplitude from −1 to +1 (0 = silence, marked by the red line; ' +
     '±1 = full scale). The vertical axis is the relative number of samples at each amplitude. ' +
     'A tall spike at the centre means lots of quiet; energy spread toward the edges means a loud, dynamic signal.');
@@ -816,7 +816,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   tbl.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
     'Highest sample amplitude in the file. dBFS = decibels relative to full scale, where 0 dBFS is the digital maximum.'));
   tbl.appendChild(rowHelp('RMS', stats.rms.toFixed(3)  + '  (' + stats.rmsDb.toFixed(1)  + ' dBFS)',
-    'Root Mean Square — average signal power, closer to perceived loudness than peak. Typical mastered music sits around −10 dBFS.'));
+    'Root Mean Square - average signal power, closer to perceived loudness than peak. Typical mastered music sits around −10 dBFS.'));
   const lufsValue = computeLufs(mono, audioBuffer.sampleRate);
   tbl.appendChild(rowHelp('Loudness', (isFinite(lufsValue) ? lufsValue.toFixed(1) + ' LUFS' : '-'),
     'Perceived loudness per ITU-R BS.1770. Accounts for human hearing sensitivity. Streaming targets: Spotify −14, YouTube −14, Apple −16 LUFS.'));
@@ -1053,7 +1053,7 @@ async function startLive(resultsEl, liveBtn) {
   // Resizing the canvas wipes its bitmap, which would lose the streaming
   // history in live mode. `preserve` snapshots the old contents into a temp
   // canvas, then redraws the rightmost slice (most recent audio) anchored
-  // to the right edge of the new size — so the stream visually continues
+  // to the right edge of the new size - so the stream visually continues
   // instead of restarting from black.
   function sizeCanvas(preserve = true) {
     const newW = availableWidth();

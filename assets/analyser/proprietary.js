@@ -110,7 +110,7 @@ const FORMATS = {
   xls:     { app: 'Microsoft Excel', icon: 'X' },
   ppt:     { app: 'Microsoft PowerPoint', icon: 'P' },
 
-  // Microsoft Office (Open XML — ZIP-based)
+  // Microsoft Office (Open XML - ZIP-based)
   docx:    { app: 'Microsoft Word', icon: 'W', zip: true },
   xlsx:    { app: 'Microsoft Excel', icon: 'X', zip: true },
   pptx:    { app: 'Microsoft PowerPoint', icon: 'P', zip: true },
@@ -561,7 +561,7 @@ function parsePe(buf) {
       const imgSize = view.getUint32(optBase + 56, true);
       if (imgSize) result['Image size'] = fmtBytes(imgSize);
     }
-    // DllCharacteristics (optBase + 70) — security mitigations
+    // DllCharacteristics (optBase + 70) - security mitigations
     if (optBase + 72 <= buf.length) {
       const dc = view.getUint16(optBase + 70, true);
       const sec = [];
@@ -773,7 +773,7 @@ async function parseFont(file) {
       axes.push(tag);
       if (tag === 'wght') wght = { min, def, max };
     }
-    names['Variable font'] = 'Yes — ' + axisCount + ' axis' + (axisCount === 1 ? '' : 'es') + ' (' + axes.join(', ') + ')';
+    names['Variable font'] = 'Yes - ' + axisCount + ' axis' + (axisCount === 1 ? '' : 'es') + ' (' + axes.join(', ') + ')';
     names._font = { variable: true, wght: wght || { min: 100, def: 400, max: 900 } };
   }
   return Object.keys(names).length ? names : null;
@@ -1430,7 +1430,7 @@ function parseMsi(head) {
   const ole = parseOle(head);
   if (ole) Object.assign(fields, ole);
   // The SummaryInformation property set stores a Template like "Intel;1033" or
-  // "x64;1033" (platform;language) — scan the header bytes for it.
+  // "x64;1033" (platform;language) - scan the header bytes for it.
   try {
     const txt = new TextDecoder('latin1').decode(head);
     const tmpl = txt.match(/(Intel64|Intel|x64|Arm64|Arm);(\d{3,5})/);
@@ -1599,7 +1599,7 @@ async function parseAepx(file) {
     // Effect match-names (ADBE ...) used across comps
     const effects = [...new Set([...text.matchAll(/<string>(ADBE [^<]+)<\/string>/g)].map(m => m[1]))];
     if (effects.length) fields['Effects'] = effects.length;
-    // Plain string names (comp / layer / folder names) — first few, filtered
+    // Plain string names (comp / layer / folder names) - first few, filtered
     const names = [...new Set([...text.matchAll(/<string>([^<]{1,60})<\/string>/g)]
       .map(m => m[1]).filter(s => !s.startsWith('ADBE ') && /[a-zA-Z]/.test(s)))];
     if (names.length) fields['Named items'] = names.length;
@@ -1734,7 +1734,7 @@ async function parseBepis(file, head) {
     return fields;
   }
 
-  // Binary save — pull printable ASCII runs (≥4 chars) as a hint at contents.
+  // Binary save - pull printable ASCII runs (≥4 chars) as a hint at contents.
   fields['Container'] = 'Binary';
   const strings = [];
   let cur = '';
@@ -1863,7 +1863,7 @@ async function renderFontPreview(file, card, fontInfo) {
   for (const w of [100, 300, 400, 500, 700, 900]) {
     wRow.appendChild(el('p', {
       style: `font-family:'${family}';font-weight:${w};font-size:22px;margin:3px 0;`
-    }, w + ' — ' + pangram));
+    }, w + ' - ' + pangram));
   }
   previewCard.appendChild(wRow);
 
@@ -1873,7 +1873,7 @@ async function renderFontPreview(file, card, fontInfo) {
     const { min, max } = fontInfo.wght;
     const varRow = el('div', { style: 'margin-top:14px;border-top:1px solid var(--rule);padding-top:12px;text-align:center;' });
     varRow.appendChild(el('div', { class: 'anr-readout-section', style: 'text-align:left;' },
-      'Variable axis — weight ' + Math.round(min) + ' to ' + Math.round(max)));
+      'Variable axis - weight ' + Math.round(min) + ' to ' + Math.round(max)));
     const bigA = el('div', {
       style: `font-family:'${family}';font-size:140px;line-height:1.1;font-variation-settings:"wght" ${min};`
     }, 'A');
@@ -2098,7 +2098,7 @@ export async function renderProprietary(file, container) {
     }
   }
 
-  // XMP sidecar — full metadata parse
+  // XMP sidecar - full metadata parse
   let xmpData = null;
   if (ext === 'xmp') {
     xmpData = await parseXmp(file);
@@ -2119,7 +2119,7 @@ export async function renderProprietary(file, container) {
 
   card.appendChild(tbl);
 
-  // Font preview (TTF/OTF/WOFF/WOFF2/TTC) — render sample text live with the font.
+  // Font preview (TTF/OTF/WOFF/WOFF2/TTC) - render sample text live with the font.
   if (ext === 'ttf' || ext === 'otf' || ext === 'woff' || ext === 'woff2' || ext === 'ttc') {
     await renderFontPreview(file, card, extra && extra._font);
   }

@@ -76,7 +76,7 @@ export function errorCard(message) {
   return el('div', { class: 'anr-error' }, message);
 }
 
-// Monospace ASCII progress bar — the [////////        ] look used everywhere a
+// Monospace ASCII progress bar - the [////////        ] look used everywhere a
 // loading bar appears. Two modes share the same glyphs so every loader reads the
 // same way:
 //   bar.set(frac)        determinate fill (0–1), left-to-right
@@ -101,7 +101,11 @@ export function asciiBar(opts = {}) {
   function measure() {
     if (!fit || !bar.parentElement) return;
     const ch = (parseFloat(getComputedStyle(bar).fontSize) || 13) * 0.6;
-    const n = Math.floor(bar.parentElement.clientWidth / ch) - 2; // minus brackets
+    // Measure the bar's own content box, not the parent's clientWidth - the
+    // latter includes the container padding, which would over-count characters
+    // and overflow the box, clipping the trailing "]".
+    const avail = bar.clientWidth || bar.parentElement.clientWidth;
+    const n = Math.floor(avail / ch) - 2; // minus brackets
     W = Math.max(10, Math.min(80, n));
     win = Math.max(4, Math.round(W * 0.25));
   }
@@ -236,8 +240,8 @@ export function integrityCard(file, extraRows = []) {
 // rendered as <details>/<summary> nodes (closed by default, children rendered
 // lazily on first expand); files as plain rows. Shared by folder.js and
 // archive.js. Callers supply:
-//   isDir(value)   — true if value is a directory node (a sub-object)
-//   fileSize(value) — byte size for a file node (number)
+//   isDir(value)   - true if value is a directory node (a sub-object)
+//   fileSize(value) - byte size for a file node (number)
 export function buildFileTree(obj, opts) {
   const isDir = opts.isDir;
   const fileSize = opts.fileSize;

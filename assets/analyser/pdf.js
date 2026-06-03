@@ -271,7 +271,7 @@ export async function renderPdf(file, resultsEl) {
         cvWrap.style.height = cv.height + 'px';
         await pg.render({ canvasContext: cv.getContext('2d'), viewport: sv }).promise;
       } catch (_) {
-        meta.textContent = 'Page ' + num + ' — could not render';
+        meta.textContent = 'Page ' + num + ' - could not render';
       }
     }
 
@@ -313,7 +313,7 @@ export async function renderPdf(file, resultsEl) {
       style: 'position:absolute;top:8px;right:12px;background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--fg);'
     }, '×');
     inner.appendChild(closeBtn);
-    inner.appendChild(el('h3', { style: 'margin-bottom:12px;' }, 'OCR — Page ' + pageNum));
+    inner.appendChild(el('h3', { style: 'margin-bottom:12px;' }, 'OCR - Page ' + pageNum));
     const pre = el('pre', { class: 'anr-ocr-text', style: 'white-space:pre-wrap;font-size:13px;margin:0;' });
     pre.textContent = text || '(no text detected)';
     inner.appendChild(pre);
@@ -470,7 +470,7 @@ export async function renderPdf(file, resultsEl) {
   const imgCard = el('div', { class: 'anr-card' });
   imgCard.appendChild(el('h3', {}, 'Embedded images'));
   imgCard.appendChild(el('p', { class: 'anr-hint', style: 'font-size:12px;margin:0 0 10px;' },
-    'Pull the original raster images embedded in the PDF (logos, photos, scans) — separate from the rendered page previews above.'));
+    'Pull the original raster images embedded in the PDF (logos, photos, scans) - separate from the rendered page previews above.'));
   const imgExtractBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Extract embedded images');
   const imgStatus = el('span', { class: 'anr-hint', style: 'font-size:12px;margin-left:10px;' }, '');
   const imgGrid = el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;' });
@@ -521,7 +521,7 @@ export async function renderPdf(file, resultsEl) {
         }
         if (found >= 300) break;
       }
-      imgStatus.textContent = found ? found + ' image' + (found === 1 ? '' : 's') + ' found — click to download' : 'No embedded raster images found.';
+      imgStatus.textContent = found ? found + ' image' + (found === 1 ? '' : 's') + ' found - click to download' : 'No embedded raster images found.';
     } catch (e) {
       imgStatus.textContent = 'Extraction failed: ' + (e && e.message);
     }
@@ -531,7 +531,7 @@ export async function renderPdf(file, resultsEl) {
   // --- OCR scan (render pages as images → Tesseract) ---
   const ocrCard = el('div', { class: 'anr-card' });
   const ocrDet = el('details');
-  ocrDet.appendChild(el('summary', {}, 'OCR — Scan pages as images'));
+  ocrDet.appendChild(el('summary', {}, 'OCR - Scan pages as images'));
   const ocrContent = el('div');
 
   const ocrBarEl = el('div', { class: 'anr-progress-bar' });
@@ -635,7 +635,7 @@ export async function renderPdf(file, resultsEl) {
     }
 
     setOcrBar(1);
-    ocrLabelEl.textContent = 'Done — ' + total + ' pages scanned';
+    ocrLabelEl.textContent = 'Done - ' + total + ' pages scanned';
     ocrVisible = Math.min(3, ocrPageTexts.length);
     renderOcrVisible();
     ocrRunBtn.textContent = 'Scan complete';

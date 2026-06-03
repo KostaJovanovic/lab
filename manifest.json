@@ -1,7 +1,7 @@
 {
-  "name": "Analyser — Local File & Metadata Viewer",
+  "name": "Analyser - Local File & Metadata Viewer",
   "short_name": "Analyser",
-  "description": "Drop a photo, audio, video, PDF, or any of 200+ file types and inspect every byte of metadata. Runs entirely in your browser — nothing is uploaded.",
+  "description": "Drop a photo, audio, video, PDF, or any of 200+ file types and inspect every byte of metadata. Runs entirely in your browser - nothing is uploaded.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

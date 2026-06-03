@@ -6,7 +6,7 @@
  *
  * What is an FFT?
  * ---------------
- * Audio is a stream of amplitude samples — how loud the speaker should push
+ * Audio is a stream of amplitude samples - how loud the speaker should push
  * the air at each moment in time. That tells you *when* sound happened, but
  * not *what frequencies* were in it.
  *
@@ -17,7 +17,7 @@
  *     time-domain samples  ──FFT──►  frequency-domain bins
  *     (loudness over time)            (energy at each pitch)
  *
- * The "F" in FFT is "Fast" — the naive algorithm is O(N²); the Fast Fourier
+ * The "F" in FFT is "Fast" - the naive algorithm is O(N²); the Fast Fourier
  * Transform reorganises the work into a recursive butterfly that runs in
  * O(N log N). For N=2048 that's the difference between ~4M operations and
  * ~22k. Cheap enough to do hundreds of times per second.
@@ -32,7 +32,7 @@
  * A spectrogram is one FFT per short slice of the audio, stacked side by side.
  * Each vertical column shows the frequency content at one instant; reading
  * left-to-right plays the recording back as a heat-map. We slide a window of
- * `fftSize` samples across the buffer in steps of `hopSize` (the "STFT" —
+ * `fftSize` samples across the buffer in steps of `hopSize` (the "STFT" -
  * Short-Time Fourier Transform), and colour each cell by the bin's magnitude.
  *
  *
