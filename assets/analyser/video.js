@@ -5,7 +5,7 @@
 
 import { makeSpectrogramPanel, makePlayer, buildHistogramCard } from './audio.js';
 import { renderPhoto } from './photo.js';
-import { el, row, rowHelp, fmtBytes, h3help, sha256Row, integrityCard, roundFps } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, sha256Row, integrityCard, roundFps, asciiBar } from './util.js';
 import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
 
 // iOS (iPhone/iPad) detection. On iOS the custom scrubber's touch handling is
@@ -75,20 +75,17 @@ let _ffLoaderEl = null;
 
 function showFfmpegLoader() {
   if (!_ffLoaderEl || !_ffLoaderEl.isConnected) {
-    const fill = el('div', { class: 'anr-drop-loader-fill is-determinate' });
-    const track = el('div', { class: 'anr-drop-loader-track' }, fill);
+    const bar = asciiBar({ fit: true });
     const label = el('div', { class: 'anr-drop-loader-label' }, 'Loading FFmpeg… (≈31 MB, first time only)');
-    _ffLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, track]);
-    _ffLoaderEl._fill = fill;
+    _ffLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, bar]);
+    _ffLoaderEl._bar = bar;
     document.body.appendChild(_ffLoaderEl);
   }
-  _ffLoaderEl._fill.style.width = '0%';
+  _ffLoaderEl._bar.set(0);
   requestAnimationFrame(() => _ffLoaderEl.classList.add('is-open'));
 }
 function setFfmpegLoaderProgress(frac) {
-  if (_ffLoaderEl && _ffLoaderEl._fill) {
-    _ffLoaderEl._fill.style.width = Math.round(Math.max(0, Math.min(1, frac)) * 100) + '%';
-  }
+  if (_ffLoaderEl && _ffLoaderEl._bar) _ffLoaderEl._bar.set(frac);
 }
 function hideFfmpegLoader() {
   if (_ffLoaderEl) _ffLoaderEl.classList.remove('is-open');
@@ -909,11 +906,21 @@ export async function renderVideo(file, resultsEl) {
       setTimeout(() => reject(new Error('timeout')), 8000); // iOS can hang here; fall back to a visible player below
       probe.src = url;
     });
-    // iOS won't paint a frame for a video that has never played — play, wait
-    // for a real painted frame, then pause before capturing.
-    try { await probe.play(); } catch (_) {}
-    await whenFramePainted(probe);
-    probe.pause();
+    // iOS/Safari renders a black frame for a video that has never played, so it
+    // needs a brief muted play to get frame 0 on screen before we capture it.
+    // Every other platform can draw frame 0 straight from `loadeddata`, so we
+    // skip the playback there — no need to spin the video up just to grab a frame
+    // (this is why videos used to briefly "play" while being analysed on desktop).
+    if (isIOS()) {
+      try { await probe.play(); } catch (_) {}
+      await whenFramePainted(probe);
+      probe.pause();
+    } else {
+      // Frame 0 is already decoded at `loadeddata`; one rAF lets it settle before
+      // we drawImage() it. (whenFramePainted would wait on the *next* presented
+      // frame, which never comes for a paused video — a needless 2s timeout.)
+      await new Promise((r) => requestAnimationFrame(r));
+    }
   } catch (_) {
     probe.remove();
     resultsEl.innerHTML = '';

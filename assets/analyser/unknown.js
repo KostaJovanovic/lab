@@ -2,7 +2,7 @@
    Magic-byte format guess, hex/ASCII dump, SHA-256, and enhanced
    previews for plain text, JSON, and XML. */
 
-import { el, row, fmtBytes, fileExt, sha256Row } from './util.js';
+import { el, row, fmtBytes, fileExt, sha256Row, errorCard } from './util.js';
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -179,7 +179,7 @@ export async function renderUnknown(file, resultsEl) {
     headBytes = new Uint8Array(await file.slice(0, 128).arrayBuffer());
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read this file: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read this file: ' + (e && e.message)));
     return;
   }
 

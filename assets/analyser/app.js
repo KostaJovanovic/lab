@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 36;
+const COMMIT_COUNT = 38;
 const VERSION_OFFSET = 32;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -22,7 +22,7 @@ import { renderEpub } from './epub.js';
 import { renderPptx } from './pptx.js';
 import { renderStl } from './stl.js';
 import { initSearch } from './search.js';
-import { fileExt, el } from './util.js';
+import { fileExt, el, asciiBar, probeReadable, isUnreadableError, cloudFileWarning } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
 import {
   PHOTO_EXTS, AUDIO_EXTS, VIDEO_EXTS, CSV_EXTS, SVG_EXTS,
@@ -76,21 +76,63 @@ function showDropLoader(file) {
   const name = (file && file.name) ? file.name : 'file';
   _dropLoaderTimer = setTimeout(() => {
     if (!_dropLoaderEl || !_dropLoaderEl.isConnected) {
-      const fill = el('div', { class: 'anr-drop-loader-fill' });
-      const track = el('div', { class: 'anr-drop-loader-track' }, fill);
+      const bar = asciiBar({ fit: true });
       const label = el('div', { class: 'anr-drop-loader-label' }, '');
-      _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, track]);
+      _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, bar]);
       _dropLoaderEl._label = label;
+      _dropLoaderEl._bar = bar;
       document.body.appendChild(_dropLoaderEl);
     }
     _dropLoaderEl._label.textContent = 'Reading ' + name + '…';
+    _dropLoaderEl._bar.indeterminate();
     requestAnimationFrame(() => _dropLoaderEl.classList.add('is-open'));
   }, 160);
 }
 
 function hideDropLoader() {
   clearTimeout(_dropLoaderTimer);
-  if (_dropLoaderEl) _dropLoaderEl.classList.remove('is-open');
+  if (_dropLoaderEl) {
+    _dropLoaderEl.classList.remove('is-open');
+    if (_dropLoaderEl._bar) _dropLoaderEl._bar.stop();
+  }
+}
+
+// Cursor-style confirm popup (reuses the treemap .anr-treemap-menu look) shown
+// when the "Links" button is clicked, so leaving the site is deliberate.
+function showLinkConfirm(anchor) {
+  document.querySelectorAll('.anr-link-confirm').forEach((n) => n.remove());
+  const url = anchor.getAttribute('href');
+  const cancelBtn = el('button', { class: 'anr-tm-btn' }, 'Cancel');
+  const okBtn = el('button', { class: 'anr-tm-btn anr-tm-btn-ok' }, 'Proceed');
+  const menu = el('div', { class: 'anr-treemap-menu anr-link-confirm' }, [
+    el('div', { class: 'anr-tm-q' }, 'This link leads to link.valjdakosta.com, proceed?'),
+    el('div', { class: 'anr-tm-actions' }, [cancelBtn, okBtn]),
+  ]);
+  document.body.appendChild(menu);
+
+  const r = anchor.getBoundingClientRect();
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let px = r.left, py = r.bottom + 8;
+  if (px + mw > window.innerWidth - 4) px = window.innerWidth - mw - 4;
+  if (py + mh > window.innerHeight - 4) py = r.top - mh - 8;
+  menu.style.left = Math.max(4, px) + 'px';
+  menu.style.top = Math.max(4, py) + 'px';
+
+  function close() {
+    menu.remove();
+    document.removeEventListener('mousedown', onOut, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('scroll', close, true);
+  }
+  function onOut(e) { if (!menu.contains(e.target) && e.target !== anchor) close(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  cancelBtn.addEventListener('click', close);
+  okBtn.addEventListener('click', () => { close(); window.open(url, '_blank', 'noopener'); });
+  setTimeout(() => {
+    document.addEventListener('mousedown', onOut, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', close, true);
+  }, 0);
 }
 
 // ---------- file classification ----------
@@ -117,6 +159,27 @@ function classifyFile(file) {
   if (isProprietaryExt(ext)) return 'proprietary';
   return 'unknown';
 }
+
+// kind → how to route it. `results` names the container (the three media kinds
+// get their own section + nav flash + scroll; everything else funnels into
+// unknownResults). `nav`/`analysed` list the nav links and sections to mark.
+// Adding a file type means adding one row here plus a classifyFile() case.
+const ROUTES = {
+  photo:       { render: renderPhoto,       results: 'photo',   scroll: '#photo',           nav: ['#photo'],                     analysed: ['photo'] },
+  audio:       { render: renderAudio,       results: 'audio',   scroll: '#audio',           nav: ['#audio'],                     analysed: ['audio'] },
+  video:       { render: renderVideo,       results: 'video',   scroll: '#video',           nav: ['#video', '#audio', '#photo'], analysed: ['video', 'photo'] },
+  docx:        { render: renderDocx,        results: 'unknown', scroll: '#unknownResults' },
+  xlsx:        { render: renderXlsx,        results: 'unknown', scroll: '#unknownResults' },
+  epub:        { render: renderEpub,        results: 'unknown', scroll: '#unknownResults' },
+  pptx:        { render: renderPptx,        results: 'unknown', scroll: '#unknownResults' },
+  stl:         { render: renderStl,         results: 'unknown', scroll: '#unknownResults' },
+  pdf:         { render: renderPdf,         results: 'unknown', scroll: '#unknownResults' },
+  zip:         { render: renderArchive,     results: 'unknown', scroll: '#unknownResults' },
+  svg:         { render: renderSvg,         results: 'unknown', scroll: '#unknownResults' },
+  csv:         { render: renderCsv,         results: 'unknown', scroll: '#unknownResults' },
+  proprietary: { render: renderProprietary, results: 'unknown', scroll: '#unknownResults' },
+  unknown:     { render: renderUnknown,     results: 'unknown', scroll: '#unknownResults' },
+};
 
 // ---------- page-wide drag-drop ----------
 function hasFiles(e) {
@@ -145,6 +208,9 @@ function boot() {
 
   async function handleFile(file) {
     if (!file) return;
+    // If the "Supported formats" overlay is open, drop/paste/pick dismisses it.
+    const fmtOv = $('fmtOverlay');
+    if (fmtOv && !fmtOv.hidden) { fmtOv.hidden = true; document.body.style.overflow = ''; }
     showDropLoader(file);
 
     // Clear all previous results
@@ -172,6 +238,24 @@ function boot() {
 
     firstFileLoaded = true;
     if (pageDropEl) pageDropEl.hidden = true;
+
+    // Probe that the bytes are actually readable before any renderer tries. A
+    // cloud-only file (OneDrive/iCloud/etc.) whose sync app can't hydrate it has
+    // a valid name+size but throws on read — show a clear warning instead of a
+    // generic "could not read" from deep inside a renderer.
+    const readErr = await probeReadable(file);
+    if (readErr && isUnreadableError(readErr)) {
+      hideDropLoader();
+      unknownResults.hidden = false;
+      unknownResults.innerHTML = '';
+      const card = el('div', { class: 'anr-card' });
+      card.appendChild(el('h3', {}, 'File unavailable'));
+      card.appendChild(cloudFileWarning(file));
+      unknownResults.appendChild(card);
+      unknownResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     let kind = classifyFile(file);
 
     // For files classified as 'unknown', check magic bytes for PDF / ZIP / SVG / CSV
@@ -248,64 +332,20 @@ function boot() {
       if (sectionVideo) sectionVideo.hidden = true;
     }
 
-    let renderPromise;
-    if (kind === 'photo') {
-      markNav('#photo');
-      markAnalysed('photo');
-      scrollTo('#photo');
-      renderPromise = renderPhoto(file, photoResults);
-    } else if (kind === 'audio') {
-      markNav('#audio');
-      markAnalysed('audio');
-      scrollTo('#audio');
-      renderPromise = renderAudio(file, audioResults);
-    } else if (kind === 'video') {
-      markNav('#video');
-      markNav('#audio');
-      markNav('#photo');
-      markAnalysed('video');
-      markAnalysed('photo');
-      scrollTo('#video');
-      renderPromise = renderVideo(file, videoResults);
-    } else if (kind === 'docx') {
-      scrollTo('#unknownResults');
-      renderPromise = renderDocx(file, unknownResults);
-    } else if (kind === 'xlsx') {
-      scrollTo('#unknownResults');
-      renderPromise = renderXlsx(file, unknownResults);
-    } else if (kind === 'epub') {
-      scrollTo('#unknownResults');
-      renderPromise = renderEpub(file, unknownResults);
-    } else if (kind === 'pptx') {
-      scrollTo('#unknownResults');
-      renderPromise = renderPptx(file, unknownResults);
-    } else if (kind === 'stl') {
-      scrollTo('#unknownResults');
-      renderPromise = renderStl(file, unknownResults);
-    } else if (kind === 'pdf') {
-      scrollTo('#unknownResults');
-      renderPromise = renderPdf(file, unknownResults);
-    } else if (kind === 'zip') {
-      scrollTo('#unknownResults');
-      renderPromise = renderArchive(file, unknownResults);
-    } else if (kind === 'svg') {
-      scrollTo('#unknownResults');
-      renderPromise = renderSvg(file, unknownResults);
-    } else if (kind === 'csv') {
-      scrollTo('#unknownResults');
-      renderPromise = renderCsv(file, unknownResults);
-    } else if (kind === 'proprietary') {
-      scrollTo('#unknownResults');
-      renderPromise = renderProprietary(file, unknownResults);
-    } else {
-      scrollTo('#unknownResults');
-      renderPromise = renderUnknown(file, unknownResults);
-    }
+    const route = ROUTES[kind] || ROUTES.unknown;
+    const resultsByName = {
+      photo: photoResults, audio: audioResults, video: videoResults, unknown: unknownResults,
+    };
+    (route.nav || []).forEach(markNav);
+    (route.analysed || []).forEach(markAnalysed);
+    scrollTo(route.scroll);
+    const renderPromise = route.render(file, resultsByName[route.results]);
     // Hide the bottom loader once the renderer settles (or immediately if it
     // wasn't async). Errors still dismiss it so it can't get stuck on screen.
     Promise.resolve(renderPromise).catch(() => {}).finally(() => hideDropLoader());
   }
   _handleFile = handleFile;
+  window._anrHandleFile = handleFile;
 
   if ($('photoDrop')) initPhoto({
     dropEl:    $('photoDrop'),
@@ -394,6 +434,18 @@ function boot() {
       const drop = $('pageDrop');
       if (drop) drop.hidden = true;
 
+      // Synchronous folder peek so the bottom loading bar can show while the
+      // (potentially slow) recursive folder walk reads thousands of File objects.
+      let droppedFolderName = null;
+      const dtItems = e.dataTransfer.items;
+      if (dtItems) {
+        for (let i = 0; i < dtItems.length; i++) {
+          const en = dtItems[i].webkitGetAsEntry && dtItems[i].webkitGetAsEntry();
+          if (en && en.isDirectory) { droppedFolderName = en.name; break; }
+        }
+      }
+      if (droppedFolderName) showDropLoader({ name: droppedFolderName });
+
       const folderFiles = await walkItems(e.dataTransfer);
       if (folderFiles) {
         if (!$('photoResults')) {
@@ -410,8 +462,10 @@ function boot() {
         }
         const ur = $('unknownResults');
         if (ur) renderFolder(folderFiles, ur);
+        hideDropLoader();
         return;
       }
+      if (droppedFolderName) hideDropLoader();
 
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || !files.length) return;
@@ -503,14 +557,21 @@ function boot() {
   if (effective) document.documentElement.setAttribute('data-theme', effective);
   const darkBtn = $('darkToggle');
   if (darkBtn) {
-    darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Disable' : 'Enable';
+    // Label shows the CURRENT mode: NIGHT while dark, DAY while light.
+    darkBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'NIGHT' : 'DAY';
     darkBtn.addEventListener('click', () => {
       const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       const next = isDark ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       anrSet('anr-theme', next);
-      darkBtn.textContent = next === 'dark' ? 'Disable' : 'Enable';
+      darkBtn.textContent = next === 'dark' ? 'NIGHT' : 'DAY';
     });
+  }
+
+  // ----- "Links" external link: confirm before leaving -----
+  const otherLink = $('otherStuffLink');
+  if (otherLink) {
+    otherLink.onclick = (e) => { e.preventDefault(); showLinkConfirm(otherLink); };
   }
 
   // ----- Clipboard paste (window listener, added once) -----
@@ -722,7 +783,8 @@ function boot() {
       './assets/analyser/audio-codec.js', './assets/analyser/video.js', './assets/analyser/spectrogram.js',
       './assets/analyser/pdf.js', './assets/analyser/archive.js', './assets/analyser/svg.js',
       './assets/analyser/csv.js', './assets/analyser/unknown.js', './assets/analyser/proprietary.js',
-      './assets/analyser/folder.js', './assets/analyser/navigate.js',
+      './assets/analyser/folder.js', './assets/analyser/folder-archive-shared.js',
+      './assets/analyser/treemap.js', './assets/analyser/navigate.js',
       './assets/analyser/photo-convert.js', './assets/analyser/audio-player.js', './assets/analyser/video-avi.js',
       './assets/analyser/docx.js', './assets/analyser/xlsx.js', './assets/analyser/epub.js',
       './assets/analyser/pptx.js', './assets/analyser/stl.js', './assets/analyser/zip.js',

@@ -3,7 +3,8 @@
     "allow": [
       "PowerShell(magick *)",
       "Bash(rtk ls *)",
-      "Bash(git -C \"C:/Users/Kosta/OneDrive - Flatsoft/Projekti/file analyser\" ls-files)"
+      "Bash(git -C \"C:/Users/Kosta/OneDrive - Flatsoft/Projekti/file analyser\" ls-files)",
+      "Bash(git *)"
     ]
   },
   "spinnerTipsEnabled": false

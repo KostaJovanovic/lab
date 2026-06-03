@@ -7,7 +7,7 @@
    - On-device OCR via lazy-loaded Tesseract.js with language picker
    - SHA-256 file hash */
 
-import { el, row, rowHelp, fmtBytes, h3help, fileExt, sha256Row, loadScript, loadCss } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, fileExt, sha256Row, loadScript, loadCss, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
 import { HEIC_EXTS, RAW_EXTS } from './formats.js';
 import { convertHeic, extractRawPreview, convertWithImageMagick } from './photo-convert.js';
 
@@ -490,7 +490,7 @@ async function makeMap(container, lat, lon, label) {
     await loadScript(LEAFLET_JS);
   } catch (e) {
     container.innerHTML = '';
-    container.appendChild(el('div', { class: 'anr-error' }, 'Map library failed to load. Offline?'));
+    container.appendChild(errorCard('Map library failed to load. Offline?'));
     return;
   }
   container.innerHTML = '';
@@ -1067,7 +1067,7 @@ export async function renderPhoto(file, resultsEl) {
         imgInfo = await loadImageFromFile(convertedFile);
       } catch (e2) {
         resultsEl.innerHTML = '';
-        resultsEl.appendChild(el('div', { class: 'anr-error' }, 'HEIC conversion failed: ' + (e2 && e2.message ? e2.message : e2)));
+        resultsEl.appendChild(errorCard('HEIC conversion failed: ' + (e2 && e2.message ? e2.message : e2)));
         return;
       }
     } else if (RAW_EXTS.has(ext)) {
@@ -1083,13 +1083,23 @@ export async function renderPhoto(file, resultsEl) {
           imgInfo = await loadImageFromFile(convertedFile);
         } catch (e3) {
           resultsEl.innerHTML = '';
-          resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not decode RAW file: ' + (e3 && e3.message ? e3.message : e3)));
+          resultsEl.appendChild(errorCard('Could not decode RAW file: ' + (e3 && e3.message ? e3.message : e3)));
           return;
         }
       }
     } else {
       resultsEl.innerHTML = '';
-      resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not load this image. The format may not be supported by your browser.'));
+      // The <img> load failed. A 1-byte probe can pass for a cloud-only file
+      // (OneDrive serves a cached header) while the full image body is missing,
+      // so do a real full read here: if the bytes can't be read, it's an
+      // unavailable/cloud file, not an unsupported format.
+      let unreadable = false;
+      try { await file.arrayBuffer(); } catch (re) { unreadable = isUnreadableError(re); }
+      if (unreadable) {
+        resultsEl.appendChild(cloudFileWarning(file));
+      } else {
+        resultsEl.appendChild(errorCard('Could not load this image. The format may not be supported by your browser.'));
+      }
       return;
     }
   }

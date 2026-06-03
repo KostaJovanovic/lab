@@ -311,6 +311,10 @@ const FORMATS = {
 
   // Game saves
   bepis:   { app: 'ULTRAKILL Save', icon: 'UK' },
+
+  // Valve / Steam
+  vdf:     { app: 'Valve Data (KeyValues)', icon: 'VDF' },
+  acf:     { app: 'Steam App Manifest', icon: 'ACF' },
 };
 
 // ---------- helpers ----------
@@ -507,14 +511,68 @@ function parsePe(buf) {
     'Sections': numSections,
     'Compile date': date
   };
+
+  // COFF characteristics (peOffset + 22)
+  const characteristics = view.getUint16(peOffset + 22, true);
+  const chFlags = [];
+  if (characteristics & 0x2000) chFlags.push('DLL');
+  else if (characteristics & 0x0002) chFlags.push('Executable');
+  if (characteristics & 0x0020) chFlags.push('Large-address-aware');
+  if (characteristics & 0x0001) chFlags.push('Relocs-stripped');
+  if (characteristics & 0x0100) chFlags.push('32-bit-machine');
+  if (chFlags.length) result['Characteristics'] = chFlags.join(', ');
+
+  // Section names (table starts after the optional header)
+  const sizeOfOptHdr = view.getUint16(peOffset + 20, true);
+  const secTableOff = peOffset + 24 + sizeOfOptHdr;
+  const secNames = [];
+  for (let s = 0; s < numSections && secTableOff + s * 40 + 8 <= buf.length; s++) {
+    let nm = '';
+    for (let b = 0; b < 8; b++) {
+      const ch = buf[secTableOff + s * 40 + b];
+      if (!ch) break;
+      if (ch >= 32 && ch < 127) nm += String.fromCharCode(ch);
+    }
+    if (nm) secNames.push(nm);
+  }
+  if (secNames.length) result['Section names'] = secNames.join(', ');
+
   const optBase = peOffset + 24;
   if (optBase + 2 > buf.length) return result;
   try {
-    const subsysOff = optBase + (is64 ? 68 : 68);
+    // Linker version (optBase + 2 / + 3)
+    if (optBase + 4 <= buf.length) {
+      result['Linker version'] = buf[optBase + 2] + '.' + buf[optBase + 3];
+    }
+    const subsysOff = optBase + 68;
     if (subsysOff + 2 <= buf.length) {
       const ss = view.getUint16(subsysOff, true);
-      const subsystems = { 1: 'Native', 2: 'Windows GUI', 3: 'Windows Console', 5: 'OS/2 Console', 7: 'POSIX Console', 10: 'EFI Application', 14: 'Xbox' };
+      const subsystems = { 1: 'Native', 2: 'Windows GUI', 3: 'Windows Console', 5: 'OS/2 Console', 7: 'POSIX Console', 9: 'Windows CE GUI', 10: 'EFI Application', 14: 'Xbox' };
       result['Subsystem'] = subsystems[ss] || 'Unknown (' + ss + ')';
+    }
+    // Subsystem version (optBase + 48 major / + 50 minor)
+    if (optBase + 52 <= buf.length) {
+      const maj = view.getUint16(optBase + 48, true);
+      const min = view.getUint16(optBase + 50, true);
+      if (maj || min) result['Subsystem version'] = maj + '.' + min;
+    }
+    // Image size (optBase + 56)
+    if (optBase + 60 <= buf.length) {
+      const imgSize = view.getUint32(optBase + 56, true);
+      if (imgSize) result['Image size'] = fmtBytes(imgSize);
+    }
+    // DllCharacteristics (optBase + 70) — security mitigations
+    if (optBase + 72 <= buf.length) {
+      const dc = view.getUint16(optBase + 70, true);
+      const sec = [];
+      if (dc & 0x0020) sec.push('High-entropy ASLR');
+      if (dc & 0x0040) sec.push('ASLR');
+      if (dc & 0x0080) sec.push('Force-integrity');
+      if (dc & 0x0100) sec.push('DEP/NX');
+      if (dc & 0x0400) sec.push('No-SEH');
+      if (dc & 0x4000) sec.push('Control-Flow-Guard');
+      if (dc & 0x8000) sec.push('Terminal-server-aware');
+      if (sec.length) result['Security mitigations'] = sec.join(', ');
     }
     const entryOff = optBase + 16;
     if (entryOff + 4 <= buf.length) {
@@ -526,6 +584,22 @@ function parsePe(buf) {
     if (ddCount > 14 && ddBase + 14 * 8 + 4 <= buf.length) {
       const clrRva = view.getUint32(ddBase + 14 * 8, true);
       if (clrRva) result['.NET'] = 'Yes (CLR)';
+    }
+    // Resource directory (data dir index 2) → file offset, for VS_VERSIONINFO.
+    if (ddCount > 2 && ddBase + 2 * 8 + 4 <= buf.length) {
+      const rsrcRva = view.getUint32(ddBase + 2 * 8, true);
+      const rsrcSize = view.getUint32(ddBase + 2 * 8 + 4, true);
+      if (rsrcRva && rsrcSize) {
+        for (let s = 0; s < numSections && secTableOff + s * 40 + 40 <= buf.length; s++) {
+          const secVa = view.getUint32(secTableOff + s * 40 + 12, true);
+          const secVSize = view.getUint32(secTableOff + s * 40 + 8, true);
+          const secRaw = view.getUint32(secTableOff + s * 40 + 20, true);
+          if (rsrcRva >= secVa && rsrcRva < secVa + secVSize) {
+            result._rsrc = { off: secRaw + (rsrcRva - secVa), size: rsrcSize };
+            break;
+          }
+        }
+      }
     }
     if (ddCount > 1 && ddBase + 1 * 8 + 4 <= buf.length) {
       const importRva = view.getUint32(ddBase + 1 * 8, true);
@@ -556,6 +630,77 @@ function parsePe(buf) {
       }
     }
   } catch (_) {}
+  return result;
+}
+
+// VS_VERSIONINFO string reader. A "String" entry is laid out as:
+//   wLength(2) wValueLength(2) wType(2) szKey(UTF-16, null-term) [pad to 4]
+//   Value(UTF-16, wValueLength words, null-term)
+// We find szKey as a real key (it must be followed by a UTF-16 null terminator,
+// which rejects the same text appearing inside an embedded manifest/resource),
+// then read exactly the declared value length so we never spill into the next
+// entry or pick up alignment padding.
+function readUtf16Value(buf, key) {
+  const kb = [];
+  for (let i = 0; i < key.length; i++) { kb.push(key.charCodeAt(i) & 0xFF, 0); }
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  outer:
+  for (let i = 6; i + kb.length + 2 <= buf.length; i++) {
+    for (let j = 0; j < kb.length; j++) { if (buf[i + j] !== kb[j]) continue outer; }
+    const after = i + kb.length;
+    // Must be a genuine szKey: terminated by a UTF-16 NUL right after the name.
+    if (buf[after] !== 0 || buf[after + 1] !== 0) continue;
+    const wValueLength = dv.getUint16(i - 4, true); // value length in words
+    const structStart = i - 6;
+    let p = after + 2; // past key + its NUL terminator
+    // Value is 32-bit aligned relative to the (DWORD-aligned) struct start.
+    p += (4 - ((p - structStart) % 4)) % 4;
+    const maxWords = wValueLength > 0 ? wValueLength : 256;
+    let s = '';
+    for (let w = 0; w < maxWords && p + 1 < buf.length; w++) {
+      const c = buf[p] | (buf[p + 1] << 8);
+      p += 2;
+      if (c === 0) break;
+      s += String.fromCharCode(c);
+    }
+    s = s.trim();
+    if (s) return s;
+  }
+  return null;
+}
+
+async function parseExe(c) {
+  const result = parsePe(c.head) || {};
+  const rsrc = result._rsrc;
+  delete result._rsrc;
+  if (rsrc && rsrc.size && c.file) {
+    try {
+      const size = Math.min(rsrc.size, 4 * 1024 * 1024);
+      const buf = new Uint8Array(await c.file.slice(rsrc.off, rsrc.off + size).arrayBuffer());
+      // VS_FIXEDFILEINFO signature 0xFEEF04BD (little-endian: BD 04 EF FE)
+      let sig = -1;
+      for (let i = 0; i + 24 <= buf.length; i++) {
+        if (buf[i] === 0xBD && buf[i + 1] === 0x04 && buf[i + 2] === 0xEF && buf[i + 3] === 0xFE) { sig = i; break; }
+      }
+      if (sig >= 0) {
+        const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        const ver = (ms, ls) => (ms >>> 16) + '.' + (ms & 0xFFFF) + '.' + (ls >>> 16) + '.' + (ls & 0xFFFF);
+        const fileMS = v.getUint32(sig + 8, true), fileLS = v.getUint32(sig + 12, true);
+        const prodMS = v.getUint32(sig + 16, true), prodLS = v.getUint32(sig + 20, true);
+        if (fileMS || fileLS) result['File version'] = ver(fileMS, fileLS);
+        if (prodMS || prodLS) result['Product version'] = ver(prodMS, prodLS);
+      }
+      const fields = [
+        ['ProductName', 'Product name'], ['FileDescription', 'Description'],
+        ['CompanyName', 'Company'], ['LegalCopyright', 'Copyright'],
+        ['OriginalFilename', 'Original filename'], ['InternalName', 'Internal name'],
+      ];
+      for (const [key, label] of fields) {
+        const val = readUtf16Value(buf, key);
+        if (val) result[label] = val;
+      }
+    } catch (_) {}
+  }
   return result;
 }
 
@@ -1752,11 +1897,105 @@ async function renderFontPreview(file, card, fontInfo) {
   card.appendChild(previewCard);
 }
 
+// ---------- Valve KeyValues (.vdf / .acf) ----------
+// Steam/Source text format: nested "key" "value" pairs with { } blocks. Used by
+// appmanifest, libraryfolders, loginusers, config, etc.
+function prettyKV(obj, indent) {
+  indent = indent || 0;
+  const pad = '  '.repeat(indent);
+  let s = '';
+  for (const k in obj) {
+    const v = obj[k];
+    if (v && typeof v === 'object') {
+      s += pad + k + '\n' + pad + '{\n' + prettyKV(v, indent + 1) + pad + '}\n';
+    } else {
+      s += pad + k + '  =  ' + v + '\n';
+    }
+  }
+  return s;
+}
+
+async function parseVdf(file) {
+  let text;
+  try { text = await file.text(); } catch (_) { return null; }
+  if (!text) return null;
+
+  // Tokenise: quoted strings (with escapes), braces, or bare tokens. Line // and
+  // block comments are stripped first.
+  text = text.replace(/\/\/[^\n]*/g, '');
+  const tokens = [];
+  const re = /"((?:[^"\\]|\\.)*)"|(\{)|(\})|([^\s"{}]+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m[2]) tokens.push({ t: '{' });
+    else if (m[3]) tokens.push({ t: '}' });
+    else if (m[1] !== undefined) tokens.push({ t: 's', v: m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\') });
+    else tokens.push({ t: 's', v: m[4] });
+  }
+  if (!tokens.length) return null;
+
+  let i = 0;
+  function parseObj() {
+    const obj = {};
+    while (i < tokens.length) {
+      const tk = tokens[i];
+      if (tk.t === '}') { i++; break; }
+      if (tk.t !== 's') { i++; continue; }
+      const key = tk.v; i++;
+      const next = tokens[i];
+      if (next && next.t === '{') { i++; obj[key] = parseObj(); }
+      else if (next && next.t === 's') { obj[key] = next.v; i++; }
+      else { obj[key] = ''; }
+    }
+    return obj;
+  }
+
+  let rootKey = null, root = null;
+  if (tokens[0].t === 's' && tokens[1] && tokens[1].t === '{') {
+    rootKey = tokens[0].v; i = 2; root = parseObj();
+  } else {
+    i = 0; root = parseObj();
+  }
+  if (!root || !Object.keys(root).length) return null;
+
+  // Count leaves + surface notable fields found anywhere in the tree.
+  let leaves = 0;
+  const notable = {};
+  const NOTE = { appid: 'App ID', name: 'Name', installdir: 'Install dir',
+    buildid: 'Build ID', SizeOnDisk: 'Size on disk', LastUpdated: 'Last updated',
+    LastOwner: 'Last owner', universe: 'Universe', PersonaName: 'Persona name',
+    AccountName: 'Account name', language: 'Language', version: 'Version' };
+  (function walk(o) {
+    for (const k in o) {
+      const v = o[k];
+      if (v && typeof v === 'object') walk(v);
+      else { leaves++; if (NOTE[k] && notable[k] === undefined) notable[k] = v; }
+    }
+  })(root);
+
+  const res = { 'Format': 'Valve KeyValues (VDF)' };
+  if (rootKey) res['Root key'] = rootKey;
+  res['Total entries'] = leaves.toLocaleString();
+  for (const k in notable) {
+    let v = notable[k];
+    if (k === 'SizeOnDisk' && /^\d+$/.test(v)) v = fmtBytes(Number(v));
+    if ((k === 'LastUpdated' || k === 'LastOwner') && /^\d{9,}$/.test(v)) {
+      const d = new Date(Number(v) * 1000);
+      if (!isNaN(d)) v = v + '  (' + d.toLocaleString() + ')';
+    }
+    res[NOTE[k]] = v;
+  }
+  res._readableText = prettyKV(rootKey ? { [rootKey]: root } : root);
+  return res;
+}
+
 // ---------- per-extension parser dispatch ----------
 // Maps an extension to a metadata parser. Functions receive { head, file, ext }
 // and may be sync or async (the caller awaits the result). To add a format,
 // drop a line here rather than extending a branch chain.
 const PARSERS = {
+  vdf:   c => parseVdf(c.file),
+  acf:   c => parseVdf(c.file),
   psd:   c => parsePsd(c.head),
   psb:   c => parsePsd(c.head),
   dwg:   c => parseDwg(c.head),
@@ -1766,8 +2005,8 @@ const PARSERS = {
   glb:   c => parseGlb(c.head),
   stl:   c => parseStl(c.head),
   swf:   c => parseSwf(c.head),
-  exe:   c => parsePe(c.head),
-  dll:   c => parsePe(c.head),
+  exe:   c => parseExe(c),
+  dll:   c => parseExe(c),
   ttf:   c => parseFont(c.file),
   otf:   c => parseFont(c.file),
   flp:   c => parseFlp(c.file),

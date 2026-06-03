@@ -6,12 +6,12 @@ import {
   computeSpectrogram, renderSpectrogram, colormaps,
   frequencyTicks, timeTicks, formatHz, formatTime
 } from './spectrogram.js';
-import { el, row, rowHelp, fmtBytes, h3help } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, errorCard } from './util.js';
 import {
   computeStats, computeCentroid, computeLufs,
   detectPitch, detectBPM, computeStereoStats
 } from './audio-analysis.js';
-import { peekContainer, adtsToM4a, readTagBPM } from './audio-codec.js';
+import { peekContainer, adtsToM4a, readTagBPM, extractCoverArt } from './audio-codec.js';
 import { makePlayer } from './audio-player.js';
 
 // Re-exported so existing importers (e.g. video.js) can keep importing the
@@ -446,6 +446,36 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   return card;
 }
 
+function buildCoverArtCard(art, file) {
+  const blob = new Blob([art.bytes], { type: art.mime });
+  const url = URL.createObjectURL(blob);
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Embedded cover art'));
+
+  const img = el('img', { src: url, class: 'anr-coverart', alt: 'Embedded cover art' });
+  card.appendChild(img);
+
+  const tbl = el('table', { class: 'anr-readout' });
+  const dimRow = row('Dimensions', '…');
+  tbl.appendChild(dimRow);
+  tbl.appendChild(row('Type', art.mime));
+  tbl.appendChild(row('Size', fmtBytes(art.bytes.length)));
+  card.appendChild(tbl);
+  img.addEventListener('load', () => {
+    if (img.naturalWidth) dimRow.querySelector('td').textContent = img.naturalWidth + ' × ' + img.naturalHeight;
+  });
+
+  const ext = art.mime === 'image/png' ? 'png' : art.mime === 'image/bmp' ? 'bmp' : 'jpg';
+  const base = (file.name || 'cover').replace(/\.[^.]+$/, '') || 'cover';
+  const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+    const artFile = new File([art.bytes], base + '-cover.' + ext, { type: art.mime });
+    if (window._anrHandleFile) window._anrHandleFile(artFile);
+  } }, 'Analyse as photo');
+  card.appendChild(analyseBtn);
+
+  return card;
+}
+
 function buildWaveformCard(file, mono, audioBuffer, audioEl) {
   const waveCard = el('div', { class: 'anr-card' });
   const [waveH, waveHelp] = h3help('Waveform', 'Amplitude over time. Click and drag to select a region, then zoom in or export the selection as a WAV file. The white playhead line shows the current playback position.');
@@ -754,7 +784,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
       audioBuffer = await decodeFile(file);
     } catch (e) {
       resultsEl.innerHTML = '';
-      resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not decode this file. Format may not be supported by your browser.'));
+      resultsEl.appendChild(errorCard('Could not decode this file. Format may not be supported by your browser.'));
       return;
     }
   }
@@ -829,6 +859,13 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
 
+  // ---- Embedded cover art (filled in asynchronously so it doesn't block) ----
+  const coverSlot = el('div');
+  resultsEl.appendChild(coverSlot);
+  extractCoverArt(file).then((art) => {
+    if (art && art.bytes && art.bytes.length) coverSlot.appendChild(buildCoverArtCard(art, file));
+  }).catch(() => {});
+
   // ---- Waveform card ----
   resultsEl.appendChild(buildWaveformCard(file, mono, audioBuffer, audioEl));
 
@@ -886,7 +923,7 @@ async function startRecording(resultsEl, recordBtn) {
   } catch (e) {
     resultsEl.hidden = false;
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Microphone access denied or unavailable.'));
+    resultsEl.appendChild(errorCard('Microphone access denied or unavailable.'));
     return;
   }
 
@@ -941,7 +978,7 @@ async function startLive(resultsEl, liveBtn) {
   } catch (e) {
     resultsEl.hidden = false;
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Microphone access denied or unavailable.'));
+    resultsEl.appendChild(errorCard('Microphone access denied or unavailable.'));
     return;
   }
 

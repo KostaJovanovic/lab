@@ -2,7 +2,7 @@
    Renders an SVG at actual size, then reports stats, element counts,
    colour palette, and text content. */
 
-import { el, row, fmtBytes } from './util.js';
+import { el, row, fmtBytes, errorCard } from './util.js';
 import { renderPhoto } from './photo.js';
 
 export async function renderSvg(file, resultsEl) {
@@ -15,7 +15,7 @@ export async function renderSvg(file, resultsEl) {
     svgText = await file.text();
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read SVG: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read SVG: ' + (e && e.message)));
     return;
   }
 

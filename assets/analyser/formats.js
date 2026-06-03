@@ -83,6 +83,18 @@ export const SVG_EXTS = new Set(['svg']);
 export const HEIC_EXTS = new Set(['heic', 'heif', 'heics', 'heifs']);
 export const RAW_EXTS  = new Set(['arw', 'cr2', 'cr3', 'nef', 'dng', 'raf', 'rw2', 'orf', 'pef', 'sr2', 'srw', 'x3f', 'raw']);
 
+// Document and archive sets — used by folder/archive shared module for
+// category classification in treemaps and breakdowns.
+export const DOC_EXTS = new Set([
+  'pdf','doc','docx','xls','xlsx','ppt','pptx','txt','md','csv','json',
+  'xml','html','css','js','ts','tsx','jsx','yaml','yml','toml','ini',
+  'rtf','odt','ods','odp','epub','log','sql','sh','bat','py','rb','java',
+  'c','h','cpp','rs','go'
+]);
+export const ARCHIVE_EXTS = new Set([
+  'zip','rar','7z','tar','gz','bz2','xz','zst','tgz'
+]);
+
 // ---------- display catalog (overlay + about page) ----------
 // Each row: { label, exts, tags, note? }
 //   label — category name shown in the first column
@@ -93,8 +105,8 @@ export const RAW_EXTS  = new Set(['arw', 'cr2', 'cr3', 'nef', 'dng', 'raf', 'rw2
 
 export const FULL_ANALYSIS = [
   { label: 'Photo',     exts: 'JPG JPEG JIF JFIF PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F', tags: 'image picture camera photograph sony nikon canon fuji olympus pentax sigma samsung apple google pixel', desc: 'View EXIF, GPS, camera settings, histograms, OCR text, and AI-generation markers in JPG, PNG, HEIC, WebP, TIFF, and RAW photos from Sony, Nikon, Canon, Fujifilm, and more.' },
-  { label: 'Sound',     exts: 'MP3 WAV M4A AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA MIDI', tags: 'audio music podcast recording microphone', desc: 'Inspect the waveform, spectrogram, codec, bitrate, channels, and tags of MP3, WAV, FLAC, M4A, AAC, OGG, and Opus audio.' },
-  { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP MPG MPEG MTS M2TS TS VOB OGV', tags: 'movie film clip recording screen', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track.' },
+  { label: 'Sound',     exts: 'MP3 WAV M4A M4B AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA MIDI', tags: 'audio music podcast recording microphone audiobook', desc: 'Inspect the waveform, spectrogram, codec, bitrate, channels, and tags of MP3, WAV, FLAC, M4A, AAC, OGG, and Opus audio.' },
+  { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP 3G2 MPG MPEG MTS M2TS TS VOB OGV', tags: 'movie film clip recording screen', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track.' },
   { label: 'PDF',       exts: 'PDF', tags: 'adobe acrobat document', desc: 'View pages, extract text and embedded images, run OCR, and read the metadata of PDF documents.' },
   { label: 'Office docs', exts: 'DOCX XLSX PPTX EPUB', tags: 'microsoft word excel powerpoint slides spreadsheet ebook epub viewer reader', desc: 'Open and read Microsoft Word (DOCX), Excel (XLSX), and PowerPoint (PPTX), plus EPUB e-books — text, tables, slides, and chapters.' },
   { label: '3D model',  exts: 'STL', tags: 'stl 3d model mesh print cad solidworks triangle viewer webgl', desc: 'View STL models in an interactive WebGL viewer with triangle count, surface area, and volume.' },
@@ -107,7 +119,7 @@ export const IDENTIFICATION = [
   { label: 'Documents',       exts: 'DOC XLS PPT PPSX ODT ODS ODP ODG RTF Pages Numbers Keynote', tags: 'microsoft office word excel powerpoint apple iwork libreoffice openoffice google docs sheets slides rich text format wordpad', desc: 'Identify and read metadata from legacy and open-document files: Microsoft Word, Excel, and PowerPoint (DOC, XLS, PPT), Apple iWork (Pages, Numbers, Keynote), LibreOffice/OpenOffice (ODT, ODS, ODP), and RTF.' },
   { label: 'Adobe',           exts: 'PSD PSB AI INDD INDT IDML AEP AEPX AET PRPROJ MOGRT SESX XD FLA SWF XMP LRtemplate LRcat ACV ACO ASL ABR GRD PAT', tags: 'photoshop illustrator indesign after effects premiere pro audition xd animate flash lightroom substance', desc: 'Identify Adobe project files and read their metadata: Photoshop (PSD, PSB), Illustrator (AI), InDesign (INDD), After Effects (AEP, AEPX), Premiere Pro (PRPROJ), XD, Animate (FLA), and Lightroom.' },
   { label: 'Design',          exts: 'FIG Sketch afphoto afdesign afpub Procreate XCF KRA PDN SPP SBSAR SBS', tags: 'figma sketch affinity photo designer publisher procreate gimp krita paint.net substance painter', desc: 'Identify design-app files: Figma (FIG), Sketch, Affinity Photo/Designer/Publisher, Procreate, GIMP (XCF), Krita (KRA), Paint.NET, and Substance.' },
-  { label: 'CAD',             exts: 'DWG DXF DWT SLDPRT SLDASM SLDDRW F3D F3Z IPT IAM IDW 3DM SKP 3DS MAX C4D HIP ZPR ZTL MA MB CATPART CATPRODUCT PRT ASM BRD SCH KiCad', tags: 'autocad autodesk solidworks fusion 360 inventor rhinoceros rhino sketchup trimble 3ds max cinema 4d maxon houdini sidefx zbrush pixologic maya catia dassault eagle kicad electronic', desc: 'Identify CAD files and read header metadata: AutoCAD (DWG, DXF), SolidWorks (SLDPRT, SLDASM), Fusion 360 (F3D), Inventor (IPT, IAM), Rhino (3DM), SketchUp (SKP), 3ds Max, Cinema 4D, Houdini, ZBrush, Maya, CATIA, Eagle, and KiCad.' },
+  { label: 'CAD',             exts: 'DWG DXF DWT SLDPRT SLDASM SLDDRW F3D F3Z IPT IAM IDW 3DM SKP 3DS MAX C4D HIP ZPR ZTL MA MB CATPART CATPRODUCT PRT ASM BRD SCH KiCad_pcb GH GHX', tags: 'autocad autodesk solidworks fusion 360 inventor rhinoceros rhino grasshopper sketchup trimble 3ds max cinema 4d maxon houdini sidefx zbrush pixologic maya catia dassault eagle kicad electronic pcb', desc: 'Identify CAD files and read header metadata: AutoCAD (DWG, DXF), SolidWorks (SLDPRT, SLDASM), Fusion 360 (F3D), Inventor (IPT, IAM), Rhino (3DM) and Grasshopper (GH, GHX), SketchUp (SKP), 3ds Max, Cinema 4D, Houdini, ZBrush, Maya, CATIA, Eagle, and KiCad.' },
   { label: 'CAD exchange',    exts: 'STEP STP IGES IGS SAT X_T X_B', tags: 'parasolid acis exchange neutral format', desc: 'Identify neutral CAD exchange formats: STEP, IGES, Parasolid (X_T, X_B), and ACIS (SAT).' },
   { label: '3D / printing',   exts: 'OBJ FBX glTF GLB PLY USDZ USD USDA 3MF AMF BLEND', tags: 'blender mesh model 3d printing prusa bambu cura slicer wavefront autodesk pixar apple unity unreal stl', desc: 'Identify 3D and 3D-printing files: Wavefront OBJ, FBX, glTF/GLB, PLY, USD/USDZ, 3MF, AMF, and Blender (BLEND).' },
   { label: 'Archives',        exts: 'RAR 7Z TAR GZ BZ2 XZ ZST TGZ', tags: 'winrar 7zip compressed archive tar gzip bzip zstandard', desc: 'Identify and read metadata from RAR, 7z, TAR, GZip, BZip2, XZ, and Zstandard archives.' },
@@ -120,6 +132,7 @@ export const IDENTIFICATION = [
   { label: 'Disk images',     exts: 'ISO IMG VHD VHDX VMDK QCOW2 VDI', tags: 'virtual machine disk image hyper-v vmware virtualbox qemu boot', desc: 'Identify disk and virtual-machine images: ISO, VHD/VHDX (Hyper-V), VMDK (VMware), QCOW2 (QEMU), and VDI (VirtualBox).' },
   { label: 'Game engines',    exts: 'UNITYPACKAGE UASSET UMAP GODOT TSCN TRES', tags: 'unity unreal godot game development asset', desc: 'Identify game-engine assets: Unity (UNITYPACKAGE), Unreal Engine (UASSET, UMAP), and Godot (TSCN, TRES).' },
   { label: 'Game saves',      exts: 'BEPIS', tags: 'ultrakill save game progress slot bepis hakita', desc: 'Identify game save files, including ULTRAKILL saves (BEPIS), and read their stored progress.' },
+  { label: 'Valve / Steam',   exts: 'VDF ACF', tags: 'valve steam keyvalues kv source engine appmanifest libraryfolders loginusers config app manifest', desc: 'Parse Valve KeyValues files (VDF) and Steam app manifests (ACF) — appmanifest, libraryfolders, loginusers, and config — surfacing the App ID, name, install dir, size on disk, and the full key tree.' },
   { label: 'Config',          exts: 'TOML INI ENV CONF CFG PROPERTIES', tags: 'configuration settings dotenv toml ini', desc: 'Identify configuration files: TOML, INI, .env, CONF, CFG, and Java properties.' },
   { label: 'Executables',     exts: 'EXE DLL MSI APK IPA DMG AppImage', tags: 'windows android apple mac macos linux program application installer package', desc: 'Identify and read metadata from programs and installers: Windows (EXE, DLL, MSI), Android (APK), iOS (IPA), macOS (DMG), and Linux (AppImage).' },
   { label: 'Video editing',   exts: 'DRP', tags: 'davinci resolve blackmagic', desc: 'Identify DaVinci Resolve (DRP) project files from Blackmagic Design.' },
@@ -128,7 +141,7 @@ export const IDENTIFICATION = [
   { label: 'Certificates',    exts: 'CRT CER PEM DER', tags: 'x509 certificate ssl tls https security openssl public key private rsa ec', desc: 'Identify and decode X.509 security certificates (CRT, CER, PEM, DER) — subject, issuer, validity dates, and key details.' },
   { label: 'Engineering',     exts: 'CDP', tags: 'cdp4 comet data platform esa engineering systems concurrent design', desc: 'Identify CDP4 (COMET) concurrent-design engineering files from the ESA systems-engineering toolset.' },
   { label: 'Logs',            exts: 'LOG', tags: 'log file server apache nginx syslog error debug', desc: 'Identify log files and their origin — Apache, Nginx, syslog, Python, Java/Log4j, and Android logcat.' },
-  { label: 'Other',           exts: 'TORRENT PART', tags: 'bittorrent peer to peer p2p download partial incomplete chrome firefox crdownload', desc: 'Identify BitTorrent files (TORRENT) and their file list, plus partial or incomplete downloads (PART).' },
+  { label: 'Other',           exts: 'TORRENT PART CRDOWNLOAD', tags: 'bittorrent peer to peer p2p download partial incomplete chrome firefox crdownload', desc: 'Identify BitTorrent files (TORRENT) and their file list, plus partial or incomplete downloads (PART, CRDOWNLOAD).' },
 ];
 
 // ---------- renderers ----------

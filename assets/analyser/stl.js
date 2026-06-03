@@ -3,7 +3,7 @@
    spin), and reports geometry statistics (triangles, bounding box, surface area,
    volume). Self-contained — no external 3D library. */
 
-import { el, row, fmtBytes, sha256Row } from './util.js';
+import { el, row, fmtBytes, sha256Row, errorCard } from './util.js';
 
 // ---------- STL parsing ----------
 // Returns { format, positions:Float32Array, normals:Float32Array, count,
@@ -259,12 +259,12 @@ export async function renderStl(file, resultsEl) {
     geo = parseStlGeometry(buf);
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read STL: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read STL: ' + (e && e.message)));
     return;
   }
   resultsEl.innerHTML = '';
   if (!geo || !geo.count) {
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'No triangles found in this STL.'));
+    resultsEl.appendChild(errorCard('No triangles found in this STL.'));
     return;
   }
 

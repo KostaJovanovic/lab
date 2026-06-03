@@ -158,3 +158,106 @@ export async function readTagBPM(file) {
 
   return null;
 }
+
+// --- Extract embedded cover art (ID3v2 APIC / MP4 covr / FLAC PICTURE) ---
+// Returns { bytes: Uint8Array, mime: string } or null.
+export async function extractCoverArt(file) {
+  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) return extractId3Pic(file, head);
+  if (head[0] === 0x66 && head[1] === 0x4C && head[2] === 0x61 && head[3] === 0x43) return extractFlacPic(file);
+  if (head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) return extractMp4Cover(file);
+  return null;
+}
+
+async function extractId3Pic(file, head) {
+  const ver = head[3];
+  const tagSize = ((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14) |
+                  ((head[8] & 0x7F) << 7) | (head[9] & 0x7F);
+  const needed = Math.min(tagSize + 10, file.size, 20 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, needed).arrayBuffer());
+  let pos = 10;
+  const idLen = ver === 2 ? 3 : 4;
+  const hdrLen = ver === 2 ? 6 : 10;
+  const target = ver === 2 ? 'PIC' : 'APIC';
+  while (pos + hdrLen < buf.length && pos < tagSize + 10) {
+    const id = String.fromCharCode(...buf.slice(pos, pos + idLen));
+    if (id[0] === '\0') break;
+    let sz;
+    if (ver === 2) sz = (buf[pos + 3] << 16) | (buf[pos + 4] << 8) | buf[pos + 5];
+    else if (ver === 4) sz = ((buf[pos + 4] & 0x7F) << 21) | ((buf[pos + 5] & 0x7F) << 14) |
+                             ((buf[pos + 6] & 0x7F) << 7) | (buf[pos + 7] & 0x7F);
+    else sz = (buf[pos + 4] << 24) | (buf[pos + 5] << 16) | (buf[pos + 6] << 8) | buf[pos + 7];
+    if (sz <= 0 || pos + hdrLen + sz > buf.length) break;
+    if (id === target) {
+      const data = buf.slice(pos + hdrLen, pos + hdrLen + sz);
+      let p = 0;
+      const enc = data[p]; p++;
+      let mime;
+      if (target === 'PIC') {
+        const fmt = String.fromCharCode(data[p], data[p + 1], data[p + 2]); p += 3;
+        mime = fmt.toUpperCase() === 'PNG' ? 'image/png' : 'image/jpeg';
+      } else {
+        let s = '';
+        while (p < data.length && data[p] !== 0) { s += String.fromCharCode(data[p]); p++; }
+        p++;
+        mime = s || 'image/jpeg';
+      }
+      p++; // picture type byte
+      // description, terminated by null (UTF-16 → double null)
+      if (enc === 1 || enc === 2) { while (p + 1 < data.length && !(data[p] === 0 && data[p + 1] === 0)) p += 2; p += 2; }
+      else { while (p < data.length && data[p] !== 0) p++; p++; }
+      if (p < data.length) return { bytes: data.slice(p), mime };
+    }
+    pos += hdrLen + sz;
+  }
+  return null;
+}
+
+async function extractMp4Cover(file) {
+  const size = Math.min(file.size, 24 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  for (let i = 0; i + 24 < buf.length; i++) {
+    // 'covr'
+    if (buf[i] === 0x63 && buf[i + 1] === 0x6F && buf[i + 2] === 0x76 && buf[i + 3] === 0x72) {
+      const d = i + 4; // child 'data' atom
+      if (d + 16 > buf.length) continue;
+      if (!(buf[d + 4] === 0x64 && buf[d + 5] === 0x61 && buf[d + 6] === 0x74 && buf[d + 7] === 0x61)) continue;
+      const dataSize = dv.getUint32(d, false);
+      const typeFlag = dv.getUint32(d + 8, false) & 0xFF; // 13 JPEG, 14 PNG, 27 BMP
+      const imgStart = d + 16;
+      const imgLen = dataSize - 16;
+      if (imgLen > 0 && imgStart + imgLen <= buf.length) {
+        const mime = typeFlag === 14 ? 'image/png' : typeFlag === 27 ? 'image/bmp' : 'image/jpeg';
+        return { bytes: buf.slice(imgStart, imgStart + imgLen), mime };
+      }
+    }
+  }
+  return null;
+}
+
+async function extractFlacPic(file) {
+  const size = Math.min(file.size, 24 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let pos = 4; // after 'fLaC'
+  while (pos + 4 <= buf.length) {
+    const flag = buf[pos];
+    const last = (flag & 0x80) !== 0;
+    const type = flag & 0x7F;
+    const len = (buf[pos + 1] << 16) | (buf[pos + 2] << 8) | buf[pos + 3];
+    const body = pos + 4;
+    if (type === 6 && body + 32 <= buf.length) { // PICTURE
+      let p = body + 4; // skip picture type
+      const mimeLen = dv.getUint32(p, false); p += 4;
+      const mime = String.fromCharCode(...buf.slice(p, p + mimeLen)); p += mimeLen;
+      const descLen = dv.getUint32(p, false); p += 4; p += descLen;
+      p += 16; // width, height, depth, colours
+      const dataLen = dv.getUint32(p, false); p += 4;
+      if (dataLen > 0 && p + dataLen <= buf.length) return { bytes: buf.slice(p, p + dataLen), mime: mime || 'image/jpeg' };
+    }
+    if (last) break;
+    pos = body + len;
+  }
+  return null;
+}

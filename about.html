@@ -88,14 +88,15 @@
     <div class="site-mark">
       <span class="site-kicker">A 02 - 05</span>
       <h1 class="site-title"><a href="index.html" style="color:inherit;text-decoration:none">Analyser</a></h1>
-      <p class="site-byline">by <a href="https://valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
+      <p class="site-byline">by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
       <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
     </div>
     <div class="site-meta">
       <dl>
         <dt>Version</dt><dd id="versionNum">1.0</dd>
         <dt>Status</dt><dd><span class="dot"></span> Local-only</dd>
-        <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">Enable</button></dd>
+        <dt>Other stuff</dt><dd><a href="https://link.valjdakosta.com/" id="otherStuffLink" target="_blank" rel="noopener" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Links ↗</a></dd>
+        <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">DAY</button></dd>
         <dt>About</dt><dd><a href="index.html" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Back</a></dd>
       </dl>
     </div>
@@ -107,9 +108,9 @@
     <button type="button" class="nav-home-btn" id="navHomeBtn" aria-label="Home — scroll to top"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7.1 7.5 1.8l6 5.3"/><path d="M3.2 6.1V13.2h8.6V6.1"/></svg></button>
   </div>
   <a href="#why" class="nav-link"><span class="nav-num">i</span><span>Why</span></a>
-  <a href="#what" class="nav-link"><span class="nav-num">ii</span><span>What</span></a>
+  <a href="#when" class="nav-link"><span class="nav-num">ii</span><span>When</span></a>
   <a href="#where" class="nav-link"><span class="nav-num">iii</span><span>Where</span></a>
-  <a href="#when" class="nav-link"><span class="nav-num">iv</span><span>When</span></a>
+  <a href="#what" class="nav-link"><span class="nav-num">iv</span><span>What</span></a>
 
   <div class="nav-search" id="navSearchWrap">
     <button type="button" class="nav-search-btn" id="navSearchBtn" aria-label="Search"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="5"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>
@@ -135,70 +136,6 @@
     </div>
   </section>
 
-  <section id="what" class="section">
-    <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">ii</span>
-        <span class="section-kicker">What</span>
-      </aside>
-      <div class="section-content">
-        <h2 class="section-head">A forensic tool that runs entirely in your browser.</h2>
-        <p class="section-lede">Analyser reads photos, sound, video, PDFs, archives, and over 200 file formats. It extracts every byte of metadata, visualises spectra, decodes frames, and identifies files, all without uploading a single bit.</p>
-
-        <div class="about-block">
-          <dl class="about-caps">
-            <div>
-              <dt>Photo</dt>
-              <dd>EXIF, IPTC, XMP, ICC. Dimensions, aspect ratio, RGB histogram, dominant palette, GPS map, QR code detection, OCR. Supports JPEG, PNG, WebP, HEIC, and RAW formats (ARW, CR2, CR3, NEF, etc.).</dd>
-            </div>
-            <div>
-              <dt>Sound</dt>
-              <dd>Waveform, spectrogram (linear or logarithmic), adjustable FFT size and window function, colourmap selection, fullscreen mode. Open a file, record from the mic, or visualise live input. MP3, WAV, M4A, FLAC, OGG, OPUS.</dd>
-            </div>
-            <div>
-              <dt>Video</dt>
-              <dd>Container and codec detection, resolution, frame rate (parsed from MP4 container with FFmpeg fallback), bitrate, duration. Frame-by-frame navigation with editable timecode. Capture any frame for full photo analysis. Extract the audio track for waveform and spectrogram.</dd>
-            </div>
-            <div>
-              <dt>PDF</dt>
-              <dd>Metadata, page count, dimensions. Full text extraction with pagination. Page previews. OCR scanning of image-only pages via Tesseract. Open in browser.</dd>
-            </div>
-            <div>
-              <dt>Archives</dt>
-              <dd>ZIP file listing with sizes, dates, and compression ratios.</dd>
-            </div>
-            <div>
-              <dt>200+ formats</dt>
-              <dd>Adobe (PSD, AI, INDD), AutoCAD (DWG, DXF), SolidWorks, Fusion 360, Blender, 3D meshes (FBX, GLB, STL, OBJ, 3MF, STEP, IGES), Office documents (DOCX, XLSX, PPTX), executables (EXE, DLL), web files (HTML, CSS, JS), and more. Header parsing extracts metadata where possible.</dd>
-            </div>
-          </dl>
-        </div>
-
-        <details class="about-formats">
-          <summary>All supported file types</summary>
-          <!-- Tables are generated from assets/analyser/formats.js by app.js (renderAboutFormats). -->
-          <div id="aboutFormats"></div>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <section id="where" class="section">
-    <div class="grid">
-      <aside class="section-meta">
-        <span class="section-num">iii</span>
-        <span class="section-kicker">Where</span>
-      </aside>
-      <div class="section-content">
-        <h2 class="section-head">Works without internet.</h2>
-        <div class="about-block">
-          <p>Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. Use the download buttons on the main page to pre-cache dependencies, from the essentials (~46 MB) up to all OCR languages (~290 MB; the larger packs stream from a CDN).</p>
-          <p>The service worker caches the entire app shell on first visit. Heavy tools like FFmpeg, ImageMagick, and Tesseract are cached separately when you download them, so the initial load stays light.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!--
     PATCH NOTES — one entry per git push, newest first.
     Latest 3 visible; older ones inside the <details> dropdown.
@@ -209,11 +146,29 @@
   <section id="when" class="section">
     <div class="grid">
       <aside class="section-meta">
-        <span class="section-num">iv</span>
+        <span class="section-num">ii</span>
         <span class="section-kicker">When</span>
       </aside>
       <div class="section-content">
         <h2 class="section-head">Update notes.</h2>
+
+        <div class="patch-entry">
+          <p class="patch-version">1.5</p>
+          <p class="patch-date">3 June 2026, 14:39</p>
+          <ul class="patch-list">
+            <li>Folders and ZIP archives now open in an interactive treemap &mdash; every file is sized by how much disk it uses; click a folder to zoom in, click a file to analyse it &mdash; with a file-type breakdown and support for archives nested inside archives</li>
+            <li>Cloud-only files (OneDrive, iCloud, Google Drive, Dropbox) that aren&rsquo;t downloaded to this device yet are now detected and explained &mdash; for both images and other files &mdash; instead of failing with a generic error</li>
+            <li>Audio files with embedded cover art now show the artwork, which you can open and analyse as a photo</li>
+            <li>Programs and libraries (EXE, DLL) now surface far more detail &mdash; version info, copyright, linker and subsystem versions, and security mitigations &mdash; with the copyright field now read correctly</li>
+            <li>Steam and Valve files (VDF, ACF) are now parsed &mdash; App ID, name, install directory, and the full key tree</li>
+            <li>Videos no longer briefly play while being analysed on desktop</li>
+            <li>Every loading bar now uses the same <code>[////////]</code> style, including the folder, large-file, and checksum bars that used to slide; the folder pop-up bar fills the card and moves at a calmer pace</li>
+            <li>New &ldquo;Links&rdquo; button in the header, with a confirmation before leaving the site; the byline and Links now point to link.valjdakosta.com</li>
+            <li>Dark-mode button now reads DAY / NIGHT, and a &ldquo;copy as path&rdquo; button was added to files in the treemap</li>
+            <li>File dropzones now mention that folders are accepted; the supported-formats list wraps cleanly, closes when you drop a file, and gained M4B, 3G2, Grasshopper (GH/GHX), KiCad PCB, and CRDOWNLOAD</li>
+            <li>Cursor pop-ups now dismiss when you scroll</li>
+          </ul>
+        </div>
 
         <div class="patch-entry">
           <p class="patch-version">1.4</p>
@@ -235,6 +190,9 @@
           </ul>
         </div>
 
+        <details class="about-formats">
+          <summary>Older updates</summary>
+
         <div class="patch-entry">
           <p class="patch-version">1.2</p>
           <p class="patch-date">3 June 2026, 03:02</p>
@@ -242,9 +200,6 @@
             <li>The app now updates itself &mdash; a freshly-deployed version is detected and applied automatically, with no hard-refresh needed</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">1.1</p>
@@ -582,6 +537,70 @@
               <li>Progressive Web App with service worker</li>
             </ul>
           </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section id="where" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">iii</span>
+        <span class="section-kicker">Where</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">Works without internet.</h2>
+        <div class="about-block">
+          <p>Analyser is a Progressive Web App. Install it to your home screen or desktop and it works offline. Use the download buttons on the main page to pre-cache dependencies, from the essentials (~46 MB) up to all OCR languages (~290 MB; the larger packs stream from a CDN).</p>
+          <p>The service worker caches the entire app shell on first visit. Heavy tools like FFmpeg, ImageMagick, and Tesseract are cached separately when you download them, so the initial load stays light.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="what" class="section">
+    <div class="grid">
+      <aside class="section-meta">
+        <span class="section-num">iv</span>
+        <span class="section-kicker">What</span>
+      </aside>
+      <div class="section-content">
+        <h2 class="section-head">A forensic tool that runs entirely in your browser.</h2>
+        <p class="section-lede">Analyser reads photos, sound, video, PDFs, archives, and over 200 file formats. It extracts every byte of metadata, visualises spectra, decodes frames, and identifies files, all without uploading a single bit.</p>
+
+        <div class="about-block">
+          <dl class="about-caps">
+            <div>
+              <dt>Photo</dt>
+              <dd>EXIF, IPTC, XMP, ICC. Dimensions, aspect ratio, RGB histogram, dominant palette, GPS map, QR code detection, OCR. Supports JPEG, PNG, WebP, HEIC, and RAW formats (ARW, CR2, CR3, NEF, etc.).</dd>
+            </div>
+            <div>
+              <dt>Sound</dt>
+              <dd>Waveform, spectrogram (linear or logarithmic), adjustable FFT size and window function, colourmap selection, fullscreen mode. Open a file, record from the mic, or visualise live input. MP3, WAV, M4A, FLAC, OGG, OPUS.</dd>
+            </div>
+            <div>
+              <dt>Video</dt>
+              <dd>Container and codec detection, resolution, frame rate (parsed from MP4 container with FFmpeg fallback), bitrate, duration. Frame-by-frame navigation with editable timecode. Capture any frame for full photo analysis. Extract the audio track for waveform and spectrogram.</dd>
+            </div>
+            <div>
+              <dt>PDF</dt>
+              <dd>Metadata, page count, dimensions. Full text extraction with pagination. Page previews. OCR scanning of image-only pages via Tesseract. Open in browser.</dd>
+            </div>
+            <div>
+              <dt>Archives</dt>
+              <dd>ZIP file listing with sizes, dates, and compression ratios.</dd>
+            </div>
+            <div>
+              <dt>200+ formats</dt>
+              <dd>Adobe (PSD, AI, INDD), AutoCAD (DWG, DXF), SolidWorks, Fusion 360, Blender, 3D meshes (FBX, GLB, STL, OBJ, 3MF, STEP, IGES), Office documents (DOCX, XLSX, PPTX), executables (EXE, DLL), web files (HTML, CSS, JS), and more. Header parsing extracts metadata where possible.</dd>
+            </div>
+          </dl>
+        </div>
+
+        <details class="about-formats">
+          <summary>All supported file types</summary>
+          <!-- Tables are generated from assets/analyser/formats.js by app.js (renderAboutFormats). -->
+          <div id="aboutFormats"></div>
         </details>
       </div>
     </div>

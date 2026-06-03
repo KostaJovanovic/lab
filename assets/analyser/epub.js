@@ -2,7 +2,7 @@
    Reads .epub (zipped XHTML eBook): metadata, cover, and chapter-by-chapter
    reading with navigation. */
 
-import { el, row, fmtBytes, integrityCard } from './util.js';
+import { el, row, fmtBytes, integrityCard, errorCard } from './util.js';
 import { openZip } from './zip.js';
 
 function parseXml(text) {
@@ -49,7 +49,7 @@ export async function renderEpub(file, resultsEl) {
     zip = await openZip(file);
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read EPUB: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read EPUB: ' + (e && e.message)));
     return;
   }
   resultsEl.innerHTML = '';
@@ -66,7 +66,7 @@ export async function renderEpub(file, resultsEl) {
     if (opf) opfPath = opf.name;
   }
   if (!opfPath || !zip.has(opfPath)) {
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not find the EPUB package document.'));
+    resultsEl.appendChild(errorCard('Could not find the EPUB package document.'));
     return;
   }
 

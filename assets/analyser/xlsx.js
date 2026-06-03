@@ -2,7 +2,7 @@
    Reads .xlsx (Office Open XML spreadsheet) and renders each worksheet as a
    table, with sheet tabs and document metadata. */
 
-import { el, row, fmtBytes, integrityCard } from './util.js';
+import { el, row, fmtBytes, integrityCard, errorCard } from './util.js';
 import { openZip } from './zip.js';
 
 // "A1" -> { col: 0, row: 0 }; "BC12" -> { col: 54, row: 11 }
@@ -35,7 +35,7 @@ export async function renderXlsx(file, resultsEl) {
     zip = await openZip(file);
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read XLSX: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read XLSX: ' + (e && e.message)));
     return;
   }
   resultsEl.innerHTML = '';

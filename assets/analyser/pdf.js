@@ -1,7 +1,7 @@
 /* Analyser - PDF module
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
-import { el, row, fmtBytes } from './util.js';
+import { el, row, fmtBytes, errorCard } from './util.js';
 import { renderPhoto } from './photo.js';
 
 // Resolved against this module's URL so the dynamic import() gets a valid
@@ -99,7 +99,7 @@ export async function renderPdf(file, resultsEl) {
     lib = await loadPdfJs();
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Failed to load PDF.js: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Failed to load PDF.js: ' + (e && e.message)));
     return;
   }
 
@@ -112,7 +112,7 @@ export async function renderPdf(file, resultsEl) {
     pdf = await lib.getDocument({ data: buf }).promise;
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not parse PDF: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not parse PDF: ' + (e && e.message)));
     return;
   }
 

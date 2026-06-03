@@ -70,14 +70,15 @@
     <div class="site-mark">
       <span class="site-kicker">A 01 - 03</span>
       <h1 class="site-title">Analyser</h1>
-      <p class="site-byline">by <a href="https://valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
+      <p class="site-byline">by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
       <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
     </div>
     <div class="site-meta">
       <dl>
         <dt>Version</dt><dd id="versionNum">1.0</dd>
         <dt>Status</dt><dd><span class="dot"></span> Local-only</dd>
-        <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">Enable</button></dd>
+        <dt>Other stuff</dt><dd><a href="https://link.valjdakosta.com/" id="otherStuffLink" target="_blank" rel="noopener" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Links ↗</a></dd>
+        <dt>Dark mode</dt><dd><button type="button" id="darkToggle" class="dark-toggle">DAY</button></dd>
         <dt>About</dt><dd><a href="about.html" class="dark-toggle" style="text-decoration:none;display:inline-block;text-align:center;">Info</a></dd>
       </dl>
     </div>
@@ -106,7 +107,7 @@
           <span class="anr-drop-icon" aria-hidden="true">+</span>
           <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> a photo or video</strong>
           <input type="file" accept=".jpg,.jpeg,.jpe,.jfif,.png,.gif,.webp,.heic,.heif,.bmp,.tif,.tiff,.avif,.jxl,.ico,.raw,.arw,.cr2,.cr3,.nef,.dng,.raf,.rw2,.orf,.pef,.sr2,.srw,.x3f,.mp4,.m4v,.mov,.avi,.mkv,.webm,.wmv,.flv,.3gp,.mpg,.mpeg,.mts" id="photoInput" hidden>
-          <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; RAW &middot; MP4 &middot; MOV &middot; MKV &middot; WEBM &middot; AVI</p>
+          <p class="anr-hint">JPEG &middot; HEIC &middot; PNG &middot; RAW &middot; MP4 &middot; MOV &middot; MKV &middot; WEBM &middot; AVI &middot; Folders</p>
         </label>
       </div>
 
@@ -115,7 +116,7 @@
           <span class="anr-drop-icon" aria-hidden="true">+</span>
           <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> a sound</strong>
           <input type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.opus,.aac,.wma,.aiff,.amr,.mp2,.mid,.midi" id="audioInput" hidden>
-          <p class="anr-hint">MP3 &middot; WAV &middot; M4A &middot; FLAC &middot; OGG &middot; OPUS</p>
+          <p class="anr-hint">MP3 &middot; WAV &middot; M4A &middot; FLAC &middot; OGG &middot; OPUS &middot; Folders</p>
         </label>
         <div class="anr-audio-modes">
           <button type="button" id="audioRecord" class="anr-btn"><span class="anr-rec-dot" aria-hidden="true">&#9679;</span> Record</button>
@@ -126,9 +127,9 @@
       <div class="anr-dropzone quickdrop-zone" id="videoDrop" data-kind="video" style="position:relative">
         <label class="anr-dropzone-inner" for="videoInput">
           <span class="anr-drop-icon" aria-hidden="true">+</span>
-          <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> any file</strong>
+          <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> any file or folder</strong>
           <input type="file" id="videoInput" hidden>
-          <p class="anr-hint">PDF &middot; ZIP &middot; CSV &middot; SVG &middot; 200+ formats</p>
+          <p class="anr-hint">PDF &middot; ZIP &middot; CSV &middot; SVG &middot; Folders &middot; 200+ formats</p>
           <p class="anr-drop-warn">Analysis may be limited for some formats</p>
         </label>
         <button type="button" class="fmt-help-btn" id="fmtHelpBtn" aria-label="Supported formats">Info</button>

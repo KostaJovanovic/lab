@@ -35,6 +35,8 @@ const SHELL = [
   './assets/analyser/stl.js',
   './assets/analyser/zip.js',
   './assets/analyser/folder.js',
+  './assets/analyser/folder-archive-shared.js',
+  './assets/analyser/treemap.js',
   './assets/analyser/navigate.js',
   './assets/favicon.svg',
   './assets/icon.png',

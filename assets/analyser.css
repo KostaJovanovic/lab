@@ -797,8 +797,6 @@ body:has(.about-page) .site-nav { grid-template-columns: 48px repeat(4, 1fr) aut
 .anr-readout td { color: var(--fg); font-weight: 500; }
 .anr-readout tr:last-child th,
 .anr-readout tr:last-child td { border-bottom: none; }
-.anr-readout tbody tr:hover th,
-.anr-readout tbody tr:hover td { background: var(--surface); }
 .anr-readout tr:hover th,
 .anr-readout tr:hover td { background: var(--surface); }
 
@@ -1252,7 +1250,6 @@ audio { width: 100%; }
 }
 
 /* ---------- DROP LOADER (bottom-of-window popup) ---------- */
-@keyframes anr-sha-slide { from { transform: translateX(0); } to { transform: translateX(233%); } }
 .anr-drop-loader {
   position: fixed;
   left: 50%;
@@ -1280,24 +1277,31 @@ audio { width: 100%; }
   text-overflow: ellipsis;
   margin-bottom: 8px;
 }
-.anr-drop-loader-track {
-  height: 3px;
-  background: var(--rule);
-  border-radius: 2px;
-  overflow: hidden;
+/* The drop loader's bar is now a monospace .anr-progress-bar (see asciiBar in
+   util.js); give it a touch of breathing room under the label. */
+.anr-drop-loader .anr-progress-bar { line-height: 1.2; }
+/* Inline per-card loader (e.g. building a folder treemap) */
+.anr-inline-loader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
 }
-.anr-drop-loader-fill {
-  height: 100%;
-  width: 30%;
-  background: var(--accent);
-  animation: anr-sha-slide 1s ease-in-out infinite alternate;
+.anr-inline-loader-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
 }
-/* Determinate variant (e.g. FFmpeg core download): fill reflects real % and
-   doesn't slide. */
-.anr-drop-loader-fill.is-determinate {
-  animation: none;
-  width: 0;
-  transition: width 0.25s ease;
+/* Embedded cover art (audio) */
+.anr-coverart {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  border: 1px solid var(--hairline);
+  margin-bottom: 14px;
 }
 
 /* ---------- OCR ---------- */
@@ -1327,6 +1331,8 @@ audio { width: 100%; }
   font-size: var(--t-small);
   letter-spacing: 0.02em;
 }
+.anr-cloud-warning { line-height: 1.55; }
+.anr-cloud-warning ul { line-height: 1.55; }
 .anr-info {
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -1900,6 +1906,9 @@ details[open] summary::after { content: "\2212"; }
   text-transform: uppercase;
   line-height: 1.8;
 }
+/* Wrap the ext lists between tokens, never mid-extension — .anr-readout's
+   break-all would otherwise split "AMR" into "AM" / "R". */
+.fmt-table th, .fmt-table td { word-break: normal; overflow-wrap: break-word; }
 .fmt-table tr.is-hidden { display: none; }
 .quickdrop-zone .anr-audio-modes {
   padding: 0;
@@ -2223,51 +2232,6 @@ details[open] summary::after { content: "\2212"; }
   animation: none;
 }
 
-/* ---------- COLOR PICKER TOOLTIP (A7) ---------- */
-.anr-picker-tooltip {
-  position: absolute;
-  z-index: 10;
-  background: var(--fg);
-  color: var(--bg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 5px 10px;
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.anr-picker-tooltip[hidden] { display: none; }
-.anr-picker-tooltip.is-copied::after {
-  content: " copied";
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-}
-.anr-picker-swatch {
-  display: inline-block;
-  width: 14px; height: 14px;
-  border: 1px solid rgba(255,255,255,0.3);
-  flex-shrink: 0;
-}
-
-/* ---------- FOCUS MAP OVERLAY ---------- */
-.anr-focus-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  image-rendering: pixelated;
-  pointer-events: none;
-}
-.anr-focus-overlay[hidden] { display: none; }
-
-
-
 /* ---------- DARK MODE (E1) ---------- */
 :root[data-theme="dark"] {
   --bg:        #0a0a0a;
@@ -2511,45 +2475,215 @@ details[open] summary::after { content: "\2212"; }
 /* Collapsible file tree (folders + archives) */
 .anr-tree {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-small);
   line-height: 1.5;
-  max-height: 520px;
+  max-height: 560px;
   overflow: auto;
-  border: 1px solid var(--rule);
+}
+/* Reset the global `details` styling (border-top, padding, margin, +/- marker)
+   so it doesn't bleed into the tree's folder rows. */
+.anr-tree-dir {
+  border-top: none;
+  padding: 0;
+  margin: 0;
 }
 .anr-tree-dir > summary {
   list-style: none;
   cursor: pointer;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--rule);
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
   user-select: none;
+  font-size: var(--t-small);
+  letter-spacing: 0;
+  text-transform: none;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 .anr-tree-dir > summary::-webkit-details-marker { display: none; }
-.anr-tree-dir > summary::before {
-  content: "▸";
-  display: inline-block;
-  margin-right: 8px;
+.anr-tree-dir > summary::after { content: none; }
+.anr-tree-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
   color: var(--muted);
-  transition: transform 0.12s ease;
+  font-size: 10px;
+  transition: transform 0.12s ease, color 0.12s ease;
 }
-.anr-tree-dir[open] > summary::before { transform: rotate(90deg); }
-.anr-tree-summary:hover { background: var(--surface); }
-.anr-tree-children { padding-left: 16px; border-left: 1px solid var(--rule); margin-left: 14px; }
+.anr-tree-dir[open] > summary > .anr-tree-icon { transform: rotate(90deg); }
+.anr-tree-dir > summary:hover { background: var(--surface); color: var(--accent); }
+.anr-tree-dir > summary:hover .anr-tree-icon { color: var(--accent); }
+.anr-tree-dir > summary .anr-tree-name { font-weight: 500; }
+.anr-tree-children {
+  margin-left: 11px;
+  padding-left: 12px;
+  border-left: 1px solid var(--rule);
+}
 .anr-tree-file {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--rule);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.anr-tree-lead {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+}
+.anr-tree-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 .anr-tree-file:hover { background: var(--surface); }
-.anr-tree-name { word-break: break-all; }
-.anr-tree-meta { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.anr-tree-name { word-break: break-all; flex: 1 1 auto; min-width: 0; }
+.anr-tree-meta {
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: var(--t-tiny);
+  font-variant-numeric: tabular-nums;
+}
+.anr-tree-file.is-clickable { cursor: pointer; }
+.anr-tree-file.is-clickable:hover { background: var(--fg); color: var(--bg); }
+.anr-tree-file.is-clickable:hover .anr-tree-meta { color: var(--bg); }
+.anr-tree-copy {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.anr-tree-file:hover .anr-tree-copy { opacity: 1; }
+.anr-tree-copy:hover { color: var(--accent); }
+.anr-tree-file.is-clickable:hover .anr-tree-copy { color: var(--bg); }
+.anr-tree-file.is-clickable:hover .anr-tree-copy:hover { color: var(--accent); }
+
+/* Treemap + folder/archive visuals */
+.anr-treemap-wrap { position: relative; }
+.anr-treemap-wrap canvas { display: block; width: 100%; }
+.anr-treemap-tooltip {
+  position: absolute; pointer-events: none; z-index: 10;
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  background: var(--bg); border: 1px solid var(--hairline);
+  padding: 6px 10px; max-width: 70%;
+  opacity: 0; transition: opacity 0.1s;
+}
+.anr-treemap-tooltip.is-visible { opacity: 1; }
+.anr-treemap-tooltip .anr-tt-name { word-break: break-all; color: var(--fg); }
+.anr-treemap-tooltip .anr-tt-meta { color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+.anr-treemap-breadcrumb {
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  letter-spacing: 0.05em;
+  padding: 0 0 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+}
+.anr-treemap-breadcrumb button {
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; font-family: inherit; font-size: inherit;
+  letter-spacing: inherit;
+  padding: 0; text-transform: uppercase;
+  transition: color 0.12s ease;
+}
+.anr-treemap-breadcrumb button:hover { color: var(--accent); }
+.anr-crumb-sep { color: var(--muted); opacity: 0.5; }
+.anr-crumb-current { color: var(--fg); text-transform: uppercase; }
+.anr-treemap-status {
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  color: var(--muted); letter-spacing: 0.03em;
+  padding: 8px 0 0; margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  word-break: break-all;
+}
+.anr-treemap-status .anr-status-name { color: var(--fg); }
+.anr-treemap-content { margin-top: 14px; }
+/* Cursor confirm popup (treemap file click) */
+.anr-treemap-menu {
+  position: fixed; z-index: 1000;
+  background: var(--bg); border: 1px solid var(--hairline);
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  padding: 10px 11px; min-width: 150px; max-width: 260px;
+}
+/* Name on the left, a compact Copy button pinned top-right on the same line.
+   min-width:0 + the gap guarantee the long name wraps under itself and never
+   overlaps the button. */
+.anr-tm-header { display: flex; align-items: flex-start; gap: 10px; }
+.anr-tm-name { color: var(--fg); font-weight: 500; word-break: break-all; flex: 1 1 auto; min-width: 0; }
+.anr-tm-copy { flex: 0 0 auto; padding: 2px 6px; font-size: 9px; }
+.anr-tm-meta { color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+.anr-tm-q { color: var(--fg); margin: 9px 0 8px; }
+.anr-tm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.anr-tm-btn {
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 5px 11px; border: 1px solid var(--hairline);
+  background: var(--bg); color: var(--fg); cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.anr-tm-btn:hover { background: var(--fg); color: var(--bg); }
+.anr-tm-btn-ok { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.anr-tm-btn-ok:hover { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.anr-treemap-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center;
+  margin-left: auto;
+}
+.anr-legend-item {
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); display: inline-flex; align-items: center; gap: 5px;
+}
+.anr-legend-swatch {
+  display: inline-block; width: 8px; height: 8px;
+  flex-shrink: 0;
+}
+/* File types show-more */
+.anr-ext-more {
+  border-top: 1px solid var(--hairline);
+  margin-top: 0;
+  padding-top: 0;
+}
+.anr-ext-more summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px 0;
+  list-style: none;
+  display: flex; align-items: center; gap: 6px;
+  user-select: none;
+}
+.anr-ext-more summary::-webkit-details-marker { display: none; }
+.anr-ext-more summary::after {
+  content: '+'; font-size: 13px; color: var(--muted);
+  transition: color 0.15s ease;
+}
+.anr-ext-more[open] summary::after { content: '\2212'; }
+.anr-ext-more summary:hover { color: var(--accent); }
+.anr-ext-more summary:hover::after { color: var(--accent); }
+/* Controls bar for treemap/tree toggle */
+.anr-view-controls {
+  display: flex; flex-wrap: wrap; gap: 10px 22px;
+  align-items: center;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 14px;
+}
 
 /* SVG inspector */
 .anr-svg-preview {

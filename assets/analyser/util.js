@@ -23,6 +23,133 @@ export function row(label, value) {
   ]);
 }
 
+// True when a read failure looks like an unavailable/cloud-only file rather than
+// a corrupt/unsupported one. OneDrive/iCloud/etc. "online-only" placeholders
+// throw NotReadableError/NotFoundError when their sync app can't hydrate them.
+export function isUnreadableError(e) {
+  if (!e) return false;
+  const name = e.name || '';
+  const msg = (e.message || '').toLowerCase();
+  return name === 'NotReadableError' || name === 'NotFoundError' ||
+    msg.includes('could not be read') ||
+    msg.includes('a requested file or directory could not be found') ||
+    (msg.includes('permission') && msg.includes('file'));
+}
+
+// Probe whether a File's bytes are actually readable. Returns null on success,
+// or the thrown error on failure. Used to detect cloud-only placeholders before
+// a renderer fails deep in its pipeline. Reads the head AND the last byte: a
+// OneDrive/iCloud "online-only" file often serves a cached header (so a 1-byte
+// head read passes) while the body/tail isn't on disk, so the tail read is what
+// reliably trips. (Any successful read also triggers the sync app to hydrate the
+// whole file, which is what a renderer would do anyway.)
+export async function probeReadable(file) {
+  if (!file || file.size === 0) return null;
+  try {
+    await file.slice(0, Math.min(file.size, 65536)).arrayBuffer();
+    if (file.size > 65536) await file.slice(file.size - 1, file.size).arrayBuffer();
+    return null;
+  } catch (e) {
+    return e;
+  }
+}
+
+// A friendly "this file can't be read" card body, tailored to the cloud-only
+// case (the overwhelmingly common cause of an otherwise-valid File failing).
+export function cloudFileWarning(file) {
+  const box = el('div', { class: 'anr-error anr-cloud-warning' });
+  box.appendChild(el('p', { style: 'margin:0 0 10px; font-weight:600;' },
+    'Couldn’t read “' + ((file && file.name) || 'this file') + '”.'));
+  box.appendChild(el('p', { style: 'margin:0 0 10px;' },
+    'It looks like a cloud-only file (OneDrive, iCloud Drive, Google Drive, Dropbox…) whose contents aren’t on this device yet, or whose sync app isn’t running. The name and size are known, but the actual bytes couldn’t be downloaded.'));
+  const ul = el('ul', { style: 'margin:0; padding-left:18px;' }, [
+    el('li', {}, 'Make sure OneDrive (or your sync app) is running and signed in.'),
+    el('li', {}, 'In the file manager, right-click the file → “Always keep on this device”, wait for the download to finish, then try again.'),
+  ]);
+  box.appendChild(ul);
+  return box;
+}
+
+// Standard inline error notice (styled by .anr-error). The canonical way for a
+// renderer to report that a file couldn't be read or parsed.
+export function errorCard(message) {
+  return el('div', { class: 'anr-error' }, message);
+}
+
+// Monospace ASCII progress bar — the [////////        ] look used everywhere a
+// loading bar appears. Two modes share the same glyphs so every loader reads the
+// same way:
+//   bar.set(frac)        determinate fill (0–1), left-to-right
+//   bar.indeterminate()  a window of slashes that bounces left↔right, for work
+//                        whose length isn't known up front
+//   bar.stop()           halt the animation
+// The indeterminate animation runs on rAF and stops itself once the element is
+// detached from the DOM, so callers don't have to tear it down.
+export function asciiBar(opts = {}) {
+  if (typeof opts === 'number') opts = { width: opts };   // back-compat
+  const fit = !!opts.fit;            // size to fill the parent (e.g. popup card)
+  const SWEEP = 1900;                // ms for one left→right pass (indeterminate)
+  let W = opts.width || 20;
+  let win = Math.max(4, Math.round(W * 0.25));
+  const bar = el('div', { class: 'anr-progress-bar' });
+  let raf = null, seen = false, t0 = null;
+
+  // fit:true → recompute the character count so the bar spans its container.
+  // Measured lazily, once the bar is actually in the DOM (clientWidth is 0
+  // before that). Uses the same font-size×0.6 monospace estimate as the app's
+  // other progress bars.
+  function measure() {
+    if (!fit || !bar.parentElement) return;
+    const ch = (parseFloat(getComputedStyle(bar).fontSize) || 13) * 0.6;
+    const n = Math.floor(bar.parentElement.clientWidth / ch) - 2; // minus brackets
+    W = Math.max(10, Math.min(80, n));
+    win = Math.max(4, Math.round(W * 0.25));
+  }
+  function paintRange(start, len) {
+    start = Math.max(0, Math.min(W - len, start));
+    bar.innerHTML = '[' + ' '.repeat(start) +
+      '<span class="anr-bar-fill">' + '/'.repeat(len) + '</span>' +
+      ' '.repeat(Math.max(0, W - len - start)) + ']';
+  }
+  bar.set = (frac) => {
+    bar.stop();
+    measure();
+    const filled = Math.round(Math.max(0, Math.min(1, frac)) * W);
+    bar.innerHTML = '[<span class="anr-bar-fill">' + '/'.repeat(filled) + '</span>' +
+      ' '.repeat(Math.max(0, W - filled)) + ']';
+  };
+  bar.indeterminate = () => {
+    if (raf) return;
+    let measured = false;
+    const loop = (ts) => {
+      if (bar.isConnected) seen = true;
+      else if (seen) { raf = null; return; }   // removed from DOM → self-stop
+      if (!measured && bar.isConnected) { measure(); measured = true; }
+      if (t0 == null) t0 = ts;
+      const span = Math.max(1, W - win);
+      const u = ((ts - t0) % (2 * SWEEP)) / SWEEP;   // 0..2 over a full cycle
+      const tri = u <= 1 ? u : 2 - u;                // 0→1→0 triangle (bounce)
+      paintRange(Math.round(tri * span), win);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  };
+  bar.stop = () => { if (raf) { cancelAnimationFrame(raf); raf = null; } };
+  bar.set(0);
+  return bar;
+}
+
+// Small inline "working…" indicator with an indeterminate ASCII bar. Used to
+// fill a card while a slower piece (e.g. a treemap for a huge folder) builds.
+export function inlineLoader(text) {
+  const bar = asciiBar();
+  bar.indeterminate();
+  return el('div', { class: 'anr-inline-loader' }, [
+    el('span', { class: 'anr-inline-loader-label' }, text || 'Loading…'),
+    bar
+  ]);
+}
+
 export function rowHelp(label, value, helpText) {
   if (!rowHelp._init) {
     rowHelp._init = true;
@@ -81,22 +208,12 @@ export async function sha256Hex(file) {
 export function sha256Row(file) {
   const hashRow = row('SHA-256', '');
   const td = hashRow.querySelector('td');
-  const bar = el('div', {
-    style: 'height:3px;margin-top:4px;background:var(--rule);border-radius:2px;overflow:hidden;'
-  });
-  const fill = el('div', {
-    style: 'height:100%;width:30%;background:var(--accent);animation:anr-sha-slide 1s ease-in-out infinite alternate;'
-  });
-  bar.appendChild(fill);
-  td.textContent = 'computing…';
+  const bar = asciiBar();
+  bar.indeterminate();
+  td.textContent = '';
   td.appendChild(bar);
-  if (!document.getElementById('anr-sha-keyframes')) {
-    const style = document.createElement('style');
-    style.id = 'anr-sha-keyframes';
-    style.textContent = '@keyframes anr-sha-slide{from{transform:translateX(0)}to{transform:translateX(233%)}}';
-    document.head.appendChild(style);
-  }
   sha256Hex(file).then(h => {
+    bar.stop();
     td.textContent = h || 'unavailable';
     td.style.wordBreak = 'break-all';
   });
@@ -150,6 +267,7 @@ export function buildFileTree(obj, opts) {
         const { files, bytes } = countAndSize(val);
         const details = el('details', { class: 'anr-tree-dir' });
         const summary = el('summary', { class: 'anr-tree-summary' }, [
+          el('span', { class: 'anr-tree-icon' }, '▸'),
           el('span', { class: 'anr-tree-name' }, key),
           el('span', { class: 'anr-tree-meta' }, files + (files === 1 ? ' file · ' : ' files · ') + fmtBytes(bytes))
         ]);
@@ -165,10 +283,40 @@ export function buildFileTree(obj, opts) {
         });
         frag.appendChild(details);
       } else {
-        frag.appendChild(el('div', { class: 'anr-tree-file' }, [
+        const cls = opts.onFileClick ? 'anr-tree-file is-clickable' : 'anr-tree-file';
+        const lead = el('span', { class: 'anr-tree-lead' });
+        if (opts.fileAccent) {
+          const color = opts.fileAccent(key, val);
+          if (color) lead.appendChild(el('span', { class: 'anr-tree-dot', style: 'background:' + color }));
+        }
+        const fileDiv = el('div', { class: cls }, [
+          lead,
           el('span', { class: 'anr-tree-name' }, key),
           el('span', { class: 'anr-tree-meta' }, fmtBytes(fileSize(val) || 0))
-        ]));
+        ]);
+        if (opts.copyPath) {
+          const path = opts.copyPath(key, val);
+          if (path) {
+            const copyBtn = el('button', { class: 'anr-tree-copy', type: 'button', title: 'Copy path' }, '⧉');
+            copyBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const done = () => { copyBtn.textContent = '✓'; setTimeout(() => { copyBtn.textContent = '⧉'; }, 1000); };
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(path).then(done).catch(() => {});
+              } else {
+                const ta = document.createElement('textarea');
+                ta.value = path; document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); done(); } catch (_) {}
+                ta.remove();
+              }
+            });
+            fileDiv.appendChild(copyBtn);
+          }
+        }
+        if (opts.onFileClick) {
+          fileDiv.addEventListener('click', () => opts.onFileClick(key, val));
+        }
+        frag.appendChild(fileDiv);
       }
     }
     return frag;

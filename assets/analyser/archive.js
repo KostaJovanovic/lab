@@ -1,7 +1,10 @@
 /* Analyser - archive module
-   Lazy-loads fflate from CDN to inspect ZIP archives without full extraction. */
+   Lazy-loads fflate from CDN to inspect ZIP archives without full extraction.
+   Uses the shared folder/archive modules for treemap, breakdown, and tree. */
 
-import { el, row, fmtBytes, buildFileTree } from './util.js';
+import { el, row, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
+import { normalizeArchive, renderBreakdownCards, renderViewToggle, categorizeExt } from './folder-archive-shared.js';
+import { ARCHIVE_EXTS } from './formats.js';
 
 const FFLATE_URL = new URL('../vendor/fflate.js', import.meta.url).href;
 
@@ -14,15 +17,12 @@ async function loadFflate() {
 }
 
 // ---------- ZIP parsing via central directory ----------
-// We parse the ZIP central directory directly instead of decompressing,
-// so we can list contents without extracting the full archive.
 
 function parseZipEntries(buf) {
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
   const entries = [];
 
-  // Find the End of Central Directory record (scan from the end)
   let eocdOffset = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
     if (view.getUint32(i, true) === 0x06054b50) {
@@ -31,7 +31,7 @@ function parseZipEntries(buf) {
     }
   }
 
-  if (eocdOffset === -1) return entries; // not a valid ZIP
+  if (eocdOffset === -1) return entries;
 
   const cdOffset = view.getUint32(eocdOffset + 16, true);
   const cdSize   = view.getUint32(eocdOffset + 12, true);
@@ -41,7 +41,7 @@ function parseZipEntries(buf) {
   const decoder = new TextDecoder();
 
   for (let i = 0; i < entryCount && pos < cdOffset + cdSize; i++) {
-    if (view.getUint32(pos, true) !== 0x02014b50) break; // central dir signature
+    if (view.getUint32(pos, true) !== 0x02014b50) break;
 
     const compMethod    = view.getUint16(pos + 10, true);
     const compSize      = view.getUint32(pos + 20, true);
@@ -59,6 +59,28 @@ function parseZipEntries(buf) {
   return entries;
 }
 
+// ---------- MIME guess for extracted files ----------
+
+const MIME_MAP = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', ico: 'image/x-icon',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', flac: 'audio/flac',
+  ogg: 'audio/ogg', opus: 'audio/opus', aac: 'audio/aac',
+  mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo', mkv: 'video/x-matroska',
+  webm: 'video/webm', pdf: 'application/pdf', json: 'application/json',
+  xml: 'application/xml', html: 'text/html', css: 'text/css', js: 'text/javascript',
+  txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', zip: 'application/zip',
+};
+
+function guessMime(ext) {
+  return MIME_MAP[ext] || 'application/octet-stream';
+}
+
+function extOf(name) {
+  const m = name.match(/\.([^./\\]+)$/);
+  return m ? m[1].toLowerCase() : '';
+}
+
 // ---------- main render ----------
 export async function renderArchive(file, resultsEl) {
   resultsEl.hidden = false;
@@ -70,20 +92,24 @@ export async function renderArchive(file, resultsEl) {
     buf = await file.arrayBuffer();
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read file: ' + (e && e.message)));
+    if (isUnreadableError(e)) {
+      resultsEl.appendChild(cloudFileWarning(file));
+    } else {
+      resultsEl.appendChild(errorCard('Could not read file: ' + (e && e.message)));
+    }
     return;
   }
 
   const entries = parseZipEntries(buf);
   if (entries.length === 0) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'No entries found in this ZIP file, or the archive is corrupt.'));
+    resultsEl.appendChild(errorCard('No entries found in this ZIP file, or the archive is corrupt.'));
     return;
   }
 
   resultsEl.innerHTML = '';
 
-  // --- Summary card ---
+  // --- ZIP summary card ---
   const fileEntries = entries.filter((e) => !e.isDir);
   const dirEntries  = entries.filter((e) => e.isDir);
   const totalUncomp = fileEntries.reduce((s, e) => s + e.uncompSize, 0);
@@ -105,11 +131,58 @@ export async function renderArchive(file, resultsEl) {
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
 
-  // --- File tree card ---
-  const treeCard = el('div', { class: 'anr-card' });
-  treeCard.appendChild(el('h3', {}, 'Contents'));
+  // --- Category breakdown ---
+  const items = normalizeArchive(entries);
+  renderBreakdownCards(items, resultsEl);
 
-  // Build a tree structure
+  // --- Extract a file from the archive (for click-to-analyse) ---
+  async function extractFile(entryName) {
+    const ffl = await loadFflate();
+    const data = new Uint8Array(buf);
+    const unzipped = ffl.unzipSync(data, { filter: (f) => f.name === entryName });
+    const content = unzipped[entryName];
+    if (!content) return null;
+    const ext = extOf(entryName);
+    const fileName = entryName.split('/').pop() || entryName;
+    return new File([content], fileName, { type: guessMime(ext) });
+  }
+
+  // --- Click-to-analyse handler (treemap) ---
+  function onFileClick(item) {
+    if (!item || !item.entry) return;
+    const ext = extOf(item.entry.name);
+    if (ARCHIVE_EXTS.has(ext)) {
+      extractFile(item.entry.name).then(f => {
+        if (f) renderArchive(f, resultsEl);
+      });
+    } else {
+      extractFile(item.entry.name).then(f => {
+        if (f && window._anrHandleFile) window._anrHandleFile(f);
+      });
+    }
+  }
+
+  // --- Click handler for tree view (receives key, value from buildFileTree) ---
+  // We need an entry lookup by name
+  const entryByName = {};
+  for (const e of entries) entryByName[e.name] = e;
+
+  function onTreeFileClick(key, val) {
+    const entry = val && val.name ? val : null;
+    if (!entry) return;
+    const ext = extOf(entry.name);
+    if (ARCHIVE_EXTS.has(ext)) {
+      extractFile(entry.name).then(f => {
+        if (f) renderArchive(f, resultsEl);
+      });
+    } else {
+      extractFile(entry.name).then(f => {
+        if (f && window._anrHandleFile) window._anrHandleFile(f);
+      });
+    }
+  }
+
+  // --- Build tree object ---
   const tree = {};
   for (const entry of entries) {
     const parts = entry.name.split('/').filter((p) => p);
@@ -117,7 +190,6 @@ export async function renderArchive(file, resultsEl) {
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (i === parts.length - 1 && !entry.isDir) {
-        // leaf file
         node[part] = entry;
       } else {
         if (!node[part] || typeof node[part] !== 'object' || node[part].name) {
@@ -128,20 +200,20 @@ export async function renderArchive(file, resultsEl) {
     }
   }
 
-  treeCard.appendChild(buildFileTree(tree, {
+  renderViewToggle(resultsEl, items, tree, {
     isDir: (v) => v && typeof v === 'object' && !v.name,
-    fileSize: (v) => (v && v.uncompSize) || 0
-  }));
-  resultsEl.appendChild(treeCard);
+    fileSize: (v) => (v && v.uncompSize) || 0,
+    copyPath: (_key, entry) => entry && entry.name,
+    onFileClick: onTreeFileClick
+  }, onFileClick);
 
-  // --- Preview small text files ---
-  // Use fflate for decompressing individual entries when the user clicks
+  // --- Text file previews ---
   const textExts = new Set(['txt', 'md', 'json', 'xml', 'csv', 'tsv', 'html', 'htm',
     'css', 'js', 'ts', 'py', 'rb', 'java', 'c', 'h', 'cpp', 'rs', 'go',
     'yaml', 'yml', 'toml', 'ini', 'cfg', 'log', 'sh', 'bat', 'sql', 'svg']);
 
   const previewable = fileEntries.filter((e) => {
-    if (e.uncompSize > 10240) return false; // > 10 KB
+    if (e.uncompSize > 10240) return false;
     const ext = (e.name.match(/\.([^.]+)$/) || [])[1];
     return ext && textExts.has(ext.toLowerCase());
   });
@@ -154,7 +226,7 @@ export async function renderArchive(file, resultsEl) {
       style: 'margin: 0 0 8px; font-size: 12px;'
     }, `${previewable.length} small text file(s) can be previewed. Click to expand.`));
 
-    let ffl = null; // lazy-loaded
+    let ffl = null;
 
     for (const entry of previewable.slice(0, 20)) {
       const details = el('details', {});

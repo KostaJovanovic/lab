@@ -2,7 +2,7 @@
    Reads .pptx (Office Open XML presentation) and renders each slide as a card
    with its text (title + body) and any embedded images, in presentation order. */
 
-import { el, row, fmtBytes, integrityCard } from './util.js';
+import { el, row, fmtBytes, integrityCard, errorCard } from './util.js';
 import { openZip } from './zip.js';
 
 const EMU_PER_PX = 9525; // 914400 EMU/inch ÷ 96 px/inch
@@ -29,7 +29,7 @@ export async function renderPptx(file, resultsEl) {
     zip = await openZip(file);
   } catch (e) {
     resultsEl.innerHTML = '';
-    resultsEl.appendChild(el('div', { class: 'anr-error' }, 'Could not read PPTX: ' + (e && e.message)));
+    resultsEl.appendChild(errorCard('Could not read PPTX: ' + (e && e.message)));
     return;
   }
   resultsEl.innerHTML = '';
