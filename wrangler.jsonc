@@ -1,0 +1,16 @@
+{
+  // Explicit config so the deploy is reproducible (otherwise wrangler
+  // auto-generates this on every build). Mirrors the auto-detected settings,
+  // plus not_found_handling so unknown URLs fall back to the home page instead
+  // of a 404 — this is a single-purpose tool, so any mistyped/old path just
+  // lands on the drop page.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lab",
+  "compatibility_date": "2026-06-03",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "single-page-application"
+  },
+  "compatibility_flags": ["nodejs_compat"]
+}

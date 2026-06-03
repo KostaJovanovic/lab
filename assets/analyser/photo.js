@@ -16,20 +16,29 @@ const TESSERACT_URL = 'assets/vendor/tesseract/tesseract.min.js';
 const LEAFLET_CSS   = 'assets/vendor/leaflet/leaflet.css';
 const LEAFLET_JS    = 'assets/vendor/leaflet/leaflet.js';
 
+// OCR languages. The first group is bundled with the app (works fully
+// offline); the rest are fetched from a CDN on demand and cached by the
+// service worker after first use. LOCAL_OCR_LANGS decides which langPath a
+// worker uses; the bundled set is kept small to fit Cloudflare's 25 MiB asset
+// cap (the big packs like chi_tra are CDN-only).
+const LOCAL_OCR_LANGS = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'rus', 'chi_sim', 'jpn']);
+const TESS_CDN_LANGPATH = 'https://tessdata.projectnaptha.com/4.0.0';
+
 const TESSERACT_LANGS = [
-  ['eng', 'English', '4 MB'],
+  ['eng', 'English', '10 MB'],
+  ['spa', 'Spanish', '9 MB'],
+  ['fra', 'French', '9 MB'],
+  ['deu', 'German', '9 MB'],
+  ['ita', 'Italian', '8 MB'],
+  ['por', 'Portuguese', '8 MB'],
+  ['rus', 'Russian', '11 MB'],
+  ['chi_sim', 'Chinese (Simplified)', '18 MB'],
+  ['jpn', 'Japanese', '14 MB'],
   ['srp', 'Serbian (Cyrillic)', '2 MB'],
   ['srp_latn', 'Serbian (Latin)', '2 MB'],
   ['hrv', 'Croatian', '2 MB'],
-  ['deu', 'German', '4 MB'],
-  ['fra', 'French', '4 MB'],
-  ['ita', 'Italian', '4 MB'],
-  ['spa', 'Spanish', '5 MB'],
-  ['rus', 'Russian', '4 MB'],
   ['ell', 'Greek', '2 MB'],
   ['ara', 'Arabic', '2 MB'],
-  ['jpn', 'Japanese', '14 MB'],
-  ['chi_sim', 'Chinese (Simplified)', '18 MB'],
   ['chi_tra', 'Chinese (Traditional)', '25 MB'],
   ['kor', 'Korean', '5 MB'],
   ['heb', 'Hebrew', '2 MB'],
@@ -44,7 +53,6 @@ const TESSERACT_LANGS = [
   ['bul', 'Bulgarian', '2 MB'],
   ['mkd', 'Macedonian', '1 MB'],
   ['nld', 'Dutch', '5 MB'],
-  ['por', 'Portuguese', '4 MB'],
   ['swe', 'Swedish', '3 MB'],
   ['nor', 'Norwegian', '4 MB'],
   ['fin', 'Finnish', '4 MB'],
@@ -539,9 +547,10 @@ function makeOcrCard(file, img) {
   const list = el('ul', { class: 'anr-dropdown-list' });
 
   for (const [code, name, size] of TESSERACT_LANGS) {
+    const sizeText = LOCAL_OCR_LANGS.has(code) ? '[' + size + ']' : '[' + size + ' · online]';
     const item = el('li', { class: 'anr-dropdown-item' + (code === 'eng' ? ' is-selected' : '') }, [
       el('span', {}, name),
-      el('span', { class: 'anr-dropdown-item-size' }, '[' + size + ']')
+      el('span', { class: 'anr-dropdown-item-size' }, sizeText)
     ]);
     item.dataset.value = code;
     item.addEventListener('click', () => {
@@ -620,7 +629,7 @@ function makeOcrCard(file, img) {
       activeWorker = await T.createWorker(langState.value, undefined, {
         logger: setProgress,
         workerPath: 'assets/vendor/tesseract/worker.min.js',
-        langPath: 'assets/vendor/tesseract',
+        langPath: LOCAL_OCR_LANGS.has(langState.value) ? 'assets/vendor/tesseract' : TESS_CDN_LANGPATH,
         corePath: 'assets/vendor/tesseract'
       });
       progressLabel.textContent = 'Recognising…';

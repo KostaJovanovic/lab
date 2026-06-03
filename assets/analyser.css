@@ -1292,6 +1292,13 @@ audio { width: 100%; }
   background: var(--accent);
   animation: anr-sha-slide 1s ease-in-out infinite alternate;
 }
+/* Determinate variant (e.g. FFmpeg core download): fill reflects real % and
+   doesn't slide. */
+.anr-drop-loader-fill.is-determinate {
+  animation: none;
+  width: 0;
+  transition: width 0.25s ease;
+}
 
 /* ---------- OCR ---------- */
 .anr-ocr-text {

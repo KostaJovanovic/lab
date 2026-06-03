@@ -65,18 +65,51 @@ function makeBlobURL(data, type) {
 }
 
 // ---------- FFmpeg WASM fallback (lazy, single-threaded) ----------
+// The 31 MB core is too large for Cloudflare's 25 MiB asset cap, so it loads
+// from a CDN on first use. The service worker caches it afterwards, so offline
+// use survives once it's been fetched once. A bottom-of-window loader (same
+// style as the drop loader) shows real download progress while it pulls.
+const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
 let ffmpegInstance = null;
+let _ffLoaderEl = null;
+
+function showFfmpegLoader() {
+  if (!_ffLoaderEl || !_ffLoaderEl.isConnected) {
+    const fill = el('div', { class: 'anr-drop-loader-fill is-determinate' });
+    const track = el('div', { class: 'anr-drop-loader-track' }, fill);
+    const label = el('div', { class: 'anr-drop-loader-label' }, 'Loading FFmpeg… (≈31 MB, first time only)');
+    _ffLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, track]);
+    _ffLoaderEl._fill = fill;
+    document.body.appendChild(_ffLoaderEl);
+  }
+  _ffLoaderEl._fill.style.width = '0%';
+  requestAnimationFrame(() => _ffLoaderEl.classList.add('is-open'));
+}
+function setFfmpegLoaderProgress(frac) {
+  if (_ffLoaderEl && _ffLoaderEl._fill) {
+    _ffLoaderEl._fill.style.width = Math.round(Math.max(0, Math.min(1, frac)) * 100) + '%';
+  }
+}
+function hideFfmpegLoader() {
+  if (_ffLoaderEl) _ffLoaderEl.classList.remove('is-open');
+}
+
 async function loadFFmpeg(onProgress) {
   if (ffmpegInstance) return ffmpegInstance;
-  const { FFmpeg } = await import(new URL('../vendor/ffmpeg/ffmpeg.js', import.meta.url).href);
-  const base = 'assets/vendor/ffmpeg';
-  const coreJS = makeBlobURL(await fetchWithProgress(base + '/ffmpeg-core.js', (p) => onProgress && onProgress(p * 0.3)), 'text/javascript');
-  const wasmData = await fetchWithProgress(base + '/ffmpeg-core.wasm', (p) => onProgress && onProgress(0.3 + p * 0.7));
-  const wasmURL = makeBlobURL(wasmData, 'application/wasm');
-  const ff = new FFmpeg();
-  await ff.load({ coreURL: coreJS, wasmURL });
-  ffmpegInstance = ff;
-  return ff;
+  showFfmpegLoader();
+  try {
+    const { FFmpeg } = await import(new URL('../vendor/ffmpeg/ffmpeg.js', import.meta.url).href);
+    const report = (p) => { setFfmpegLoaderProgress(p); if (onProgress) onProgress(p); };
+    const coreJS = makeBlobURL(await fetchWithProgress(FFMPEG_CORE_BASE + '/ffmpeg-core.js', (p) => report(p * 0.3)), 'text/javascript');
+    const wasmData = await fetchWithProgress(FFMPEG_CORE_BASE + '/ffmpeg-core.wasm', (p) => report(0.3 + p * 0.7));
+    const wasmURL = makeBlobURL(wasmData, 'application/wasm');
+    const ff = new FFmpeg();
+    await ff.load({ coreURL: coreJS, wasmURL });
+    ffmpegInstance = ff;
+    return ff;
+  } finally {
+    hideFfmpegLoader();
+  }
 }
 
 async function ffmpegExtractAudio(file, container) {

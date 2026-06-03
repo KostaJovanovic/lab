@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 34;
+const COMMIT_COUNT = 35;
 const VERSION_OFFSET = 32;
 
 import { initPhoto, renderPhoto } from './photo.js';
@@ -744,8 +744,8 @@ function boot() {
       './assets/vendor/ffmpeg/types.js',
       './assets/vendor/ffmpeg/utils.js',
       './assets/vendor/ffmpeg/worker.js',
-      './assets/vendor/ffmpeg/ffmpeg-core.js',
-      './assets/vendor/ffmpeg/ffmpeg-core.wasm',
+      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
       './assets/vendor/ffmpeg/ffmpeg-util.js'
     ],
     everything: [
@@ -764,11 +764,16 @@ function boot() {
       './assets/vendor/pdfjs/pdf.worker.min.mjs',
       './assets/vendor/fflate.js'
     ],
+    // The 8 bundled extras are served locally; the rest are pulled from the
+    // CDN (not hosted in the repo). Both land in the offline cache, so
+    // "Complete" still gives every OCR language offline.
     complete: [
-      'srp', 'srp_latn', 'hrv', 'deu', 'fra', 'ita', 'spa', 'rus', 'ell', 'ara',
-      'jpn', 'chi_sim', 'chi_tra', 'kor', 'heb', 'tur', 'ukr', 'pol', 'ron',
-      'hun', 'ces', 'slk', 'slv', 'bul', 'mkd', 'nld', 'por', 'swe', 'nor', 'fin', 'dan'
-    ].map(c => TESS_DATA + '/' + c + '.traineddata.gz')
+      'spa', 'fra', 'deu', 'ita', 'por', 'rus', 'chi_sim', 'jpn'
+    ].map(c => TESS_DATA + '/' + c + '.traineddata.gz').concat(
+      ['srp', 'srp_latn', 'hrv', 'ell', 'ara', 'chi_tra', 'kor', 'heb', 'tur',
+       'ukr', 'pol', 'ron', 'hun', 'ces', 'slk', 'slv', 'bul', 'mkd', 'nld',
+       'swe', 'nor', 'fin', 'dan'].map(c => 'https://tessdata.projectnaptha.com/4.0.0/' + c + '.traineddata.gz')
+    )
   };
 
   document.querySelectorAll('.offline-btn').forEach(btn => {
