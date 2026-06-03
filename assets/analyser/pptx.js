@@ -2,7 +2,7 @@
    Reads .pptx (Office Open XML presentation) and renders each slide as a card
    with its text (title + body) and any embedded images, in presentation order. */
 
-import { el, row, fmtBytes, integrityCard, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, integrityCard, errorCard } from './util.js';
 import { openZip } from './zip.js';
 
 const EMU_PER_PX = 9525; // 914400 EMU/inch ÷ 96 px/inch
@@ -70,7 +70,8 @@ export async function renderPptx(file, resultsEl) {
   metaTbl.appendChild(row('File', file.name));
   metaTbl.appendChild(row('Size', fmtBytes(file.size)));
   metaTbl.appendChild(row('Slides', slideOrder.length || '-'));
-  metaTbl.appendChild(row('Slide size', Math.round(slideW) + ' × ' + Math.round(slideH) + ' px'));
+  metaTbl.appendChild(rowHelp('Slide size', Math.round(slideW) + ' × ' + Math.round(slideH) + ' px',
+    'The slide canvas dimensions in pixels. The presentation\'s aspect ratio (e.g. 16:9 or 4:3) is derived from this.'));
   if (zip.has('docProps/core.xml')) {
     const core = parseXml(await zip.text('docProps/core.xml'));
     const get = (t) => { const e = core.getElementsByTagName(t)[0]; return e ? e.textContent : ''; };

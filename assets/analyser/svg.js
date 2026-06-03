@@ -2,7 +2,7 @@
    Renders an SVG at actual size, then reports stats, element counts,
    colour palette, and text content. */
 
-import { el, row, fmtBytes, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, errorCard } from './util.js';
 import { renderPhoto } from './photo.js';
 
 export async function renderSvg(file, resultsEl) {
@@ -52,7 +52,7 @@ export async function renderSvg(file, resultsEl) {
     const viewBox = svgRoot.getAttribute('viewBox');
     const width = svgRoot.getAttribute('width');
     const height = svgRoot.getAttribute('height');
-    tbl.appendChild(row('viewBox', viewBox || '-'));
+    tbl.appendChild(rowHelp('viewBox', viewBox || '-', 'The SVG coordinate system, given as "min-x min-y width height". It defines how the vector canvas maps onto the display size, letting the image scale to any size without pixelation.'));
     tbl.appendChild(row('Width', width || '-'));
     tbl.appendChild(row('Height', height || '-'));
   }
@@ -68,7 +68,7 @@ export async function renderSvg(file, resultsEl) {
   }
   // Count all nodes
   const allElements = doc.getElementsByTagName('*');
-  tbl.appendChild(row('Total elements', String(allElements.length)));
+  tbl.appendChild(rowHelp('Total elements', String(allElements.length), 'The total count of all SVG nodes in the file — shapes, groups, paths, and every other tag.'));
 
   statsCard.appendChild(tbl);
 

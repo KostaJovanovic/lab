@@ -3,7 +3,7 @@
    spin), and reports geometry statistics (triangles, bounding box, surface area,
    volume). Self-contained - no external 3D library. */
 
-import { el, row, fmtBytes, sha256Row, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, sha256Row, errorCard } from './util.js';
 
 // ---------- STL parsing ----------
 // Returns { format, positions:Float32Array, normals:Float32Array, count,
@@ -319,14 +319,14 @@ export async function renderStl(file, resultsEl) {
   tbl.appendChild(row('Format', geo.format));
   tbl.appendChild(row('File', file.name));
   tbl.appendChild(row('Size', fmtBytes(file.size)));
-  tbl.appendChild(row('Triangles', geo.count.toLocaleString()));
-  tbl.appendChild(row('Vertices', (geo.count * 3).toLocaleString() + ' (non-indexed)'));
+  tbl.appendChild(rowHelp('Triangles', geo.count.toLocaleString(), 'The number of triangular facets that make up the mesh. STL models describe surfaces entirely as triangles.'));
+  tbl.appendChild(rowHelp('Vertices', (geo.count * 3).toLocaleString() + ' (non-indexed)', 'Total corner points, counted as 3 per triangle. STL stores them non-indexed, so shared corners are duplicated rather than referenced once.'));
   const dx = geo.bbox.max[0] - geo.bbox.min[0];
   const dy = geo.bbox.max[1] - geo.bbox.min[1];
   const dz = geo.bbox.max[2] - geo.bbox.min[2];
-  tbl.appendChild(row('Bounding box', `${dx.toFixed(2)} × ${dy.toFixed(2)} × ${dz.toFixed(2)} (units)`));
-  tbl.appendChild(row('Surface area', geo.area.toFixed(2) + ' units²'));
-  tbl.appendChild(row('Volume', geo.volume.toFixed(2) + ' units³ (if watertight)'));
+  tbl.appendChild(rowHelp('Bounding box', `${dx.toFixed(2)} × ${dy.toFixed(2)} × ${dz.toFixed(2)} (units)`, 'The smallest axis-aligned box that encloses the model, as width × depth × height. STL files are unitless, so these are in whatever units the file assumes (often mm).'));
+  tbl.appendChild(rowHelp('Surface area', geo.area.toFixed(2) + ' units²', 'The combined area of all triangles in the mesh, expressed in the model’s own units squared.'));
+  tbl.appendChild(rowHelp('Volume', geo.volume.toFixed(2) + ' units³ (if watertight)', 'The enclosed volume in the model’s units cubed. Only meaningful if the mesh is watertight — a fully closed solid with no holes or gaps.'));
   tbl.appendChild(sha256Row(file));
   statsCard.appendChild(tbl);
   statsCard.appendChild(el('p', { class: 'anr-hint', style: 'font-size:12px;margin-top:8px;' },

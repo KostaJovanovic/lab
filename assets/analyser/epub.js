@@ -2,7 +2,7 @@
    Reads .epub (zipped XHTML eBook): metadata, cover, and chapter-by-chapter
    reading with navigation. */
 
-import { el, row, fmtBytes, integrityCard, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, integrityCard, errorCard } from './util.js';
 import { openZip } from './zip.js';
 
 function parseXml(text) {
@@ -84,7 +84,8 @@ export async function renderEpub(file, resultsEl) {
   const language = metaGet('dc:language'); if (language) metaTbl.appendChild(row('Language', language));
   const date = metaGet('dc:date'); if (date) metaTbl.appendChild(row('Date', date));
   const pkg = opf.getElementsByTagName('package')[0];
-  if (pkg && pkg.getAttribute('version')) metaTbl.appendChild(row('EPUB version', pkg.getAttribute('version')));
+  if (pkg && pkg.getAttribute('version')) metaTbl.appendChild(rowHelp('EPUB version', pkg.getAttribute('version'),
+    'The EPUB specification version the book conforms to (e.g. 2.0 vs 3.0), which determines the layout and interactivity features it can use.'));
   metaTbl.appendChild(row('File', file.name));
   metaTbl.appendChild(row('Size', fmtBytes(file.size)));
   metaCard.appendChild(metaTbl);

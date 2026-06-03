@@ -1184,8 +1184,10 @@ export async function renderPhoto(file, resultsEl) {
   tbl.appendChild(row('Type',          file.type || '-'));
   tbl.appendChild(row('Modified',      file.lastModified ? new Date(file.lastModified).toISOString().replace('T', ' ').replace(/\..*$/, '') : '-'));
   tbl.appendChild(row('Dimensions',    `${w} × ${h} px`));
-  tbl.appendChild(row('Aspect ratio',  aspectRatio(w, h)));
-  tbl.appendChild(row('Megapixels',    mp + ' MP'));
+  tbl.appendChild(rowHelp('Aspect ratio', aspectRatio(w, h),
+    'The width-to-height proportion of the image (e.g. 3:2 or 16:9).'));
+  tbl.appendChild(rowHelp('Megapixels', mp + ' MP',
+    'Total number of pixels in the image, in millions (width × height ÷ 1,000,000).'));
   tbl.appendChild(rowHelp('Sharpness', sharpness.toFixed(1) + '  (' + sharpnessLabel(sharpness) + ')',
     'Laplacian variance of the luminance channel. Higher = sharper detail. Below 50 is typically blurry, above 200 is very sharp.'));
   const fpx = Math.round(focus.focusX / pixData.width * w);
@@ -1193,7 +1195,8 @@ export async function renderPhoto(file, resultsEl) {
   tbl.appendChild(rowHelp('Focus point', fpx + ', ' + fpy + '  (estimated)',
     'Estimated by finding the region with highest local sharpness (Laplacian variance in a sliding window across the image).'));
   const avgHex = '#' + [colorStats.avgR, colorStats.avgG, colorStats.avgB].map((v) => v.toString(16).padStart(2, '0')).join('');
-  tbl.appendChild(row('Average colour', avgHex + '  (R' + colorStats.avgR + ' G' + colorStats.avgG + ' B' + colorStats.avgB + ')'));
+  tbl.appendChild(rowHelp('Average colour', avgHex + '  (R' + colorStats.avgR + ' G' + colorStats.avgG + ' B' + colorStats.avgB + ')',
+    'The mean RGB colour of every pixel, shown as a hex swatch. Gives a quick sense of the image\'s overall tint and brightness.'));
   tbl.appendChild(rowHelp('Tonal split', colorStats.shadows + '% shadows · ' + colorStats.midtones + '% midtones · ' + colorStats.highlights + '% highlights',
     'Pixel luminance distribution. Shadows = darkest 25%, midtones = middle 50%, highlights = brightest 25%.'));
   if (exif && exif.Orientation != null) {
@@ -1203,7 +1206,8 @@ export async function renderPhoto(file, resultsEl) {
     const ext = fileExt(file.name).toUpperCase();
     const isPreview = convertedFile.name.includes('_preview');
     const convLabel = isPreview ? 'embedded preview' : 'full resolution';
-    tbl.appendChild(row('Converted', ext + ' → JPEG (' + convLabel + ')'));
+    tbl.appendChild(rowHelp('Converted', ext + ' → JPEG (' + convLabel + ')',
+      'The original format was decoded and transcoded to JPEG in your browser so it could be analysed and previewed here.'));
   }
   infoCard.appendChild(tbl);
 
@@ -1266,8 +1270,10 @@ export async function renderPhoto(file, resultsEl) {
     const gt = el('table', { class: 'anr-readout' });
     gt.appendChild(row('Latitude',  lat.toFixed(6) + '°'));
     gt.appendChild(row('Longitude', lon.toFixed(6) + '°'));
-    if (exif.GPSAltitude != null) gt.appendChild(row('Altitude', (+exif.GPSAltitude).toFixed(1) + ' m'));
-    if (exif.GPSImgDirection != null) gt.appendChild(row('Image direction', (+exif.GPSImgDirection).toFixed(1) + '°'));
+    if (exif.GPSAltitude != null) gt.appendChild(rowHelp('Altitude', (+exif.GPSAltitude).toFixed(1) + ' m',
+      'Height above sea level recorded by the camera\'s GPS, in metres.'));
+    if (exif.GPSImgDirection != null) gt.appendChild(rowHelp('Image direction', (+exif.GPSImgDirection).toFixed(1) + '°',
+      'The compass bearing the camera was pointing when the photo was taken, in degrees (0° = north).'));
     if (exif.GPSSpeed != null) gt.appendChild(row('Speed', exif.GPSSpeed + ' ' + (exif.GPSSpeedRef || '')));
     gpsCard.appendChild(gt);
 
@@ -1367,8 +1373,17 @@ export async function renderPhoto(file, resultsEl) {
   // ---- LSB steganography analysis ----
   const lsbCard = el('div', { class: 'anr-card' });
   const lsbDet = el('details');
-  const [lsbH, lsbHelp] = h3help('LSB Analysis', 'LSB (Least Significant Bit) analysis isolates the lowest bit of each colour channel (R, G, B) and renders it as a black-and-white image. In a normal photograph these planes look like random noise. Visible patterns, text, or structure in the LSB plane can indicate steganographic data (hidden messages embedded in the image) or heavy editing. Click a preview to open it at full resolution.');
-  lsbDet.appendChild(el('summary', {}, 'LSB Analysis'));
+  const lsbHelp = el('div', { class: 'anr-info-panel is-hidden', html: 'LSB (Least Significant Bit) analysis isolates the lowest bit of each colour channel (R, G, B) and renders it as a black-and-white image. In a normal photograph these planes look like random noise. Visible patterns, text, or structure in the LSB plane can indicate steganographic data (hidden messages embedded in the image) or heavy editing. Click a preview to open it at full resolution.' });
+  const lsbSummary = el('summary', {});
+  lsbSummary.appendChild(document.createTextNode('LSB Analysis '));
+  const lsbInfoBtn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info' }, '[?]');
+  lsbInfoBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    lsbHelp.classList.toggle('is-hidden');
+  });
+  lsbSummary.appendChild(lsbInfoBtn);
+  lsbDet.appendChild(lsbSummary);
   const lsbContent = el('div');
   lsbContent.appendChild(lsbHelp);
   renderLsbPlanes(img, lsbContent);

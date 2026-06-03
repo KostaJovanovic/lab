@@ -2,7 +2,7 @@
    Detects the delimiter, parses quoted fields, infers per-column types,
    reports numeric statistics, and previews the first 100 rows. */
 
-import { el, row, fmtBytes, fileExt, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, fileExt, errorCard } from './util.js';
 
 // Simple CSV parser that handles quoted fields
 function parseCsvLine(line, delim) {
@@ -81,7 +81,7 @@ export async function renderCsv(file, resultsEl) {
   tbl.appendChild(row('Application', 'CSV / TSV Spreadsheet'));
   tbl.appendChild(row('Name', file.name));
   tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
-  tbl.appendChild(row('Delimiter', delimiter === '\t' ? 'Tab' : 'Comma'));
+  tbl.appendChild(rowHelp('Delimiter', delimiter === '\t' ? 'Tab' : 'Comma', 'The character used to separate columns in the file — a comma (.csv) or a tab (.tsv).'));
   tbl.appendChild(row('Columns', String(colCount)));
   tbl.appendChild(row('Data rows', String(hasHeader ? totalRows - 1 : totalRows)));
   statsCard.appendChild(tbl);

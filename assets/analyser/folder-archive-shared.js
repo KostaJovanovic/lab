@@ -2,7 +2,7 @@
    Category classification, breakdown cards, and view toggle (treemap / tree)
    used by both folder.js and archive.js. */
 
-import { el, row, fmtBytes, buildFileTree } from './util.js';
+import { el, row, rowHelp, fmtBytes, buildFileTree } from './util.js';
 import { PHOTO_EXTS, AUDIO_EXTS, VIDEO_EXTS, DOC_EXTS, ARCHIVE_EXTS } from './formats.js';
 import { renderTreemap, attachTreemapEvents } from './treemap.js';
 
@@ -109,8 +109,10 @@ export function renderBreakdownCards(items, resultsEl, extraSummaryRows) {
     const d = breakdown.byCategory[cat];
     if (d.count) catParts.push(d.count + ' ' + CATEGORY_LABELS[cat].toLowerCase());
   }
-  tbl.appendChild(row('Categories', catParts.join(', ') || '-'));
-  tbl.appendChild(row('Unique extensions', String(breakdown.sorted.length)));
+  tbl.appendChild(rowHelp('Categories', catParts.join(', ') || '-',
+    'A breakdown of the contents grouped by media kind: photos, audio, video, documents, archives, and other.'));
+  tbl.appendChild(rowHelp('Unique extensions', String(breakdown.sorted.length),
+    'How many distinct file extensions appear across all the files in this set.'));
   card.appendChild(tbl);
   resultsEl.appendChild(card);
 

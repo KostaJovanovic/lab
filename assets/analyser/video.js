@@ -625,10 +625,10 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
   if (isFinite(dur) && dur > 0) tbl.appendChild(row('Duration', formatDuration(dur)));
   const bitrate = isFinite(dur) && dur > 0
     ? (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)' : '-';
-  tbl.appendChild(row('Bitrate (total)', bitrate));
+  tbl.appendChild(rowHelp('Bitrate (total)', bitrate, 'Average data rate across the whole file - video, audio, and container overhead combined. Computed as file size ÷ duration, so it is an overall average, not the encoder’s target bitrate.'));
   const fpsRow = row('Frame rate', 'detecting…');
   tbl.appendChild(fpsRow);
-  if (vw && vh) tbl.appendChild(row('Frame size', ((vw * vh) / 1_000_000).toFixed(2) + ' MP'));
+  if (vw && vh) tbl.appendChild(rowHelp('Frame size', ((vw * vh) / 1_000_000).toFixed(2) + ' MP', 'Pixels per frame in megapixels (width × height ÷ 1,000,000). A rough indicator of how much raw image data each frame holds before compression.'));
   infoCard.appendChild(tbl);
   resultsEl.insertBefore(infoCard, playerCard);
 
@@ -818,11 +818,11 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       audioResultsEl.appendChild(apCard);
       const at = el('table', { class: 'anr-readout' });
       at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
-      at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
-      at.appendChild(row('Channels', audioBuf.numberOfChannels));
+      at.appendChild(rowHelp('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz', 'Audio samples captured per second, in hertz - e.g. 48000 Hz means 48,000 amplitude readings per second of sound.'));
+      at.appendChild(rowHelp('Channels', audioBuf.numberOfChannels, 'Number of separate audio channels: 1 = mono, 2 = stereo (left + right), more for surround.'));
       at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)', 'Highest sample amplitude.'));
       at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)', 'Root Mean Square - average signal power.'));
-      at.appendChild(row('Samples', mono.length.toLocaleString()));
+      at.appendChild(rowHelp('Samples', mono.length.toLocaleString(), 'Total number of individual amplitude values in the (channel-merged mono) signal - roughly sample rate × duration.'));
       audioCard.appendChild(at);
       const waveWrap = el('div', { style: 'position:relative; width:100%;' });
       const waveCanvas = el('canvas', { class: 'anr-waveform' }); waveCanvas.width = 1024; waveCanvas.height = 80;
@@ -949,9 +949,9 @@ export async function renderVideo(file, resultsEl) {
       const bitrate = avi.duration && avi.duration > 0
         ? (file.size * 8 / avi.duration / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / avi.duration / 1_000_000).toFixed(2) + ' Mbps)'
         : '-';
-      tbl.appendChild(row('Bitrate (total)', bitrate));
+      tbl.appendChild(rowHelp('Bitrate (total)', bitrate, 'Average data rate across the whole file - video, audio, and container overhead combined. Computed as file size ÷ duration, so it is an overall average, not the encoder’s target bitrate.'));
       if (avi.width && avi.height)
-        tbl.appendChild(row('Frame size', ((avi.width * avi.height) / 1_000_000).toFixed(2) + ' MP'));
+        tbl.appendChild(rowHelp('Frame size', ((avi.width * avi.height) / 1_000_000).toFixed(2) + ' MP', 'Pixels per frame in megapixels (width × height ÷ 1,000,000). A rough indicator of how much raw image data each frame holds before compression.'));
       if (avi.audioFormat)
         tbl.appendChild(row('Audio', `${avi.audioFormat.sampleRate} Hz, ${avi.audioFormat.bitsPerSample}-bit, ${avi.audioFormat.channels}ch`));
       infoCard.appendChild(tbl);
@@ -1078,13 +1078,16 @@ export async function renderVideo(file, resultsEl) {
         audioCard.appendChild(el('h3', {}, 'Audio track'));
         const at = el('table', { class: 'anr-readout' });
         at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
-        at.appendChild(row('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz'));
-        at.appendChild(row('Channels', audioBuf.numberOfChannels));
+        at.appendChild(rowHelp('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz',
+          'Audio samples captured per second, in hertz - e.g. 48000 Hz means 48,000 amplitude readings per second of sound.'));
+        at.appendChild(rowHelp('Channels', audioBuf.numberOfChannels,
+          'Number of separate audio channels: 1 = mono, 2 = stereo (left + right), more for surround.'));
         at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
           'Highest sample amplitude. dBFS = decibels relative to full scale (0 dBFS = digital maximum).'));
         at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)',
           'Root Mean Square - average signal power, closer to perceived loudness than peak.'));
-        at.appendChild(row('Samples', mono.length.toLocaleString()));
+        at.appendChild(rowHelp('Samples', mono.length.toLocaleString(),
+          'Total number of individual amplitude values in the (channel-merged mono) signal - roughly sample rate × duration.'));
         audioCard.appendChild(at);
 
         const waveWrap = el('div', { style: 'position:relative; width:100%;' });
@@ -1349,12 +1352,12 @@ export async function renderVideo(file, resultsEl) {
   const bitrate = isFinite(dur) && dur > 0
     ? (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)'
     : '-';
-  tbl.appendChild(row('Bitrate (total)', bitrate));
+  tbl.appendChild(rowHelp('Bitrate (total)', bitrate, 'Average data rate across the whole file - video, audio, and container overhead combined. Computed as file size ÷ duration, so it is an overall average, not the encoder’s target bitrate.'));
   const fpsRow = row('Frame rate', 'detecting…');
   tbl.appendChild(fpsRow);
   if (vw && vh) {
     const mp = ((vw * vh) / 1_000_000).toFixed(2);
-    tbl.appendChild(row('Frame size', mp + ' MP'));
+    tbl.appendChild(rowHelp('Frame size', mp + ' MP', 'Pixels per frame in megapixels (width × height ÷ 1,000,000). A rough indicator of how much raw image data each frame holds before compression.'));
   }
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
@@ -1645,13 +1648,16 @@ export async function renderVideo(file, resultsEl) {
       // Info table
       const at = el('table', { class: 'anr-readout' });
       at.appendChild(row('Duration', formatDuration(audioDuration)));
-      at.appendChild(row('Sample rate', wavSr.toLocaleString() + ' Hz'));
-      at.appendChild(row('Channels', wavChannels));
+      at.appendChild(rowHelp('Sample rate', wavSr.toLocaleString() + ' Hz',
+        'Audio samples captured per second, in hertz - e.g. 48000 Hz means 48,000 amplitude readings per second of sound.'));
+      at.appendChild(rowHelp('Channels', wavChannels,
+        'Number of separate audio channels: 1 = mono, 2 = stereo (left + right), more for surround.'));
       at.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
         'Highest sample amplitude. dBFS = decibels relative to full scale (0 dBFS = digital maximum).'));
       at.appendChild(rowHelp('RMS', stats.rms.toFixed(3) + '  (' + stats.rmsDb.toFixed(1) + ' dBFS)',
         'Root Mean Square - average signal power, closer to perceived loudness than peak.'));
-      at.appendChild(row('Samples', mono.length.toLocaleString()));
+      at.appendChild(rowHelp('Samples', mono.length.toLocaleString(),
+        'Total number of individual amplitude values in the (channel-merged mono) signal - roughly sample rate × duration.'));
       audioCard.appendChild(at);
 
       // Waveform with draggable playhead

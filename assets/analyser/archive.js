@@ -2,7 +2,7 @@
    Lazy-loads fflate from CDN to inspect ZIP archives without full extraction.
    Uses the shared folder/archive modules for treemap, breakdown, and tree. */
 
-import { el, row, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
 import { normalizeArchive, renderBreakdownCards, renderViewToggle, categorizeExt } from './folder-archive-shared.js';
 import { ARCHIVE_EXTS } from './formats.js';
 
@@ -125,9 +125,9 @@ export async function renderArchive(file, resultsEl) {
   tbl.appendChild(row('Archive size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
   tbl.appendChild(row('Files', String(fileEntries.length)));
   tbl.appendChild(row('Directories', String(dirEntries.length)));
-  tbl.appendChild(row('Total uncompressed', fmtBytes(totalUncomp)));
-  tbl.appendChild(row('Total compressed', fmtBytes(totalComp)));
-  tbl.appendChild(row('Compression ratio', ratio + '%'));
+  tbl.appendChild(rowHelp('Total uncompressed', fmtBytes(totalUncomp), 'The combined size of all files once they are extracted from the archive.'));
+  tbl.appendChild(rowHelp('Total compressed', fmtBytes(totalComp), 'The combined size of all files as they are stored inside the archive, after compression.'));
+  tbl.appendChild(rowHelp('Compression ratio', ratio + '%', 'How much space the archive saves versus the uncompressed total, computed as 1 − compressed ÷ uncompressed. Higher percentages mean a smaller archive; 0% means no compression.'));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
 

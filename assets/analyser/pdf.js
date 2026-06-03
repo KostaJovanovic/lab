@@ -1,7 +1,7 @@
 /* Analyser - PDF module
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
-import { el, row, fmtBytes, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, errorCard } from './util.js';
 import { renderPhoto } from './photo.js';
 
 // Resolved against this module's URL so the dynamic import() gets a valid
@@ -136,11 +136,11 @@ export async function renderPdf(file, resultsEl) {
   } catch (_) {}
   tbl.appendChild(row('Title', meta.Title));
   tbl.appendChild(row('Author', meta.Author));
-  tbl.appendChild(row('Creator', meta.Creator));
-  tbl.appendChild(row('Producer', meta.Producer));
+  tbl.appendChild(rowHelp('Creator', meta.Creator, 'The application that originally authored the document content (for example a word processor or design tool).'));
+  tbl.appendChild(rowHelp('Producer', meta.Producer, 'The software that generated the actual PDF file (often a "Print to PDF" driver or a PDF library). It can differ from the Creator, which is the app that authored the content.'));
   tbl.appendChild(row('Creation date', fmtDate(meta.CreationDate)));
   tbl.appendChild(row('Modification date', fmtDate(meta.ModDate)));
-  tbl.appendChild(row('PDF version', meta.PDFFormatVersion || '-'));
+  tbl.appendChild(rowHelp('PDF version', meta.PDFFormatVersion || '-', 'The version of the PDF specification that this file conforms to.'));
 
   // Page dimensions from page 1
   try {
@@ -152,7 +152,7 @@ export async function renderPdf(file, resultsEl) {
     const hIn = (hPt / 72).toFixed(2);
     const wMm = (wPt / 72 * 25.4).toFixed(1);
     const hMm = (hPt / 72 * 25.4).toFixed(1);
-    tbl.appendChild(row('Page 1 size', `${wPt.toFixed(0)} x ${hPt.toFixed(0)} pt  (${wIn} x ${hIn} in / ${wMm} x ${hMm} mm)`));
+    tbl.appendChild(rowHelp('Page 1 size', `${wPt.toFixed(0)} x ${hPt.toFixed(0)} pt  (${wIn} x ${hIn} in / ${wMm} x ${hMm} mm)`, 'The physical dimensions of the first page, shown in points with inch and millimetre equivalents. 1 point equals 1/72 of an inch.'));
   } catch (_) {}
   const openBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
     const url = URL.createObjectURL(file);

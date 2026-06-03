@@ -809,10 +809,13 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   if (header.container) tbl.appendChild(row('Container',     header.container));
   if (header.codec)     tbl.appendChild(row('Codec',         header.codec));
   tbl.appendChild(row('Duration',       formatTime(audioBuffer.duration)));
-  tbl.appendChild(row('Sample rate',    audioBuffer.sampleRate.toLocaleString() + ' Hz'));
+  tbl.appendChild(rowHelp('Sample rate',    audioBuffer.sampleRate.toLocaleString() + ' Hz',
+    'Audio samples per second, in hertz. Higher rates capture higher frequencies - CD audio is 44,100 Hz, video audio is often 48,000 Hz.'));
   tbl.appendChild(row('Channels',       audioBuffer.numberOfChannels + describeChannels(audioBuffer.numberOfChannels)));
-  if (header.bitDepth)  tbl.appendChild(row('Bit depth',     header.bitDepth + ' bit'));
-  if (header.bitrate)   tbl.appendChild(row('Bitrate',       (header.bitrate / 1000).toFixed(0) + ' kbps'));
+  if (header.bitDepth)  tbl.appendChild(rowHelp('Bit depth',     header.bitDepth + ' bit',
+    'Bits used to store each audio sample. More bits give greater dynamic range and lower quantization noise - CD audio is 16-bit.'));
+  if (header.bitrate)   tbl.appendChild(rowHelp('Bitrate',       (header.bitrate / 1000).toFixed(0) + ' kbps',
+    'Compressed data rate in kilobits per second for lossy formats. Higher generally means better quality and a larger file.'));
   tbl.appendChild(rowHelp('Peak', stats.peak.toFixed(3) + '  (' + stats.peakDb.toFixed(1) + ' dBFS)',
     'Highest sample amplitude in the file. dBFS = decibels relative to full scale, where 0 dBFS is the digital maximum.'));
   tbl.appendChild(rowHelp('RMS', stats.rms.toFixed(3)  + '  (' + stats.rmsDb.toFixed(1)  + ' dBFS)',
@@ -855,7 +858,8 @@ export async function renderAudio(file, resultsEl, opts = {}) {
     td.appendChild(el('span', { style: 'font-size:0.8em;color:var(--muted);margin-left:4px' }, '(est)'));
   }
   tbl.appendChild(bpmRow);
-  tbl.appendChild(row('Total samples',  mono.length.toLocaleString()));
+  tbl.appendChild(rowHelp('Total samples',  mono.length.toLocaleString(),
+    'Total number of individual amplitude values in the (channel-merged mono) signal - roughly sample rate × duration.'));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
 

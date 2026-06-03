@@ -2,7 +2,7 @@
    Magic-byte format guess, hex/ASCII dump, SHA-256, and enhanced
    previews for plain text, JSON, and XML. */
 
-import { el, row, fmtBytes, fileExt, sha256Row, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, fileExt, sha256Row, errorCard } from './util.js';
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -199,7 +199,7 @@ export async function renderUnknown(file, resultsEl) {
   tbl.appendChild(row('MIME',     file.type || '-'));
   tbl.appendChild(row('Modified', file.lastModified ? new Date(file.lastModified).toISOString().replace('T', ' ').replace(/\..*$/, '') : '-'));
   tbl.appendChild(row('Extension', fileExt(file.name) || '-'));
-  tbl.appendChild(row('Magic guess', guess));
+  tbl.appendChild(rowHelp('Magic guess', guess, 'A best-effort file-type identification read from the first few "magic" bytes of the file. It is used when the extension is unknown, missing, or possibly wrong.'));
   card.appendChild(tbl);
 
   card.appendChild(el('div', { class: 'anr-readout-section' }, 'First 128 bytes'));
@@ -255,8 +255,8 @@ export async function renderUnknown(file, resultsEl) {
       statsTbl.appendChild(row('Characters', charCount.toLocaleString()));
       statsTbl.appendChild(row('Words', wordCount.toLocaleString()));
       statsTbl.appendChild(row('Lines', lineCount.toLocaleString()));
-      statsTbl.appendChild(row('Paragraphs', paragraphCount.toLocaleString()));
-      statsTbl.appendChild(row('Est. reading time', readingTime + ' min'));
+      statsTbl.appendChild(rowHelp('Paragraphs', paragraphCount.toLocaleString(), 'The number of blank-line-separated blocks of text in the document.'));
+      statsTbl.appendChild(rowHelp('Est. reading time', readingTime + ' min', 'A rough estimate of how long the text takes to read, assuming about 200 words per minute.'));
       card.appendChild(statsTbl);
     } catch (_) {}
   }
@@ -289,10 +289,10 @@ export async function renderUnknown(file, resultsEl) {
 
         card.appendChild(el('div', { class: 'anr-readout-section' }, 'JSON statistics'));
         const jsTbl = el('table', { class: 'anr-readout' });
-        jsTbl.appendChild(row('Total keys', stats.keys.toLocaleString()));
-        jsTbl.appendChild(row('Max depth', stats.maxDepth));
+        jsTbl.appendChild(rowHelp('Total keys', stats.keys.toLocaleString(), 'The total number of object keys across the whole JSON document, counting nested objects.'));
+        jsTbl.appendChild(rowHelp('Max depth', stats.maxDepth, 'How deeply nested the structure is — the maximum number of levels of objects and arrays inside one another.'));
         if (stats.arrays.length > 0) {
-          jsTbl.appendChild(row('Arrays', stats.arrays.length + ' (lengths: ' + stats.arrays.join(', ') + ')'));
+          jsTbl.appendChild(rowHelp('Arrays', stats.arrays.length + ' (lengths: ' + stats.arrays.join(', ') + ')', 'The number of arrays found in the document, with the length (item count) of each one listed.'));
         }
         card.appendChild(jsTbl);
 
@@ -326,8 +326,8 @@ export async function renderUnknown(file, resultsEl) {
 
         card.appendChild(el('div', { class: 'anr-readout-section' }, 'XML statistics'));
         const xmlTbl = el('table', { class: 'anr-readout' });
-        xmlTbl.appendChild(row('Elements', xstats.count.toLocaleString()));
-        xmlTbl.appendChild(row('Max depth', xstats.maxDepth));
+        xmlTbl.appendChild(rowHelp('Elements', xstats.count.toLocaleString(), 'The total number of XML tags (nodes) in the document.'));
+        xmlTbl.appendChild(rowHelp('Max depth', xstats.maxDepth, 'How deeply nested the structure is — the maximum number of levels of elements contained inside one another.'));
         card.appendChild(xmlTbl);
 
         let formattedXml = '';
