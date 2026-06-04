@@ -7,7 +7,17 @@
 
 import { el } from './util.js';
 
-export function makePlayer(mediaEl) {
+export function makePlayer(mediaEl, knownDuration) {
+  // MediaRecorder blobs (recorded audio) are written without a duration header, so
+  // mediaEl.duration is Infinity until the clip is played/seeked to the end. When the
+  // caller knows the real length (e.g. from decodeAudioData), use it as a fallback so
+  // the total shows immediately instead of 0:00. durationchange (below) picks up the
+  // browser's real value once it learns it.
+  function dur() {
+    const d = mediaEl.duration;
+    if (isFinite(d) && d > 0) return d;
+    return (typeof knownDuration === 'number' && isFinite(knownDuration)) ? knownDuration : 0;
+  }
   function fmt(sec) {
     if (!isFinite(sec) || sec < 0) return '0:00';
     const m = Math.floor(sec / 60);
@@ -28,28 +38,16 @@ export function makePlayer(mediaEl) {
   mediaEl.addEventListener('ended', () => { playBtn.textContent = '▶'; });
 
   let dragging = false;
-  let seeking = false;
-  let pendingFrac = null;
   function scrub(clientX) {
     const rect = trackEl.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     fillEl.style.width = (frac * 100) + '%';
-    if (seeking) {
-      pendingFrac = frac;
-    } else {
-      seeking = true;
-      mediaEl.currentTime = frac * (mediaEl.duration || 0);
-    }
+    const d = dur();
+    // Set currentTime directly. The browser coalesces rapid seeks during a drag;
+    // an explicit seeking-gate could get stuck (a no-op seek never fires 'seeked',
+    // especially with two players sharing one element) and then block all scrubs.
+    if (d > 0) mediaEl.currentTime = frac * d;
   }
-  mediaEl.addEventListener('seeked', () => {
-    if (pendingFrac !== null) {
-      const f = pendingFrac;
-      pendingFrac = null;
-      mediaEl.currentTime = f * (mediaEl.duration || 0);
-    } else {
-      seeking = false;
-    }
-  });
   // Window listeners are added on press and removed on release so they don't
   // pile up across files.
   function onMouseMove(e) { if (dragging) { scrub(e.clientX); tick(); } }
@@ -76,7 +74,7 @@ export function makePlayer(mediaEl) {
   }, { passive: false });
 
   function tick() {
-    const d = mediaEl.duration || 0;
+    const d = dur();
     const pct = d > 0 ? (mediaEl.currentTime / d) * 100 : 0;
     fillEl.style.width = pct + '%';
     timeEl.textContent = fmt(mediaEl.currentTime) + ' / ' + fmt(d);
@@ -84,6 +82,7 @@ export function makePlayer(mediaEl) {
   }
   mediaEl.addEventListener('seeked', tick);
   mediaEl.addEventListener('loadedmetadata', tick);
+  mediaEl.addEventListener('durationchange', tick);
   tick();
 
   return container;

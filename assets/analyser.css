@@ -211,17 +211,26 @@ button { font-family: inherit; }
 .site-byline:hover .site-byline-link::after { width: 100%; }
 .site-byline-link:hover::after { background: #e53e3e; }
 
-/* CHANGELOG header. "Changelog" is one long word, so tighten the tracking to keep
-   it on a single row (the title keeps the normal --t-mega size). Then nudge only
-   the "valjdakosta" word down so the tail of the title's "g" clears it - position:
-   relative shifts it visually without reflow, so "Analyser by" and everything below
-   stay at their current height. The offset is in em (of the byline, which scales
-   with --t-mega) so it tracks the title size across viewports. */
-.site-mark--changelog .site-title { letter-spacing: -0.09em; }
+/* CHANGELOG header.
+   - "Changelog" is one long word: tighten the tracking and pin it to one row
+     (white-space:nowrap) so the per-letter inline-block spans the header effect
+     builds can't break between letters and drop the final "g". That break happens
+     on wide viewports / zoomed out, where --t-mega clamps at 200px and the word is
+     widest in the 8-column header.
+   - The title's deep "g" descender dips into the byline, so nudge just the
+     "valjdakosta" word down to clear it. position:relative shifts it visually
+     without reflowing "Analyser by". Its hover-underline rides 2px beneath it and
+     would land on the sub-text below, so reserve the same amount under the byline
+     with padding-bottom (padding doesn't margin-collapse, so the sub-text keeps a
+     normal gap to the nudged word).
+   Both offsets are em of the byline - which scales with --t-mega - so the nudge and
+   its clearance track the title as it grows with viewport width. */
+.site-mark--changelog .site-title { letter-spacing: -0.09em; white-space: nowrap; }
 .site-mark--changelog .site-byline-link {
   position: relative;
   top: 0.37em;
 }
+.site-mark--changelog .site-byline { padding-bottom: 0.37em; }
 
 .site-sub {
   font-size: clamp(15px, 1.6vw, 18px);
@@ -1043,6 +1052,10 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   color: #fff;
   border-color: #444;
 }
+/* Center the spectrogram vertically in the available area when it's shorter than
+   the screen (otherwise it sits anchored at the top). */
+.anr-spec-card:fullscreen .anr-spec-scroll,
+.anr-spec-card:-webkit-full-screen .anr-spec-scroll { justify-content: center; }
 .anr-spec-card:fullscreen .anr-spec-wrap,
 .anr-spec-card:-webkit-full-screen .anr-spec-wrap {
   flex: 1 1 auto;
@@ -1063,6 +1076,40 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
 .anr-spec-card:-webkit-full-screen .anr-toggle button { color: #999; }
 .anr-spec-card:fullscreen .anr-toggle button.is-active,
 .anr-spec-card:-webkit-full-screen .anr-toggle button.is-active { background: #fff; color: #000; }
+/* Dark-theme the rest of the controls so the newer additions (Sensitivity slider,
+   Save / Record / Live buttons) and the stats readout match the fullscreen palette. */
+.anr-spec-card:fullscreen .anr-btn,
+.anr-spec-card:-webkit-full-screen .anr-btn {
+  background: #1a1a1a; color: #fff; border-color: #444;
+}
+.anr-spec-card:fullscreen .anr-btn:hover,
+.anr-spec-card:-webkit-full-screen .anr-btn:hover { background: #fff; color: #000; }
+.anr-spec-card:fullscreen .anr-btn.is-active,
+.anr-spec-card:fullscreen .anr-btn.is-recording,
+.anr-spec-card:-webkit-full-screen .anr-btn.is-active,
+.anr-spec-card:-webkit-full-screen .anr-btn.is-recording {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
+}
+.anr-spec-card:fullscreen input[type="range"]::-webkit-slider-runnable-track,
+.anr-spec-card:-webkit-full-screen input[type="range"]::-webkit-slider-runnable-track { background: #444; }
+.anr-spec-card:fullscreen input[type="range"]::-moz-range-track,
+.anr-spec-card:-webkit-full-screen input[type="range"]::-moz-range-track { background: #444; }
+.anr-spec-card:fullscreen .anr-range-readout,
+.anr-spec-card:-webkit-full-screen .anr-range-readout { color: #fff; }
+/* Keep the stats + status rows to a single, fixed-height line in fullscreen.
+   Otherwise their text re-wraps as values change per setting, and since the
+   canvas height is the flex remainder, a taller row would shrink the canvas
+   (settings appeared to randomly grow/shrink the spectrogram). */
+.anr-spec-card:fullscreen .anr-spec-stats,
+.anr-spec-card:-webkit-full-screen .anr-spec-stats {
+  color: #aaa; flex-wrap: nowrap; overflow: hidden;
+}
+.anr-spec-card:fullscreen .anr-spec-hint,
+.anr-spec-card:-webkit-full-screen .anr-spec-hint {
+  white-space: nowrap; overflow: hidden;
+}
+.anr-spec-card:fullscreen .anr-spec-stat strong,
+.anr-spec-card:-webkit-full-screen .anr-spec-stat strong { color: #fff; }
 
 /* ---------- CONTROLS ROW ---------- */
 .anr-controls {
@@ -1085,6 +1132,42 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
+/* Actions row pulled out from the settings and placed under the scrubber: give
+   it a full border (the settings .anr-controls has no bottom border because it
+   butts against the canvas) and a little breathing room above. */
+.anr-spec-actions {
+  border-bottom: 1px solid var(--hairline);
+  margin-top: 10px;
+}
+
+/* Segmented control groups (View / Resolution / Actions) - a captioned cluster
+   with a hairline divider on its left edge. align-self:stretch makes the divider
+   span the full row height even though the row centres its items. */
+.anr-control-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  align-self: stretch;
+  padding: 0 18px;
+  border-left: 1px solid var(--hairline);
+}
+.anr-control-group:first-child { padding-left: 0; border-left: none; }
+.anr-control-group-label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.anr-control-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
 .anr-control select,
 .anr-control input[type="number"],
 .anr-control input[type="text"] {
@@ -1096,16 +1179,49 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   color: var(--fg);
   border-radius: 0;
 }
+/* Custom range to match the site: a hairline track with a thin, square accent
+   thumb (no rounded corners) instead of the rounded native control. */
 .anr-control input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
   width: 120px;
-  accent-color: var(--accent);
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
 }
+.anr-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px; background: var(--hairline); border-radius: 0;
+}
+.anr-control input[type="range"]::-moz-range-track {
+  height: 3px; background: var(--hairline); border-radius: 0;
+}
+.anr-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 4px; height: 14px;
+  margin-top: -5.5px;          /* centre the thumb on the 3px track */
+  background: var(--accent); border: 0; border-radius: 0;
+}
+.anr-control input[type="range"]::-moz-range-thumb {
+  width: 4px; height: 14px;
+  background: var(--accent); border: 0; border-radius: 0;
+}
+.anr-control input[type="range"]:focus { outline: none; }
+.anr-control input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent); }
+.anr-control input[type="range"]:hover::-webkit-slider-thumb { background: var(--fg); }
+.anr-control input[type="range"]:hover::-moz-range-thumb { background: var(--fg); }
 .anr-range-readout {
   display: inline-block; min-width: 38px; text-align: right;
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: var(--t-small);
 }
+
+/* At-a-glance spectrogram stats strip (under the canvas) */
+.anr-spec-stats {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 0;
+  font-family: var(--font-mono); font-size: var(--t-small); color: var(--muted);
+}
+.anr-spec-stat strong { color: var(--fg); font-weight: 600; }
 
 .anr-toggle { display: inline-flex; border: 1px solid var(--hairline); }
 .anr-toggle button {
@@ -1374,6 +1490,28 @@ audio { width: 100%; }
   max-height: 240px;
   border: 1px solid var(--hairline);
   margin-bottom: 14px;
+}
+
+/* LRC timed-lyrics list */
+.anr-lrc-list { max-height: 460px; overflow: auto; font-size: var(--t-small); line-height: 1.5; }
+.anr-lrc-line { display: flex; gap: 12px; padding: 1px 0; }
+.anr-lrc-time {
+  flex: 0 0 auto; min-width: 56px; text-align: right;
+  font-family: var(--font-mono); color: var(--muted);
+}
+.anr-lrc-text { flex: 1 1 auto; word-break: break-word; }
+
+/* Embedded lyrics block */
+.anr-lyrics {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-sans);
+  font-size: var(--t-small);
+  line-height: 1.5;
+  color: var(--fg);
 }
 
 /* ---------- OCR ---------- */
@@ -1733,6 +1871,17 @@ details[open] summary::after { content: "\2212"; }
 :root[data-theme="dark"] .footer-bottom .footer-mark { color: #e8e8e8; }
 :root[data-theme="dark"] .about-defs > div { border-top-color: #333; }
 :root[data-theme="dark"] .footer-bottom { border-top-color: #333; }
+/* On phones, stack the footer bottom row so the link + email sit under the
+   cross-page button (full-width on top). On the homepage the button is absent,
+   so the two meta lines just stack on their own. */
+@media (max-width: 600px) {
+  .footer-bottom {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .footer-bottom .footer-nav-btn { align-self: stretch; text-align: center; }
+}
 
 /* ---------- ABOUT PAGE ---------- */
 .about-page .section { border-bottom: 1px solid var(--hairline); }
@@ -2549,7 +2698,20 @@ details[open] summary::after { content: "\2212"; }
   .anr-control select { min-height: 36px; padding: 6px 8px; }
   /* Tighten the nav so home + 3 links + search fit on narrow phones (~360px)
      without the search button overflowing off the right edge. */
-  .site-nav { display: flex; padding-left: 14px; padding-right: 14px; }
+  .site-nav {
+    display: flex;
+    padding-left: 14px; padding-right: 14px;
+    /* Keep the bar pinned while scrolling on phones. Re-assert sticky and drop
+       the auto side-margins (which can break position:sticky on iOS Safari);
+       full-bleed on mobile so no centering margins are involved anyway. */
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    margin-left: 0;
+    margin-right: 0;
+    max-width: none;
+  }
   .nav-link { flex: 1 1 0; padding: 14px 4px; gap: 6px; min-width: 0; }
   .site-about-link { min-height: 36px; display: inline-flex; align-items: center; }
   .nav-search {}
@@ -3057,6 +3219,35 @@ details[open] summary::after { content: "\2212"; }
   pointer-events: none;
   z-index: -1;
 }
+/* Non-blocking "Analysing…" badge over the video player while scene detection
+   runs in the background. pointer-events:none keeps the player interactive. */
+.anr-video-analysing {
+  position: absolute;
+  top: 52px;
+  right: 14px;
+  z-index: 2;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(2px);
+}
+.anr-video-analysing::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: anr-blink 1s steps(2, end) infinite;
+}
 
 /* ---------- MOBILE LAYOUT TUNING ---------- */
 @media (max-width: 700px) {
@@ -3072,9 +3263,26 @@ details[open] summary::after { content: "\2212"; }
   }
   .anr-unknown-results:not([hidden]) { padding-left: 14px; padding-right: 14px; }
 
-  /* Spectrogram settings: pack into a tidy 2-up grid so they take far less
-     vertical space. Each control's select/toggle/button fills its cell. */
+  /* Spectrogram settings (segmented groups): stack the groups vertically, each
+     separated by a top hairline, and pack each group's controls into a tidy
+     2-up grid so nothing overlaps and they take far less vertical space. */
   .anr-spec-card .anr-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+  .anr-spec-card .anr-control-group {
+    flex-direction: column;
+    align-self: stretch;
+    gap: 8px;
+    padding: 12px 0;
+    border-left: none;
+    border-top: 1px solid var(--hairline);
+  }
+  .anr-spec-card .anr-control-group:first-child { border-top: none; padding-top: 0; }
+  .anr-spec-card .anr-control-group:last-child  { padding-bottom: 0; }
+  .anr-spec-card .anr-control-group-items {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px 12px;
@@ -3082,15 +3290,18 @@ details[open] summary::after { content: "\2212"; }
   }
   .anr-spec-card .anr-control { min-width: 0; }
   .anr-spec-card .anr-control > label { white-space: nowrap; flex: 0 0 auto; }
-  /* select flexes into the space left after the label - no fixed width,
-     so the label and select never overlap in a narrow cell. */
+  /* select/range flex into the space left after the label - no fixed width,
+     so the label and field never overlap in a narrow cell. */
   .anr-spec-card .anr-control select { flex: 1 1 auto; min-width: 0; }
+  .anr-spec-card .anr-control input[type="range"] { flex: 1 1 auto; width: auto; min-width: 0; }
   .anr-spec-card .anr-control .anr-toggle { display: flex; flex: 1 1 auto; }
   .anr-spec-card .anr-control .anr-toggle button { flex: 1 1 auto; }
-  /* Axis (LOG/LINEAR) is the widest control - give it its own full-width row
-     and keep the toggle its natural size so it can't overflow into the FFT cell. */
-  .anr-spec-card .anr-control:first-child { grid-column: 1 / -1; }
-  .anr-spec-card .anr-control:first-child .anr-toggle { flex: 0 0 auto; }
+  /* The Axis toggle and the Sensitivity slider are the widest controls - give
+     each its own full-width cell so the slider has room to drag and the label
+     can't crush it to zero width. */
+  .anr-spec-card .anr-control:has(.anr-toggle),
+  .anr-spec-card .anr-control:has(input[type="range"]) { grid-column: 1 / -1; }
+  .anr-spec-card .anr-control:has(input[type="range"]) input[type="range"] { width: 100%; }
   .anr-spec-card .anr-control .anr-btn {
     display: flex;
     align-items: center;

@@ -588,7 +588,7 @@ function seekAndPaint(video, t) {
 // on-demand frame grab into the photo section, and a SHA-256. Returns true if
 // the player loaded (so the caller skips the error), false otherwise.
 async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) {
-  const playerCard = el('div', { class: 'anr-card' });
+  const playerCard = el('div', { class: 'anr-card', style: 'position:relative;' });
   playerCard.appendChild(el('h3', {}, 'Player'));
   const playerEl = el('video', { src: url, playsinline: '' });
   playerEl.setAttribute('webkit-playsinline', '');
@@ -596,6 +596,11 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
   applyVideoControls(playerEl);
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
+  // This path has no off-screen probe (it's the iOS / decode-failed fallback), so
+  // scene detection must seek the visible player. The badge flags that the brief
+  // auto-scrub is analysis, not playback.
+  const sceneBadge = el('div', { class: 'anr-video-analysing' }, 'Analysing…');
+  playerCard.appendChild(sceneBadge);
   resultsEl.appendChild(playerCard);
 
   const loaded = await new Promise((resolve) => {
@@ -746,15 +751,16 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
     sceneOut.appendChild(el('p', { class: 'anr-hint' }, 'Detecting scene changes…'));
     sceneCard.appendChild(sceneOut);
     resultsEl.appendChild(sceneCard);
-    (async () => {
+    const runScenes = async () => {
       if (!isFinite(playerEl.duration) || playerEl.duration <= 0) {
         await new Promise(r => { playerEl.addEventListener('loadedmetadata', r, { once: true }); setTimeout(r, 6000); });
       }
       if (signal && signal.aborted) return;
       let changes = [];
       try { changes = await detectSceneChanges(playerEl, 55, signal); } catch (_) {}
-      if (signal && signal.aborted) return;
       try { playerEl.currentTime = 0; playerEl.pause(); } catch (_) {}
+      sceneBadge.remove();
+      if (signal && signal.aborted) return;
       sceneOut.innerHTML = '';
       sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
         changes.length ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected' : 'No scene changes detected'));
@@ -781,7 +787,25 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
         details.appendChild(grid);
         sceneOut.appendChild(details);
       }
-    })();
+    };
+    // Large videos don't auto-run scene detection (it scrubs the player and can be
+    // slow); offer a manual trigger instead.
+    const bigVideo = file.size > 150 * 1024 * 1024 || (isFinite(dur) && dur > 600);
+    if (bigVideo) {
+      sceneBadge.remove();
+      sceneOut.innerHTML = '';
+      sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:8px;' },
+        'Skipped automatically for large videos (' + (file.size / 1048576).toFixed(0) + ' MB). Run it when you want:'));
+      const runBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Detect scene changes');
+      runBtn.addEventListener('click', () => {
+        runBtn.remove();
+        sceneOut.insertBefore(el('p', { class: 'anr-hint' }, 'Detecting scene changes…'), sceneOut.firstChild);
+        runScenes();
+      });
+      sceneOut.appendChild(runBtn);
+    } else {
+      runScenes();
+    }
   }
 
   // Audio extraction (into Sound section)
@@ -1195,12 +1219,13 @@ export async function renderVideo(file, resultsEl) {
     }, 'image/png');
   }
 
-  probe.removeAttribute('src');
-  probe.load();
-  probe.remove();
+  // NOTE: the probe is intentionally kept alive here. It already decodes this
+  // file off-screen, so scene detection seeks IT instead of the visible player -
+  // letting the user scrub/play freely while analysis runs. It's torn down once
+  // detection finishes (or on abort, via the handler registered above).
 
   // ---- Player ----
-  const playerCard = el('div', { class: 'anr-card' });
+  const playerCard = el('div', { class: 'anr-card', style: 'position:relative;' });
   playerCard.appendChild(el('h3', {}, 'Player'));
   // playsinline keeps playback inline on iPhone instead of forcing fullscreen;
   // the poster shows the captured first frame right away.
@@ -1210,6 +1235,11 @@ export async function renderVideo(file, resultsEl) {
   applyVideoControls(playerEl);
   playerCard.appendChild(playerEl);
   playerCard.appendChild(makePlayer(playerEl));
+  // Non-blocking status badge shown while background scene detection runs on the
+  // off-screen probe. It doesn't capture pointer events, so the player stays
+  // fully interactive (scrub/play) underneath it.
+  const sceneBadge = el('div', { class: 'anr-video-analysing' }, 'Analysing…');
+  playerCard.appendChild(sceneBadge);
 
   // ---- Frame-by-frame navigation ----
   let detectedFps = 30;
@@ -1502,31 +1532,16 @@ export async function renderVideo(file, resultsEl) {
     sceneCard.appendChild(sceneOut);
     resultsEl.appendChild(sceneCard);
 
-    // Detection seeks the player around, so run it in the background once the
-    // duration is known, then return the playhead to the start.
-    (async () => {
-      if (!isFinite(playerEl.duration) || playerEl.duration <= 0) {
-        await new Promise((res) => {
-          if (isFinite(playerEl.duration) && playerEl.duration > 0) return res();
-          playerEl.addEventListener('loadedmetadata', res, { once: true });
-          setTimeout(res, 6000);
-        });
-      }
-      if (renderSignal.aborted) return;
-
-      let changes = [];
-      try { changes = await detectSceneChanges(playerEl, 55, renderSignal); } catch (_) {}
-      if (renderSignal.aborted) return;
-      try { playerEl.currentTime = 0; playerEl.pause(); } catch (_) {}
-
+    // Detection seeks a video element around, so it runs on an off-screen element
+    // (never the visible player - the user can scrub/play while it runs). Large
+    // videos can be slow to walk, so they don't auto-run: a button triggers them.
+    function renderSceneResults(changes) {
       sceneOut.innerHTML = '';
       sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
         changes.length
           ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected'
           : 'No scene changes detected'));
-
       if (changes.length && isFinite(dur) && dur > 0) {
-        // Timeline bar with a marker per change (hover shows time + confidence).
         const timeline = el('div', { class: 'anr-scene-timeline' });
         for (const sc of changes) {
           const marker = el('div', {
@@ -1538,8 +1553,6 @@ export async function renderVideo(file, resultsEl) {
           timeline.appendChild(marker);
         }
         sceneOut.appendChild(timeline);
-
-        // Thumbnails tucked into a collapsible dropdown.
         const details = el('details', { class: 'anr-scene-details' });
         details.appendChild(el('summary', {}, 'Thumbnails (' + changes.length + ')'));
         const grid = el('div', { class: 'anr-scene-grid' });
@@ -1556,7 +1569,55 @@ export async function renderVideo(file, resultsEl) {
         details.appendChild(grid);
         sceneOut.appendChild(details);
       }
-    })();
+    }
+
+    async function detectAndRender(videoEl, removeAfter) {
+      let changes = [];
+      try { changes = await detectSceneChanges(videoEl, 55, renderSignal); } catch (_) {}
+      if (removeAfter) { try { videoEl.removeAttribute('src'); videoEl.load(); } catch (_) {} videoEl.remove(); }
+      sceneBadge.remove();
+      if (renderSignal.aborted) return;
+      renderSceneResults(changes);
+    }
+
+    // Spin up a fresh off-screen video (same trick as the probe) for on-demand runs.
+    function makeAnalysisVideo() {
+      const v = el('video', { class: 'anr-video-probe' });
+      v.muted = true; v.defaultMuted = true;
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', ''); v.setAttribute('preload', 'auto');
+      v.src = url;
+      document.body.appendChild(v);
+      renderSignal.addEventListener('abort', () => v.remove());
+      return v;
+    }
+
+    const BIG_VIDEO_BYTES = 150 * 1024 * 1024;
+    const bigVideo = file.size > BIG_VIDEO_BYTES || (isFinite(dur) && dur > 600);
+    if (bigVideo) {
+      // Don't auto-run on big videos: free the probe and offer a manual trigger.
+      try { probe.removeAttribute('src'); probe.load(); } catch (_) {}
+      probe.remove();
+      sceneBadge.remove();
+      sceneOut.innerHTML = '';
+      sceneOut.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:8px;' },
+        'Skipped automatically for large videos (' + (file.size / 1048576).toFixed(0) + ' MB). Run it when you want:'));
+      const runBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Detect scene changes');
+      runBtn.addEventListener('click', () => {
+        runBtn.remove();
+        sceneOut.insertBefore(el('p', { class: 'anr-hint' }, 'Detecting scene changes…'), sceneOut.firstChild);
+        const v = makeAnalysisVideo();
+        const go = () => detectAndRender(v, true);
+        if (isFinite(v.duration) && v.duration > 0) go();
+        else { v.addEventListener('loadeddata', go, { once: true }); setTimeout(go, 6000); }
+      });
+      sceneOut.appendChild(runBtn);
+    } else {
+      (async () => {
+        if (renderSignal.aborted) { probe.remove(); return; }
+        await detectAndRender(probe, true);
+      })();
+    }
   }
 
   // ---- Audio track extraction (renders into the Sound section) ----

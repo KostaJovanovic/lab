@@ -11,8 +11,9 @@ import {
   computeStats, computeCentroid, computeLufs,
   detectPitch, detectBPM, computeStereoStats
 } from './audio-analysis.js';
-import { peekContainer, adtsToM4a, readTagBPM, extractCoverArt } from './audio-codec.js';
+import { peekContainer, adtsToM4a, readTagBPM, extractCoverArt, readAudioTags } from './audio-codec.js';
 import { makePlayer } from './audio-player.js';
+import { encodeWav } from './video-avi.js';
 
 // Re-exported so existing importers (e.g. video.js) can keep importing the
 // transport from this module.
@@ -235,6 +236,73 @@ function buildTimeAxis(axisEl, durationSec) {
   }
 }
 
+// Scan a computed spectrogram for at-a-glance stats. `dbFloor` (the sensitivity
+// All levels are signal-relative so the numbers stay meaningful:
+//   Peak     - the single loudest bin overall.
+//   Detected - the occupied band: bins (excluding DC) within SIGNAL_DB of the peak,
+//              i.e. where real content lives, not the numerical-noise floor.
+//   DynRange - peak above the noise floor, where the floor is the 10th-percentile
+//              of bins that carry any energy (> -120 dB). Using dbMax-dbMin instead
+//              would just report the -240 dB epsilon floor of empty bins (~190 dB).
+// O(frames*bins), same order as the render pass.
+const SIGNAL_DB = 60;
+function specStats(spec) {
+  const { frames, bins, sampleRate, data } = spec;
+  if (!frames || !bins) return { peakHz: null, lowHz: null, highHz: null, dynRange: null };
+  const nyq = sampleRate / 2;
+  let peakBin = 0, peakDb = -Infinity;
+  const binMax = new Float32Array(bins).fill(-Infinity);
+  for (let f = 0; f < frames; f++) {
+    const r = f * bins;
+    for (let b = 0; b < bins; b++) {
+      const d = data[r + b];
+      if (d > binMax[b]) binMax[b] = d;
+      if (d > peakDb) { peakDb = d; peakBin = b; }
+    }
+  }
+  // Occupied band within SIGNAL_DB of the peak (skip DC bin 0).
+  const thresh = peakDb - SIGNAL_DB;
+  let lo = -1, hi = -1;
+  for (let b = 1; b < bins; b++) if (binMax[b] >= thresh) { if (lo < 0) lo = b; hi = b; }
+  // Noise floor = 10th-percentile of bins that carry energy (> -120 dB).
+  const active = [];
+  for (let b = 0; b < bins; b++) if (binMax[b] > -120) active.push(binMax[b]);
+  active.sort((a, b) => a - b);
+  const floorDb = active.length ? active[Math.floor(active.length * 0.1)] : peakDb;
+  return {
+    peakHz: peakBin / bins * nyq,
+    lowHz:  lo < 0 ? null : lo / bins * nyq,
+    highHz: hi < 0 ? null : hi / bins * nyq,
+    dynRange: peakDb - floorDb,
+  };
+}
+
+function buildSpecStats(statsEl, st, fftSize, sampleRate) {
+  const hzBin = sampleRate / fftSize;
+  const msHop = Math.floor(fftSize / 4) / sampleRate * 1000;
+  const chip = (lbl, val) => el('span', { class: 'anr-spec-stat' }, [el('strong', {}, lbl + ' '), val]);
+  statsEl.innerHTML = '';
+  statsEl.append(
+    chip('Peak',       st.peakHz == null ? '—' : formatHz(st.peakHz) + 'Hz'),
+    chip('Detected',   st.lowHz == null ? '—' : formatHz(st.lowHz) + '–' + formatHz(st.highHz) + 'Hz'),
+    // Exact high-frequency cutoff (the lossy-encode lowpass edge for compressed
+    // audio). Resolution is one FFT bin (hzBin), so ±hzBin/2 - raise FFT to refine.
+    chip('Cutoff',     st.highHz == null ? '—' : Math.round(st.highHz).toLocaleString() + ' Hz (±' + Math.round(hzBin / 2) + ')'),
+    chip('Dyn. range', st.dynRange == null ? '—' : st.dynRange.toFixed(0) + ' dB'),
+    chip('Resolution', formatHz(hzBin) + 'Hz/bin · ' + msHop.toFixed(0) + ' ms/frame'),
+  );
+}
+
+// Shared spectrogram-control builders, used by both the file panel and the live
+// card (previously duplicated verbatim in each). An inline-flex SVG icon span, a
+// labelled control cell, and a captioned segmented group.
+const specIco = (svg) => el('span', { html: svg, style: 'display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;' });
+const specCtl = (label, ...nodes) => el('div', { class: 'anr-control' }, label ? [el('label', {}, label), ...nodes] : nodes);
+const specGroup = (title, items) => el('div', { class: 'anr-control-group' }, [
+  el('span', { class: 'anr-control-group-label' }, title),
+  el('div', { class: 'anr-control-group-items' }, items),
+]);
+
 // --- Custom player (replaces native <audio>/<video> controls) ---
 // --- Spectrogram UI panel (shared for file + recording) ---
 export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
@@ -266,19 +334,60 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   zoomSel.value = '1';
   const heightSel = el('select', {}, ['240','320','420','560','720','900'].map((v) => el('option', { value: v }, v + 'px')));
   heightSel.value = '320';
+  // Sensitivity maps to the render dB floor: higher % = lower floor = more faint
+  // detail. 100% -> -90 dB (the default render floor), so the image is unchanged at
+  // rest; the slider ranges 0%..300% (-60 dB .. -150 dB).
+  const sensIn  = el('input', { type: 'range', min: '0', max: '300', value: '100', step: '1' });
+  const sensOut = el('span', { class: 'anr-range-readout' }, '100%');
 
-  const sIco = (svg) => { const s = el('span', { html: svg, style: 'display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;' }); return s; };
+  // Fullscreen is desktop-only: mobile browsers can't fullscreen an arbitrary
+  // element reliably, so we drop the button and its handlers on touch devices.
+  const allowFs = !window.matchMedia('(pointer: coarse)').matches;
+
+  const sIco = specIco;
   const saveBtn = el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v8M3 6l4 4 4-4"/><path d="M1 11v2h12v-2"/></svg>'), 'Save PNG']);
-  const fsBtn   = el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']);
+  const fsBtn   = allowFs ? el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']) : null;
 
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Axis'),   toggle]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'FFT'),    fftSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Window'), winSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Colour'), cmapSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Zoom'),   zoomSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Height'), heightSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [saveBtn]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [fsBtn]));
+  // Settings are organised into labelled, hairline-divided groups (segmented):
+  // View (how it looks) - Resolution (analysis params) - Actions (buttons).
+  const ctl = specCtl, group = specGroup;
+
+  controls.appendChild(group('View', [
+    ctl('Axis', toggle),
+    ctl('Colour', cmapSel),
+    ctl('Sensitivity', sensIn, sensOut),
+    ctl('Zoom', zoomSel),
+    ctl('Height', heightSel),
+  ]));
+  controls.appendChild(group('Resolution', [
+    ctl('FFT', fftSel),
+    ctl('Window', winSel),
+  ]));
+
+  // Persistent capture controls (audio panel only - opts.capture). They delegate to
+  // the top-level Record / Live buttons, reusing all their wiring; #audioLive already
+  // toggles on/off via closeLive(), so the Live button is a true toggle.
+  const actions = [ctl('', saveBtn)];
+  if (fsBtn) actions.push(ctl('', fsBtn));
+  if (opts.capture) {
+    const recBtn  = el('button', { type: 'button', class: 'anr-btn' }, [sIco('<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>'), 'Record']);
+    const liveBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Live spectrogram');
+    // Call startRecording directly (same module) rather than clicking the dropzone's
+    // #audioRecord button - a programmatic .click() can focus-scroll the dropzone
+    // into view. Then scroll to the Sound section (02), where the result renders.
+    recBtn.addEventListener('click', () => {
+      const ar = document.getElementById('audioResults');
+      const topRecBtn = document.getElementById('audioRecord');
+      if (topRecBtn && topRecBtn.classList.contains('is-recording')) return;
+      if (ar) startRecording(ar, topRecBtn || recBtn);
+      document.getElementById('audio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    liveBtn.addEventListener('click', () => document.getElementById('audioLive')?.click());
+    actions.push(ctl('', recBtn), ctl('', liveBtn));
+  }
+  // The Actions group lives in its own row UNDER the scrubber (appended after the
+  // transport below), separate from the settings controls above the canvas.
+  const actionsBar = el('div', { class: 'anr-controls anr-spec-actions' }, [group('Actions', actions)]);
   card.appendChild(controls);
 
   // --- spectrogram body ---
@@ -337,18 +446,30 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   card.appendChild(wrap);
 
   if (opts.audioEl) {
-    card.appendChild(el('div', { class: 'anr-spec-transport' }, [makePlayer(opts.audioEl)]));
+    card.appendChild(el('div', { class: 'anr-spec-transport' }, [makePlayer(opts.audioEl, samples.length / sampleRate)]));
   }
+
+  // Actions row sits under the scrubber (or directly under the canvas when there's
+  // no transport).
+  card.appendChild(actionsBar);
+
+  const stats = el('div', { class: 'anr-spec-stats' });
+  card.appendChild(stats);
 
   const status = el('p', { class: 'anr-hint anr-spec-hint', style: 'margin: 6px 0 0; text-align: right;' }, 'computing...');
   card.appendChild(status);
 
   let state = {
     scale: 'linear', cmap: 'magma', fftSize: 2048, winName: 'hann',
-    zoom: 1, height: 320
+    zoom: 1, height: 320, dbFloor: -90
   };
   let cached = null;
 
+  // Cached fullscreen canvas height. Measured only when entering fullscreen or on
+  // resize - never re-measured on a setting change. The canvas height is the flex
+  // remainder of the card, so re-measuring per setting let any sibling-row reflow
+  // feed back into the canvas size (settings appeared to grow/shrink it).
+  let fsH = 0;
   function isFs() { return document.fullscreenElement === card; }
   function availableWidth() {
     const total = wrap.clientWidth || 600;
@@ -360,7 +481,7 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   function sizeCanvas() {
     const baseW = availableWidth();
     const w = Math.max(200, Math.round(baseW * state.zoom));
-    const h = isFs() ? availableHeight() : state.height;
+    const h = isFs() ? (fsH || availableHeight()) : state.height;
     canvas.width  = w;
     canvas.height = h;
     canvas.style.width  = w + 'px';
@@ -376,15 +497,25 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
         hopSize: Math.floor(state.fftSize / 4),
         window:  state.winName
       });
-      cached = { fftSize: state.fftSize, winName: state.winName, spec };
+      // Stats are signal-relative (independent of the dB floor / sensitivity), so
+      // they only need computing once per spectrum - not on every render.
+      cached = { fftSize: state.fftSize, winName: state.winName, spec, stats: specStats(spec) };
     }
     sizeCanvas();
-    renderSpectrogram(canvas, cached.spec, { scale: state.scale, colormap: state.cmap });
+    renderSpectrogram(canvas, cached.spec, { scale: state.scale, colormap: state.cmap, dbFloor: state.dbFloor });
     const duration = samples.length / sampleRate;
     buildFreqAxis(axisY, sampleRate, state.scale);
     buildTimeAxis(axisX, duration);
+    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate);
     const ms = (performance.now() - t0).toFixed(0);
     status.textContent = `${cached.spec.frames} frames × ${cached.spec.bins} bins | ${canvas.width}×${canvas.height} px | ${ms} ms`;
+  }
+
+  // Cheap path for changes that only affect pixels, not geometry or the spectrum
+  // (sensitivity, colour). No FFT recompute, no canvas resize, no stats re-scan.
+  function renderOnly() {
+    renderSpectrogram(canvas, cached.spec, { scale: state.scale, colormap: state.cmap, dbFloor: state.dbFloor });
+    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate);
   }
 
   btnLog.addEventListener('click', () => {
@@ -399,9 +530,15 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   });
   fftSel.addEventListener('change',    () => { state.fftSize = parseInt(fftSel.value, 10); recompute(); });
   winSel.addEventListener('change',    () => { state.winName = winSel.value; recompute(); });
-  cmapSel.addEventListener('change',   () => { state.cmap    = cmapSel.value; recompute(); });
+  cmapSel.addEventListener('change',   () => { state.cmap    = cmapSel.value; renderOnly(); });
   zoomSel.addEventListener('change',   () => { state.zoom    = parseFloat(zoomSel.value); recompute(); });
   heightSel.addEventListener('change', () => { state.height  = parseInt(heightSel.value, 10); recompute(); });
+  sensIn.addEventListener('input', () => {
+    const v = parseInt(sensIn.value, 10);
+    state.dbFloor = -60 - (v / 100) * 30;   // 0% -> -60 dB, 100% -> -90 dB, 300% -> -150 dB
+    sensOut.textContent = v + '%';
+    renderOnly();                           // pixels only - no recompute/resize/rescan
+  });
 
   saveBtn.addEventListener('click', () => {
     canvas.toBlob((blob) => {
@@ -412,30 +549,32 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     }, 'image/png');
   });
 
-  fsBtn.addEventListener('click', () => {
-    if (document.fullscreenElement) {
-      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    } else {
-      (card.requestFullscreen || card.webkitRequestFullscreen).call(card);
-    }
-  });
-  function onFsChange() {
-    fsBtn.textContent = isFs() ? 'Exit fullscreen' : 'Fullscreen';
-    requestAnimationFrame(recompute);
-  }
   // opts.signal (an AbortSignal) lets the caller tear these document/window
   // listeners down when a new file is analysed, instead of leaking the cached
   // spectrogram data they close over.
   const sig = opts.signal;
-  document.addEventListener('fullscreenchange', onFsChange, { signal: sig });
-  document.addEventListener('webkitfullscreenchange', onFsChange, { signal: sig });
+  if (allowFs) {
+    fsBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (card.requestFullscreen || card.webkitRequestFullscreen).call(card);
+      }
+    });
+    const onFsChange = () => {
+      fsBtn.textContent = isFs() ? 'Exit fullscreen' : 'Fullscreen';
+      requestAnimationFrame(() => { fsH = isFs() ? availableHeight() : 0; recompute(); });
+    };
+    document.addEventListener('fullscreenchange', onFsChange, { signal: sig });
+    document.addEventListener('webkitfullscreenchange', onFsChange, { signal: sig });
+  }
 
   let resizeRaf;
   window.addEventListener('resize', () => {
     cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(() => {
       const newW = Math.max(200, Math.round(availableWidth() * state.zoom));
-      if (Math.abs(newW - canvas.width) > 2 || isFs()) recompute();
+      if (Math.abs(newW - canvas.width) > 2 || isFs()) { if (isFs()) fsH = availableHeight(); recompute(); }
     });
   }, { signal: sig });
 
@@ -800,7 +939,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
   const audioUrl = URL.createObjectURL(playbackFile);
   const audioEl = el('audio', { src: audioUrl, class: 'is-hidden' });
   infoCard.appendChild(audioEl);
-  infoCard.appendChild(makePlayer(audioEl));
+  infoCard.appendChild(makePlayer(audioEl, audioBuffer.duration));
 
   const tbl = el('table', { class: 'anr-readout' });
   tbl.appendChild(row('Name',           file.name));
@@ -870,6 +1009,27 @@ export async function renderAudio(file, resultsEl, opts = {}) {
     if (art && art.bytes && art.bytes.length) coverSlot.appendChild(buildCoverArtCard(art, file));
   }).catch(() => {});
 
+  // ---- Embedded tags + lyrics (async, non-blocking) ----
+  const tagSlot = el('div');
+  resultsEl.appendChild(tagSlot);
+  readAudioTags(file).then((meta) => {
+    if (!meta) return;
+    if (meta.tags && meta.tags.length) {
+      const card = el('div', { class: 'anr-card' });
+      card.appendChild(el('h3', {}, 'Tags'));
+      const tbl = el('table', { class: 'anr-readout' });
+      for (const [name, value] of meta.tags) tbl.appendChild(row(name, value));
+      card.appendChild(tbl);
+      tagSlot.appendChild(card);
+    }
+    if (meta.lyrics) {
+      const card = el('div', { class: 'anr-card' });
+      card.appendChild(el('h3', {}, 'Lyrics'));
+      card.appendChild(el('pre', { class: 'anr-lyrics' }, meta.lyrics));
+      tagSlot.appendChild(card);
+    }
+  }).catch(() => {});
+
   // ---- Waveform card ----
   resultsEl.appendChild(buildWaveformCard(file, mono, audioBuffer, audioEl));
 
@@ -878,7 +1038,7 @@ export async function renderAudio(file, resultsEl, opts = {}) {
 
   // ---- Spectrogram ----
   const basename = (file.name || 'spectrogram').replace(/\.[^/.]+$/, '');
-  resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename, audioEl, signal: renderSignal }));
+  resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename, audioEl, signal: renderSignal, capture: true }));
 
   // ---- Stereo Width / Vectorscope card (stereo files only) ----
   if (audioBuffer.numberOfChannels >= 2) {
@@ -994,6 +1154,37 @@ async function startLive(resultsEl, liveBtn) {
   analyser.smoothingTimeConstant = 0;
   src.connect(analyser);
 
+  // Rolling capture of the last CAPTURE_SECONDS of raw mic audio so it can be
+  // re-analysed properly (different FFT / window / sensitivity) - the live
+  // AnalyserNode can't re-process the past. A ScriptProcessor copies every sample
+  // into a ring buffer; a zero-gain sink keeps it running without routing the mic
+  // to the speakers (which would feed back).
+  const CAPTURE_SECONDS = 15;
+  const ringLen = Math.max(1, Math.floor(ac.sampleRate * CAPTURE_SECONDS));
+  const ring = new Float32Array(ringLen);
+  let ringWrite = 0, ringFilled = 0;
+  const capNode = ac.createScriptProcessor(4096, 1, 1);
+  capNode.onaudioprocess = (e) => {
+    const inp = e.inputBuffer.getChannelData(0);
+    for (let i = 0; i < inp.length; i++) {
+      ring[ringWrite] = inp[i];
+      ringWrite = (ringWrite + 1) % ringLen;
+      if (ringFilled < ringLen) ringFilled++;
+    }
+  };
+  const capSink = ac.createGain();
+  capSink.gain.value = 0;
+  src.connect(capNode);
+  capNode.connect(capSink);
+  capSink.connect(ac.destination);
+  function captureSnapshot() {
+    const n = ringFilled;
+    const out = new Float32Array(n);
+    const start = ringFilled < ringLen ? 0 : ringWrite;   // oldest sample first
+    for (let i = 0; i < n; i++) out[i] = ring[(start + i) % ringLen];
+    return out;
+  }
+
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
 
@@ -1016,21 +1207,36 @@ async function startLive(resultsEl, liveBtn) {
   heightSel.value = '320';
   const speedSel  = el('select', {}, [['0.5','Slowest'],['1','Slow'],['2','Normal'],['3','Fast'],['4','Faster'],['6','Fastest']].map(([v,l]) => el('option', { value: v }, l)));
   speedSel.value = '1';
-  const ico = (svg) => { const s = el('span', { html: svg, style: 'display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;' }); return s; };
+  // Fullscreen is desktop-only (see makeSpectrogramPanel) - dropped on touch.
+  const allowFs = !window.matchMedia('(pointer: coarse)').matches;
+  const ico = specIco;
   const saveBtn   = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v8M3 6l4 4 4-4"/><path d="M1 11v2h12v-2"/></svg>'), 'Save PNG']);
-  const fsBtn     = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']);
+  const fsBtn     = allowFs ? el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>'), 'Fullscreen']) : null;
   const recBtn    = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>'), 'Record']);
   const pauseBtn  = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1" width="3.5" height="12"/><rect x="8.5" y="1" width="3.5" height="12"/></svg>'), 'Pause']);
+  // Live is already on here, so this reads as the active half of the on/off toggle;
+  // clicking it exits live (closeLive, wired below).
+  const liveToggleBtn = el('button', { type: 'button', class: 'anr-btn is-active' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>'), 'Live spectrogram']);
+  // Grabs the last CAPTURE_SECONDS of captured audio and opens it as a full static
+  // analysis (re-analysable with different FFT / window / sensitivity). Wired below.
+  const captureBtn = el('button', { type: 'button', class: 'anr-btn' }, [ico('<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v8M3 6l4 4 4-4"/><path d="M1 11v2h12v-2"/></svg>'), 'Analyse last ' + CAPTURE_SECONDS + 's']);
 
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Axis'),   toggle]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'FFT'),    fftSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Colour'), cmapSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Height'), heightSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [el('label', {}, 'Speed'),  speedSel]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [saveBtn]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [fsBtn]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [recBtn]));
-  controls.appendChild(el('div', { class: 'anr-control' }, [pauseBtn]));
+  // Same segmented grouping as the file panel: View / Resolution / Actions.
+  const ctl = specCtl, group = specGroup;
+
+  controls.appendChild(group('View', [
+    ctl('Axis', toggle),
+    ctl('Colour', cmapSel),
+    ctl('Height', heightSel),
+    ctl('Speed', speedSel),
+  ]));
+  controls.appendChild(group('Resolution', [
+    ctl('FFT', fftSel),
+  ]));
+  const liveActions = [ctl('', saveBtn)];
+  if (fsBtn) liveActions.push(ctl('', fsBtn));
+  liveActions.push(ctl('', recBtn), ctl('', liveToggleBtn), ctl('', captureBtn), ctl('', pauseBtn));
+  controls.appendChild(group('Actions', liveActions));
   card.appendChild(controls);
 
   // --- body (yaxis + scroll/canvas), no x-axis (no fixed time in live mode) ---
@@ -1103,19 +1309,21 @@ async function startLive(resultsEl, liveBtn) {
   cmapSel.addEventListener('change',   () => { state.cmap = cmapSel.value; });
   heightSel.addEventListener('change', () => { state.height = parseInt(heightSel.value, 10); sizeCanvas(); });
 
-  fsBtn.addEventListener('click', () => {
-    if (document.fullscreenElement) {
-      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    } else {
-      (card.requestFullscreen || card.webkitRequestFullscreen).call(card);
-    }
-  });
   function onFsChange() {
-    fsBtn.textContent = isFs() ? 'Exit fullscreen' : 'Fullscreen';
+    if (fsBtn) fsBtn.textContent = isFs() ? 'Exit fullscreen' : 'Fullscreen';
     requestAnimationFrame(() => sizeCanvas());
   }
-  document.addEventListener('fullscreenchange', onFsChange);
-  document.addEventListener('webkitfullscreenchange', onFsChange);
+  if (allowFs) {
+    fsBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (card.requestFullscreen || card.webkitRequestFullscreen).call(card);
+      }
+    });
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+  }
 
   let liveRaf;
   function onWinResize() {
@@ -1200,13 +1408,17 @@ async function startLive(resultsEl, liveBtn) {
     }, 'image/png');
   });
 
-  pauseBtn.addEventListener('click', () => {
-    paused = !paused;
+  // Pause and the Live toggle drive the same `paused` flag (the tick loop just
+  // freezes when paused - the mic stream stays open). applyPause keeps both
+  // buttons' visuals in sync: the Live toggle reads active while live is running.
+  function applyPause() {
     const pauseIco = paused
       ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 13,7 2,13"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1" width="3.5" height="12"/><rect x="8.5" y="1" width="3.5" height="12"/></svg>';
     pauseBtn.innerHTML = '<span style="display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;">' + pauseIco + '</span>' + (paused ? 'Resume' : 'Pause');
-  });
+    liveToggleBtn.classList.toggle('is-active', !paused);
+  }
+  pauseBtn.addEventListener('click', () => { paused = !paused; applyPause(); });
 
   let liveRec = null;
   recBtn.addEventListener('click', () => {
@@ -1230,6 +1442,7 @@ async function startLive(resultsEl, liveBtn) {
       liveBtn.classList.remove('is-active');
       stream.getTracks().forEach((t) => t.stop());
       try { src.disconnect(); } catch (_) {}
+      teardownCapture();
       document.removeEventListener('fullscreenchange', onFsChange);
       document.removeEventListener('webkitfullscreenchange', onFsChange);
       window.removeEventListener('resize', onWinResize);
@@ -1240,12 +1453,19 @@ async function startLive(resultsEl, liveBtn) {
     recBtn.innerHTML = '<span style="display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10"/></svg></span>Stop rec';
   });
 
+  function teardownCapture() {
+    try { capNode.disconnect(); } catch (_) {}
+    try { capSink.disconnect(); } catch (_) {}
+    capNode.onaudioprocess = null;
+  }
+
   function closeLive() {
     if (stopped) return;
     stopped = true;
     liveBtn.classList.remove('is-active');
     stream.getTracks().forEach((t) => t.stop());
     try { src.disconnect(); } catch (_) {}
+    teardownCapture();
     document.removeEventListener('fullscreenchange', onFsChange);
     document.removeEventListener('webkitfullscreenchange', onFsChange);
     window.removeEventListener('resize', onWinResize);
@@ -1257,6 +1477,21 @@ async function startLive(resultsEl, liveBtn) {
     if (!resultsEl.children.length) resultsEl.hidden = true;
   }
   liveBtn.addEventListener('click', closeLive);
+  // Disabling the in-card Live toggle pauses the stream rather than closing it.
+  liveToggleBtn.addEventListener('click', () => { paused = !paused; applyPause(); });
+  // Grab the buffered audio, stop live, and open it as a full static analysis so
+  // it can be re-examined with different FFT / window / sensitivity.
+  captureBtn.addEventListener('click', () => {
+    const samples = captureSnapshot();
+    if (!samples.length) return;
+    const buf = ac.createBuffer(1, samples.length, ac.sampleRate);
+    buf.getChannelData(0).set(samples);
+    const wavBlob = encodeWav(buf);
+    const secs = (samples.length / ac.sampleRate).toFixed(1);
+    const file = new File([wavBlob], 'live-capture-' + secs + 's.wav', { type: 'audio/wav' });
+    closeLive();
+    renderAudio(file, resultsEl);
+  });
 }
 
 // --- Setup ---
@@ -1280,6 +1515,7 @@ export function initAudio({ dropEl, inputEl, recordBtn, liveBtn, resultsEl, onFi
   recordBtn.addEventListener('click', () => {
     if (recordBtn.classList.contains('is-recording')) return;
     startRecording(resultsEl, recordBtn);
+    document.getElementById('audio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   liveBtn.addEventListener('click', () => {

@@ -37,6 +37,7 @@ import { renderXlsx } from './xlsx.js';
 import { renderEpub } from './epub.js';
 import { renderPptx } from './pptx.js';
 import { renderStl } from './stl.js';
+import { renderLrc } from './lrc.js';
 import { initSearch } from './search.js';
 import { fileExt, el, asciiBar, probeReadable, isUnreadableError, cloudFileWarning } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
@@ -184,6 +185,7 @@ function classifyFile(file) {
   if (ext === 'epub') return 'epub';
   if (ext === 'pptx') return 'pptx';
   if (ext === 'stl') return 'stl';
+  if (ext === 'lrc') return 'lrc';
   if (PHOTO_EXTS.has(ext)) return 'photo';
   if (AUDIO_EXTS.has(ext)) return 'audio';
   if (VIDEO_EXTS.has(ext)) return 'video';
@@ -204,6 +206,7 @@ const ROUTES = {
   epub:        { render: renderEpub,        results: 'unknown', scroll: '#unknownResults' },
   pptx:        { render: renderPptx,        results: 'unknown', scroll: '#unknownResults' },
   stl:         { render: renderStl,         results: 'unknown', scroll: '#unknownResults' },
+  lrc:         { render: renderLrc,         results: 'unknown', scroll: '#unknownResults' },
   pdf:         { render: renderPdf,         results: 'unknown', scroll: '#unknownResults' },
   zip:         { render: renderArchive,     results: 'unknown', scroll: '#unknownResults' },
   svg:         { render: renderSvg,         results: 'unknown', scroll: '#unknownResults' },
@@ -236,7 +239,15 @@ function setupHeaderFx() {
 
 
     function splitText(container, baseWeight) {
-      const spacing = getComputedStyle(container).letterSpacing;
+      // Bake letter-spacing as an em ratio of the font size, not the computed px.
+      // The title font-size is vw-based, so browser zoom rescales it; a fixed px
+      // spacing would not follow, leaving the gaps between the inline-block letters
+      // drifting on zoom. em tracks each span's font-size, so the spacing scales
+      // together with the letters.
+      const cs = getComputedStyle(container);
+      const lsPx = parseFloat(cs.letterSpacing);
+      const fsPx = parseFloat(cs.fontSize);
+      const spacing = (isNaN(lsPx) || !fsPx) ? 'normal' : (lsPx / fsPx) + 'em';
       const spans = [];
       function makeSpan(ch, parent) {
         const s = document.createElement('span');
@@ -283,86 +294,61 @@ function setupHeaderFx() {
       return letters;
     }
 
-    var sweepRunning = false;
-    var sweepCleanup = 0;
+    // Unified proximity controller. A single RAF loop drives both the intro
+    // "sweep" (a virtual cursor gliding across the header) and the real mouse
+    // hover. They run together: per letter we take whichever pulls it lighter
+    // (the smaller t), so hovering during the sweep no longer cancels it.
+    const RADIUS_HOVER = 120, RADIUS_TOUCH = 80;
+    const letters = initLetters();
+    let mx = -9999, my = -9999, inside = false;
+    let sweep = null;                 // { t0, duration, sx, ex, cy, vx, radius } | null
+    let raf = 0, running = false;
 
-    function makeSweep(letters, radius, duration) {
-      return function sweep() {
-        sweepRunning = true;
-        const rect = mark.getBoundingClientRect();
-        const sx = rect.left - radius;
-        const ex = rect.right + radius;
-        const cy = rect.top + rect.height * 0.5;
-        const span = ex - sx;
-        let t0 = null;
-        function frame(ts) {
-          if (!sweepRunning) return;
-          if (!t0) t0 = ts;
-          const p = Math.min(1, (ts - t0) / duration);
-          const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-          const vx = sx + e * span;
-          for (const l of letters) {
-            const r = l.el.getBoundingClientRect();
-            const d = Math.hypot(vx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
-            const f = Math.min(1, d / radius);
-            l.el.style.fontWeight = Math.round(l.base * f + 300 * (1 - f));
-          }
-          if (p < 1) requestAnimationFrame(frame);
-          else {
-            for (const l of letters) {
-              l.el.style.transition = 'font-weight 0.4s ease';
-              l.el.style.fontWeight = l.base;
-            }
-            sweepCleanup = setTimeout(() => {
-              for (const l of letters) l.el.style.transition = '';
-              sweepRunning = false;
-            }, 500);
-          }
-        }
-        requestAnimationFrame(frame);
-      };
+    function letterWeight(l) {
+      const r = l.el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let t = 1;
+      if (inside) t = Math.min(t, Math.hypot(mx - cx, my - cy) / RADIUS_HOVER);
+      if (sweep)  t = Math.min(t, Math.hypot(sweep.vx - cx, sweep.cy - cy) / sweep.radius);
+      t = Math.min(1, t);
+      return Math.round(l.base * t + 300 * (1 - t));
+    }
+    function frame(ts) {
+      if (sweep) {
+        if (sweep.t0 == null) sweep.t0 = ts;
+        const p = Math.min(1, (ts - sweep.t0) / sweep.duration);
+        const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        sweep.vx = sweep.sx + e * (sweep.ex - sweep.sx);
+        if (p >= 1) sweep = null;
+      }
+      for (const l of letters) l.el.style.fontWeight = letterWeight(l);
+      if (inside || sweep) raf = requestAnimationFrame(frame);
+      else { running = false; settle(); }
+    }
+    function ensureRunning() { if (!running) { running = true; raf = requestAnimationFrame(frame); } }
+    function settle() {
+      for (const l of letters) { l.el.style.transition = 'font-weight 0.4s ease'; l.el.style.fontWeight = l.base; }
+      setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
+    }
+    function startSweep(radius) {
+      const rect = mark.getBoundingClientRect();
+      sweep = { t0: null, duration: 3500, sx: rect.left - radius, ex: rect.right + radius,
+                cy: rect.top + rect.height / 2, vx: rect.left - radius, radius };
+      ensureRunning();
     }
 
-    if (title && byline && mark && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
-      const letters = initLetters();
-      const RADIUS = 120;
-      let mx = -9999, my = -9999, raf = 0, inside = false;
-
-      function tick() {
-        for (const l of letters) {
-          const r = l.el.getBoundingClientRect();
-          const dist = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
-          const t = Math.min(1, dist / RADIUS);
-          l.el.style.fontWeight = Math.round(l.base * t + 300 * (1 - t));
-        }
-        if (inside) raf = requestAnimationFrame(tick);
-      }
-
+    if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
       mark.addEventListener('mouseenter', () => {
-        if (sweepRunning) {
-          sweepRunning = false;
-          clearTimeout(sweepCleanup);
-          for (const l of letters) l.el.style.transition = '';
-        }
         inside = true;
-        raf = requestAnimationFrame(tick);
+        for (const l of letters) l.el.style.transition = '';
+        ensureRunning();
       });
       mark.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
-      mark.addEventListener('mouseleave', () => {
-        inside = false;
-        cancelAnimationFrame(raf);
-        for (const l of letters) {
-          l.el.style.transition = 'font-weight 0.3s ease';
-          l.el.style.fontWeight = l.base;
-        }
-      });
-
-      setTimeout(makeSweep(letters, RADIUS, 3500), 800);
-    } else if (title && byline && mark && window.matchMedia('(pointer: coarse)').matches) {
-      const letters = initLetters();
-      const sweep = makeSweep(letters, 80, 3500);
-      setTimeout(sweep, 800);
-      setupHeaderFx._iv = setInterval(sweep, 8000);
+      mark.addEventListener('mouseleave', () => { inside = false; });  // settles once the sweep also ends
+      setTimeout(() => startSweep(RADIUS_HOVER), 800);
+    } else if (window.matchMedia('(pointer: coarse)').matches) {
+      setTimeout(() => startSweep(RADIUS_TOUCH), 800);
+      setupHeaderFx._iv = setInterval(() => startSweep(RADIUS_TOUCH), 8000);
     }
 }
 function boot() {
@@ -820,6 +806,15 @@ function boot() {
 
   // Re-bind the header letter effect to the (possibly swapped) title.
   setupHeaderFx();
+
+  // link.valjdakosta.com links open in this tab - except the "Other stuff" one,
+  // which keeps its confirm popup -> new tab (bound below). Runs every navigation
+  // because navigate.js swaps the header, recreating the byline anchor.
+  document.querySelectorAll('a[href*="link.valjdakosta.com"]').forEach((a) => {
+    if (a.id === 'otherStuffLink') return;
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+  });
 
   // Tapping a hyperlink inside the patch notes asks for confirmation first
   // (same cursor-style popup as the external "Links" button) before following

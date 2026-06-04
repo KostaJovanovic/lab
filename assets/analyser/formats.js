@@ -112,6 +112,7 @@ export const FULL_ANALYSIS = [
   { label: '3D model',  exts: 'STL', tags: 'stl 3d model mesh print cad solidworks triangle viewer webgl', desc: 'View STL models in an interactive WebGL viewer with triangle count, surface area, and volume.' },
   { label: 'Archives',  exts: 'ZIP', tags: 'compressed zip', desc: 'Browse the file tree and compression details of ZIP archives without extracting them.' },
   { label: 'Data',      exts: 'CSV TSV SVG', tags: 'spreadsheet vector markup data table', desc: 'Preview CSV and TSV tables with per-column stats, and view or rasterise SVG vector graphics.' },
+  { label: 'Lyrics',    exts: 'LRC', tags: 'lyrics synced timed karaoke song subtitle text', desc: 'Parse .lrc timed-lyric files: read the artist/title/album ID tags and every timestamped line.' },
   { label: 'Web / code', exts: 'HTML CSS JS TS TSX JSX JSON YAML XML MD', tags: 'programming development website react typescript javascript node', desc: 'Preview and inspect HTML, CSS, JavaScript, TypeScript, JSON, YAML, XML, and Markdown source files.' },
 ];
 

@@ -176,11 +176,16 @@
 
         <div class="patch-entry">
           <p class="patch-version">1.12</p>
-          <p class="patch-name">Negative Space</p>
+          <p class="patch-name">Fine Tuning</p>
           <p class="patch-date">4 June 2026, 04:43</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span>The <strong>Patch notes</strong> page is now the <strong>Changelog</strong> - same place, clearer name, with the button on every page updated to match.</li>
-            <li><span class="patch-tag is-fix">Fix</span>The <strong>Changelog</strong> title now sits on a single row, and the byline is nudged clear of the tail of the <em>&ldquo;g&rdquo;</em> so the two no longer collide.</li>
+            <li><span class="patch-tag">New</span>The <a href="about.html#what">spectrogram</a> gains a <strong>Sensitivity</strong> slider that pulls faint detail out of the noise floor - it is render-only, so it redraws instantly without recomputing the FFT.</li>
+            <li><span class="patch-tag">New</span>Every spectrogram now carries an at-a-glance <strong>stats</strong> line: the <strong>peak frequency</strong>, the <strong>detected frequency range</strong>, the <strong>dynamic range</strong> in dB, and the analysis <strong>resolution</strong> (Hz per bin and milliseconds per frame).</li>
+            <li><span class="patch-tag">New</span>The old <strong>Patch notes</strong> page is now the <strong>Changelog</strong> - same page, plainer name, with the header link renamed on every page.</li>
+            <li>Clicking <strong>valjdakosta</strong> in the byline (and other <em>link.valjdakosta.com</em> links) now opens in the <strong>same tab</strong> instead of a new one; the <strong>Links</strong> button keeps its tap-to-confirm and still opens separately.</li>
+            <li><span class="patch-tag is-fix">Fix</span>Moving the mouse over the title during its intro animation now <strong>blends</strong> with the sweep instead of cutting it short.</li>
+            <li><span class="patch-tag is-fix">Fix</span>Header tidy-ups: the <strong>Changelog</strong> heading holds to a single line, and <em>valjdakosta</em> drops just clear of the tail of the title instead of clipping it.</li>
+            <li><span class="patch-tag is-fix">Fix</span>The <a href="about.html#why">About</a> page&rsquo;s section tabs were stretched across the wrong columns - they now sit evenly across the row.</li>
           </ul>
         </div>
 

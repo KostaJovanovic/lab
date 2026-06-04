@@ -23,8 +23,16 @@ export async function peekContainer(file) {
     }
     return { container: 'WAV' };
   }
-  // FLAC
-  if (ascii(0, 4) === 'fLaC') return { container: 'FLAC' };
+  // FLAC - the STREAMINFO block (always first, right after the 'fLaC' marker +
+  // its 4-byte block header) holds sample rate / channels / bit depth.
+  if (ascii(0, 4) === 'fLaC') {
+    const b = head;                       // STREAMINFO data starts at offset 8
+    const sampleRate = (b[18] << 12) | (b[19] << 4) | (b[20] >> 4);   // 20 bits
+    const channels   = ((b[20] >> 1) & 0x07) + 1;                     // 3 bits
+    const bitDepth   = (((b[20] & 0x01) << 4) | (b[21] >> 4)) + 1;    // 5 bits
+    if (sampleRate > 0) return { container: 'FLAC', codec: 'FLAC (lossless)', sampleRate, channels, bitDepth };
+    return { container: 'FLAC', codec: 'FLAC (lossless)' };
+  }
   // OGG
   if (ascii(0, 4) === 'OggS') return { container: 'OGG' };
   // ID3-tagged MP3
@@ -260,4 +268,168 @@ async function extractFlacPic(file) {
     pos = body + len;
   }
   return null;
+}
+
+// --- Read text tags (title/artist/album/.../lyrics) from common containers ---
+// Returns { tags: [[name, value], ...], lyrics: string|null }. Best-effort; an
+// unparseable/absent tag block just yields an empty result.
+export async function readAudioTags(file) {
+  try {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) return await readId3Tags(file, head);
+    if (head[0] === 0x66 && head[1] === 0x4C && head[2] === 0x61 && head[3] === 0x43) return await readFlacTags(file);
+    if (head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) return await readMp4Tags(file);
+    if (head[0] === 0x4F && head[1] === 0x67 && head[2] === 0x67 && head[3] === 0x53) return await readVorbisLikeTags(file);
+  } catch (_) { /* ignore */ }
+  return { tags: [], lyrics: null };
+}
+
+function decodeStr(bytes, enc) {
+  try {
+    if (enc === 1) return new TextDecoder('utf-16').decode(bytes);     // UTF-16 w/ BOM
+    if (enc === 2) return new TextDecoder('utf-16be').decode(bytes);   // UTF-16BE
+    if (enc === 3) return new TextDecoder('utf-8').decode(bytes);      // UTF-8
+    return new TextDecoder('iso-8859-1').decode(bytes);               // Latin-1
+  } catch (_) { try { return new TextDecoder().decode(bytes); } catch (__) { return ''; } }
+}
+const clean = (s) => (s || '').replace(/\0+$/, '').trim();
+
+const ID3_NAMES = {
+  TIT2: 'Title', TT2: 'Title', TPE1: 'Artist', TP1: 'Artist', TPE2: 'Album artist', TP2: 'Album artist',
+  TALB: 'Album', TAL: 'Album', TYER: 'Year', TYE: 'Year', TDRC: 'Year', TDAT: 'Date', TCON: 'Genre', TCO: 'Genre',
+  TRCK: 'Track', TRK: 'Track', TPOS: 'Disc', TCOM: 'Composer', TCM: 'Composer', TBPM: 'BPM', TB: 'BPM',
+  TPUB: 'Publisher', TENC: 'Encoded by', TSSE: 'Encoder', TSRC: 'ISRC', TOPE: 'Original artist',
+  TEXT: 'Lyricist', TOAL: 'Original album', TLAN: 'Language', WXXX: 'URL', WOAR: 'Artist URL',
+};
+
+async function readId3Tags(file, head) {
+  const ver = head[3];
+  const tagSize = ((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14) | ((head[8] & 0x7F) << 7) | (head[9] & 0x7F);
+  const needed = Math.min(tagSize + 10, file.size, 20 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, needed).arrayBuffer());
+  const tags = []; let lyrics = null;
+  let pos = 10;
+  const idLen = ver === 2 ? 3 : 4;
+  const hdrLen = ver === 2 ? 6 : 10;
+  while (pos + hdrLen < buf.length && pos < tagSize + 10) {
+    const id = String.fromCharCode(...buf.slice(pos, pos + idLen));
+    if (id[0] === '\0' || !/^[A-Z0-9]+$/.test(id)) break;
+    let sz;
+    if (ver === 2) sz = (buf[pos + 3] << 16) | (buf[pos + 4] << 8) | buf[pos + 5];
+    else if (ver === 4) sz = ((buf[pos + 4] & 0x7F) << 21) | ((buf[pos + 5] & 0x7F) << 14) | ((buf[pos + 6] & 0x7F) << 7) | (buf[pos + 7] & 0x7F);
+    else sz = (buf[pos + 4] << 24) | (buf[pos + 5] << 16) | (buf[pos + 6] << 8) | buf[pos + 7];
+    if (sz <= 0 || pos + hdrLen + sz > buf.length) break;
+    const data = buf.slice(pos + hdrLen, pos + hdrLen + sz);
+    if (id === 'USLT' || id === 'ULT' || id === 'SYLT') {
+      // encoding(1) + lang(3) + descriptor(null-term) + text
+      const enc = data[0]; let p = 4;
+      if (enc === 1 || enc === 2) { while (p + 1 < data.length && !(data[p] === 0 && data[p + 1] === 0)) p += 2; p += 2; }
+      else { while (p < data.length && data[p] !== 0) p++; p++; }
+      const txt = clean(decodeStr(data.slice(p), enc));
+      if (txt) lyrics = txt;
+    } else if (id === 'COMM' || id === 'COM') {
+      const enc = data[0]; let p = 4;
+      if (enc === 1 || enc === 2) { while (p + 1 < data.length && !(data[p] === 0 && data[p + 1] === 0)) p += 2; p += 2; }
+      else { while (p < data.length && data[p] !== 0) p++; p++; }
+      const txt = clean(decodeStr(data.slice(p), enc));
+      if (txt) tags.push(['Comment', txt]);
+    } else if (id[0] === 'T' && ID3_NAMES[id]) {
+      const txt = clean(decodeStr(data.slice(1), data[0]));
+      if (txt) tags.push([ID3_NAMES[id], txt]);
+    }
+    pos += hdrLen + sz;
+  }
+  return { tags, lyrics };
+}
+
+const VORBIS_NAMES = {
+  TITLE: 'Title', ARTIST: 'Artist', ALBUM: 'Album', ALBUMARTIST: 'Album artist', DATE: 'Year', YEAR: 'Year',
+  GENRE: 'Genre', TRACKNUMBER: 'Track', DISCNUMBER: 'Disc', COMPOSER: 'Composer', PERFORMER: 'Performer',
+  ORGANIZATION: 'Publisher', PUBLISHER: 'Publisher', COMMENT: 'Comment', DESCRIPTION: 'Description',
+  BPM: 'BPM', ISRC: 'ISRC', COPYRIGHT: 'Copyright', ENCODER: 'Encoder', LANGUAGE: 'Language',
+};
+// Parse a Vorbis-comment block (vendor + count + KEY=VALUE entries) into tags.
+function parseVorbisComments(buf, start, dv) {
+  const tags = []; let lyrics = null; let p = start;
+  const vlen = dv.getUint32(p, true); p += 4 + vlen;
+  let count = dv.getUint32(p, true); p += 4;
+  for (let i = 0; i < count && p + 4 <= buf.length; i++) {
+    const len = dv.getUint32(p, true); p += 4;
+    if (len <= 0 || p + len > buf.length) break;
+    const entry = new TextDecoder('utf-8').decode(buf.slice(p, p + len)); p += len;
+    const eq = entry.indexOf('=');
+    if (eq < 0) continue;
+    const key = entry.slice(0, eq).toUpperCase();
+    const val = clean(entry.slice(eq + 1));
+    if (!val) continue;
+    if (key === 'LYRICS' || key === 'UNSYNCEDLYRICS' || key === 'LYRICS-XXX') lyrics = val;
+    else if (VORBIS_NAMES[key]) tags.push([VORBIS_NAMES[key], val]);
+  }
+  return { tags, lyrics };
+}
+
+async function readFlacTags(file) {
+  const size = Math.min(file.size, 8 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let pos = 4;
+  while (pos + 4 <= buf.length) {
+    const flag = buf[pos];
+    const type = flag & 0x7F;
+    const len = (buf[pos + 1] << 16) | (buf[pos + 2] << 8) | buf[pos + 3];
+    const body = pos + 4;
+    if (type === 4 && body + 8 <= buf.length) return parseVorbisComments(buf, body, dv); // VORBIS_COMMENT
+    if (flag & 0x80) break;
+    pos = body + len;
+  }
+  return { tags: [], lyrics: null };
+}
+
+// OGG (Vorbis/Opus): the comment header lives in the 2nd logical page. Rather than
+// fully parse OGG paging, scan for the comment signature and parse from there.
+async function readVorbisLikeTags(file) {
+  const size = Math.min(file.size, 1 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  for (let i = 0; i + 8 < buf.length; i++) {
+    // Vorbis comment packet: 0x03 'vorbis'
+    if (buf[i] === 0x03 && buf[i+1]===0x76 && buf[i+2]===0x6F && buf[i+3]===0x72 && buf[i+4]===0x62 && buf[i+5]===0x69 && buf[i+6]===0x73)
+      return parseVorbisComments(buf, i + 7, dv);
+    // Opus comment packet: 'OpusTags'
+    if (buf[i]===0x4F && buf[i+1]===0x70 && buf[i+2]===0x75 && buf[i+3]===0x73 && buf[i+4]===0x54 && buf[i+5]===0x61 && buf[i+6]===0x67 && buf[i+7]===0x73)
+      return parseVorbisComments(buf, i + 8, dv);
+  }
+  return { tags: [], lyrics: null };
+}
+
+const MP4_NAMES = {
+  '©nam': 'Title', '©ART': 'Artist', 'aART': 'Album artist', '©alb': 'Album', '©day': 'Year',
+  '©gen': 'Genre', 'gnre': 'Genre', '©wrt': 'Composer', '©cmt': 'Comment', '©too': 'Encoder',
+  '©lyr': 'Lyrics', 'cprt': 'Copyright', '©grp': 'Grouping', 'desc': 'Description', 'ldes': 'Long description',
+};
+async function readMp4Tags(file) {
+  const size = Math.min(file.size, 24 * 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, size).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const tags = []; let lyrics = null;
+  const dec = new TextDecoder('utf-8');
+  const keys = Object.keys(MP4_NAMES);
+  for (let i = 0; i + 24 < buf.length; i++) {
+    let atom = null;
+    for (const k of keys) {
+      if (buf[i] === k.charCodeAt(0) && buf[i+1] === k.charCodeAt(1) && buf[i+2] === k.charCodeAt(2) && buf[i+3] === k.charCodeAt(3)) { atom = k; break; }
+    }
+    if (!atom) continue;
+    const d = i + 4; // expect child 'data' atom
+    if (d + 16 > buf.length) continue;
+    if (!(buf[d+4]===0x64 && buf[d+5]===0x61 && buf[d+6]===0x74 && buf[d+7]===0x61)) continue;
+    const dataSize = dv.getUint32(d, false);
+    const valStart = d + 16, valLen = dataSize - 16;
+    if (valLen <= 0 || valStart + valLen > buf.length) continue;
+    const val = clean(dec.decode(buf.slice(valStart, valStart + valLen)));
+    if (!val) continue;
+    if (atom === '©lyr') lyrics = val;
+    else tags.push([MP4_NAMES[atom], val]);
+  }
+  return { tags, lyrics };
 }
