@@ -3,7 +3,7 @@
    Renders waveform, file info, and an interactive spectrogram. */
 
 import {
-  computeSpectrogram, renderSpectrogram, colormaps,
+  computeSpectrogram, computeReassignedSpectrogram, renderSpectrogram, colormaps,
   frequencyTicks, timeTicks, formatHz, formatTime
 } from './spectrogram.js';
 import { el, row, rowHelp, fmtBytes, h3help, errorCard, integrityCard } from './util.js';
@@ -242,6 +242,29 @@ function buildTimeAxis(axisEl, durationSec) {
   }
 }
 
+// Find the loudest moment in the waveform: scan ~50 ms blocks, return the
+// loudest block's centre time (s) and its RMS level (dBFS). This is the "when is
+// it loudest, and how loud" figure shown as the Peak stat - independent of FFT
+// settings, so it's computed once per clip. Block RMS (not a single sample peak)
+// so a lone click doesn't outrank a sustained loud passage.
+function loudestMoment(samples, sampleRate) {
+  if (!samples || !samples.length || !sampleRate) return null;
+  const block = Math.max(1, Math.round(sampleRate * 0.05));
+  let bestMeanSq = -1, bestStart = 0;
+  for (let s = 0; s < samples.length; s += block) {
+    const end = Math.min(samples.length, s + block);
+    let sum = 0;
+    for (let i = s; i < end; i++) sum += samples[i] * samples[i];
+    const meanSq = sum / (end - s);
+    if (meanSq > bestMeanSq) { bestMeanSq = meanSq; bestStart = s; }
+  }
+  const rms = Math.sqrt(Math.max(0, bestMeanSq));
+  return {
+    time: (bestStart + block / 2) / sampleRate,
+    db: rms > 0 ? 20 * Math.log10(rms) : -Infinity,
+  };
+}
+
 // Scan a computed spectrogram for at-a-glance stats. `dbFloor` (the sensitivity
 // All levels are signal-relative so the numbers stay meaningful:
 //   Peak     - the single loudest bin overall.
@@ -283,19 +306,56 @@ function specStats(spec) {
   };
 }
 
-function buildSpecStats(statsEl, st, fftSize, sampleRate) {
+// m:ss.d clock for a time in seconds.
+function fmtClock(s) {
+  if (s == null || !isFinite(s)) return '—';
+  const m = Math.floor(s / 60);
+  const sec = s - m * 60;
+  return m + ':' + (sec < 10 ? '0' : '') + sec.toFixed(1);
+}
+
+// Per-metric explanations for the stats block's [?] info panel.
+const SPEC_STATS_HELP =
+  '<strong>Peak</strong> When the audio is loudest &mdash; the timestamp of the loudest moment and its level (RMS over a 50&nbsp;ms window, in dBFS).<br>' +
+  '<strong>Detected</strong> The band that actually carries energy &mdash; the lowest to highest frequency staying within ' + SIGNAL_DB + '&nbsp;dB of the peak.<br>' +
+  '<strong>Cutoff</strong> The highest frequency present. A hard ceiling well below 20&nbsp;kHz is the tell-tale lowpass of lossy encoding (MP3 / AAC), and its height hints at the bitrate. Accurate to &plusmn;half an FFT bin &mdash; raise FFT to refine.<br>' +
+  '<strong>Dyn. range</strong> The gap between the peak and the noise floor (the 10th-percentile bin). Larger means cleaner with more headroom; small means noisy or heavily compressed.<br>' +
+  '<strong>Resolution</strong> The current analysis grid &mdash; hertz per frequency bin and milliseconds per time frame. Set by FFT size: finer in one axis is always coarser in the other.';
+
+// Build the stats header (caption + [?] info toggle) once. The grid of values
+// below it is (re)filled by buildSpecStats on every recompute.
+function specStatsHelp() {
+  const btn = el('button', { type: 'button', class: 'anr-info-btn', title: 'What do these mean?' }, '[?]');
+  const panel = el('div', { class: 'anr-info-panel is-hidden', html: SPEC_STATS_HELP });
+  const head = el('div', { class: 'anr-spec-stats-head' }, [
+    el('span', { class: 'anr-spec-stats-title' }, 'Analysis'),
+    btn,
+  ]);
+  btn.addEventListener('click', () => panel.classList.toggle('is-hidden'));
+  return [head, panel];
+}
+
+function buildSpecStats(statsEl, st, fftSize, sampleRate, loud) {
   const hzBin = sampleRate / fftSize;
   const msHop = Math.floor(fftSize / 4) / sampleRate * 1000;
-  const chip = (lbl, val) => el('span', { class: 'anr-spec-stat' }, [el('strong', {}, lbl + ' '), val]);
+  // A stat cell: caption on top, value below, with an optional muted suffix
+  // (units / tolerance) trailing the value.
+  const cell = (lbl, val, sub) => el('div', { class: 'anr-spec-stat' }, [
+    el('span', { class: 'anr-spec-stat-label' }, lbl),
+    el('span', { class: 'anr-spec-stat-val' },
+      sub ? [val, el('span', { class: 'anr-spec-stat-sub' }, ' ' + sub)] : val),
+  ]);
   statsEl.innerHTML = '';
   statsEl.append(
-    chip('Peak',       st.peakHz == null ? '—' : formatHz(st.peakHz) + 'Hz'),
-    chip('Detected',   st.lowHz == null ? '—' : formatHz(st.lowHz) + '–' + formatHz(st.highHz) + 'Hz'),
+    cell('Peak',       loud ? fmtClock(loud.time) : '—',
+                       loud && isFinite(loud.db) ? loud.db.toFixed(1) + ' dBFS' : ''),
+    cell('Detected',   st.lowHz == null ? '—' : formatHz(st.lowHz) + '–' + formatHz(st.highHz) + ' Hz'),
     // Exact high-frequency cutoff (the lossy-encode lowpass edge for compressed
     // audio). Resolution is one FFT bin (hzBin), so ±hzBin/2 - raise FFT to refine.
-    chip('Cutoff',     st.highHz == null ? '—' : Math.round(st.highHz).toLocaleString() + ' Hz (±' + Math.round(hzBin / 2) + ')'),
-    chip('Dyn. range', st.dynRange == null ? '—' : st.dynRange.toFixed(0) + ' dB'),
-    chip('Resolution', formatHz(hzBin) + 'Hz/bin · ' + msHop.toFixed(0) + ' ms/frame'),
+    cell('Cutoff',     st.highHz == null ? '—' : Math.round(st.highHz).toLocaleString() + ' Hz',
+                       st.highHz == null ? '' : '±' + Math.round(hzBin / 2)),
+    cell('Dyn. range', st.dynRange == null ? '—' : st.dynRange.toFixed(0) + ' dB'),
+    cell('Resolution', formatHz(hzBin) + ' Hz/bin', msHop.toFixed(0) + ' ms/frame'),
   );
 }
 
@@ -308,6 +368,84 @@ const specGroup = (title, items) => el('div', { class: 'anr-control-group' }, [
   el('span', { class: 'anr-control-group-label' }, title),
   el('div', { class: 'anr-control-group-items' }, items),
 ]);
+// Collapsible "Advanced" disclosure for the analysis params (Mode / FFT /
+// Window). Spans the full controls-row width so it opens onto its own line
+// under the View controls, using the site's standard <details> +/- pattern.
+const specAdvanced = (items) => el('details', { class: 'anr-spec-advanced' }, [
+  el('summary', {}, 'Advanced'),
+  el('div', { class: 'anr-control-group-items' }, items),
+]);
+
+// Custom horizontal scrollbar for the spectrogram, shown under it only when the
+// canvas is zoomed wider than the viewport. Drives (and is driven by) scrollEl's
+// native scroll, so wheel/trackpad/playhead-follow scrolling all stay in sync.
+// A leading spacer matches the y-axis column so the track aligns under the
+// canvas, not the axis labels. Returns { el, update }.
+function makeSpecScrollbar(scrollEl) {
+  const thumb = el('div', { class: 'anr-spec-sb-thumb' });
+  const track = el('div', { class: 'anr-spec-sb-track' }, [thumb]);
+  const root = el('div', { class: 'anr-spec-sb is-hidden' }, [
+    el('div', { class: 'anr-spec-sb-spacer' }),
+    track,
+  ]);
+
+  function metrics() {
+    const sw = scrollEl.scrollWidth, cw = scrollEl.clientWidth;
+    return { sw, cw, maxScroll: Math.max(0, sw - cw) };
+  }
+  function update() {
+    const { sw, cw, maxScroll } = metrics();
+    if (maxScroll <= 1) { root.classList.add('is-hidden'); return; }
+    root.classList.remove('is-hidden');
+    const tw = track.clientWidth;
+    const thumbW = Math.max(28, Math.round(tw * (cw / sw)));
+    const maxThumb = tw - thumbW;
+    const pos = maxScroll > 0 ? (scrollEl.scrollLeft / maxScroll) * maxThumb : 0;
+    thumb.style.width = thumbW + 'px';
+    thumb.style.transform = 'translateX(' + pos + 'px)';
+  }
+
+  scrollEl.addEventListener('scroll', update, { passive: true });
+
+  // Drag the thumb.
+  let dragStartX = 0, startScroll = 0, dragging = false;
+  thumb.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    dragStartX = e.clientX;
+    startScroll = scrollEl.scrollLeft;
+    track.classList.add('is-dragging');
+    try { thumb.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  thumb.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const { maxScroll } = metrics();
+    const tw = track.clientWidth, thumbW = thumb.clientWidth;
+    const maxThumb = tw - thumbW;
+    if (maxThumb <= 0) return;
+    const startPos = maxScroll > 0 ? (startScroll / maxScroll) * maxThumb : 0;
+    const pos = Math.max(0, Math.min(maxThumb, startPos + (e.clientX - dragStartX)));
+    scrollEl.scrollLeft = (pos / maxThumb) * maxScroll;
+  });
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    track.classList.remove('is-dragging');
+    try { thumb.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  thumb.addEventListener('pointerup', endDrag);
+  thumb.addEventListener('pointercancel', endDrag);
+
+  // Click the track (off the thumb) → jump so the clicked fraction maps to scroll.
+  track.addEventListener('pointerdown', (e) => {
+    if (e.target === thumb) return;
+    const rect = track.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    scrollEl.scrollLeft = frac * metrics().maxScroll;
+  });
+
+  return { el: root, update };
+}
 // Save the canvas as a PNG download (shared by both spectrogram panels).
 function specSavePng(canvas, basename) {
   canvas.toBlob((blob) => {
@@ -354,6 +492,7 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
 
   const [specH, specHelp] = h3help('Spectrogram',
     '<strong>Axis</strong> Log maps frequencies logarithmically (closer to human hearing). Linear spaces them evenly.<br>' +
+    '<strong>Mode</strong> STFT is the standard windowed FFT. Reassigned sharpens both the time and frequency axes at once by moving each cell’s energy to its true centre - thin ridges instead of blurred blobs - using the same FFT (3× the compute).<br>' +
     '<strong>FFT</strong> Fast Fourier Transform window size. Larger = better frequency resolution but lower time resolution.<br>' +
     '<strong>Window</strong> Windowing function applied before the FFT. Hann is a good default; Blackman reduces spectral leakage; Rect (rectangular) applies no smoothing.<br>' +
     '<strong>Colour</strong> Colour mapping for intensity values. Magma, viridis, and inferno are perceptually uniform.<br>' +
@@ -369,12 +508,16 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   const btnLin = el('button', { type: 'button', class: 'is-active' }, 'LINEAR');
   toggle.appendChild(btnLog); toggle.appendChild(btnLin);
 
+  const modeSel = el('select', {}, [
+    el('option', { value: 'stft' }, 'STFT'),
+    el('option', { value: 'reassigned' }, 'Reassigned'),
+  ]);
   const fftSel  = el('select', {}, ['256','512','1024','2048','4096','8192'].map((v) => el('option', { value: v }, v)));
   fftSel.value = '2048';
   const winSel  = el('select', {}, ['hann','hamming','blackman','rect'].map((v) => el('option', { value: v }, v)));
   const cmapSel = el('select', {}, Object.keys(colormaps).map((v) => el('option', { value: v }, v)));
   cmapSel.value = 'magma';
-  const zoomSel = el('select', {}, ['1','1.5','2','3','4','6','8','12','16'].map((v) => el('option', { value: v }, v + 'x')));
+  const zoomSel = el('select', {}, ['1','1.5','2','3','4','6','8','12','16','24','32','48'].map((v) => el('option', { value: v }, v + 'x')));
   zoomSel.value = '1';
   const heightSel = el('select', {}, ['240','320','420','560','720','900'].map((v) => el('option', { value: v }, v + 'px')));
   heightSel.value = '320';
@@ -383,6 +526,9 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   // rest; the slider ranges 0%..300% (-60 dB .. -150 dB).
   const sensIn  = el('input', { type: 'range', min: '0', max: '300', value: '100', step: '1' });
   const sensOut = el('span', { class: 'anr-range-readout' }, '100%');
+  // Clickable label resets the slider to its 100% default.
+  const sensLabel = el('label', { class: 'anr-resettable', title: 'Click to reset to 100%' }, 'Sensitivity');
+  const sensCtl = el('div', { class: 'anr-control' }, [sensLabel, sensIn, sensOut]);
 
   // Fullscreen is desktop-only: mobile browsers can't fullscreen an arbitrary
   // element reliably, so we drop the button and its handlers on touch devices.
@@ -399,12 +545,13 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   controls.appendChild(group('View', [
     ctl('Axis', toggle),
     ctl('Colour', cmapSel),
-    ctl('Sensitivity', sensIn, sensOut),
+    sensCtl,
     ctl('Zoom', zoomSel),
     // Height is hidden in fullscreen (the canvas auto-fills there).
     el('div', { class: 'anr-control anr-ctl-height' }, [el('label', {}, 'Height'), heightSel]),
   ]));
-  controls.appendChild(group('Resolution', [
+  controls.appendChild(specAdvanced([
+    ctl('Mode', modeSel),
     ctl('FFT', fftSel),
     ctl('Window', winSel),
   ]));
@@ -490,6 +637,11 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   wrap.appendChild(yWrap); wrap.appendChild(scrollEl);
   card.appendChild(wrap);
 
+  // Custom horizontal scrollbar, directly under the spectrogram. Hidden until the
+  // canvas is zoomed wider than the viewport.
+  const scrollbar = makeSpecScrollbar(scrollEl);
+  card.appendChild(scrollbar.el);
+
   if (opts.audioEl) {
     card.appendChild(el('div', { class: 'anr-spec-transport' }, [makePlayer(opts.audioEl, samples.length / sampleRate)]));
   }
@@ -499,16 +651,28 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   card.appendChild(actionsBar);
 
   const stats = el('div', { class: 'anr-spec-stats' });
-  card.appendChild(stats);
+  const [statsHead, statsInfo] = specStatsHelp();
+  card.appendChild(el('div', { class: 'anr-spec-statsblock' }, [statsHead, statsInfo, stats]));
 
   const status = el('p', { class: 'anr-hint anr-spec-hint', style: 'margin: 6px 0 0; text-align: right;' }, 'computing...');
   card.appendChild(status);
 
   let state = {
-    scale: 'linear', cmap: 'magma', fftSize: 2048, winName: 'hann',
+    mode: 'stft', scale: 'linear', cmap: 'magma', fftSize: 2048, winName: 'hann',
     zoom: 1, height: 320, dbFloor: -90
   };
   let cached = null;
+  // Loudest-moment figure for the Peak stat - signal-only, so compute it once.
+  const loud = loudestMoment(samples, sampleRate);
+
+  // Resolves after the first recompute() paints. renderAudio awaits this so the
+  // bottom "Reading…" loader stays up until the spectrogram is actually on screen
+  // (the panel computes on a deferred setTimeout, after renderAudio returns).
+  let _resolveFirstPaint;
+  card.firstPaint = new Promise((res) => { _resolveFirstPaint = res; });
+  function markFirstPaint() {
+    if (_resolveFirstPaint) { const r = _resolveFirstPaint; _resolveFirstPaint = null; r(); }
+  }
 
   function isFs() { return document.fullscreenElement === card; }
   function availableWidth() {
@@ -517,7 +681,10 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   }
   function sizeCanvas() {
     const baseW = availableWidth();
-    const w = Math.max(200, Math.round(baseW * state.zoom));
+    // Cap the bitmap width: browsers silently refuse to paint a canvas wider than
+    // their max dimension (~32k px), so at high zoom on a wide window we clamp
+    // rather than render blank.
+    const w = Math.min(30000, Math.max(200, Math.round(baseW * state.zoom)));
     canvas.width = w;
     canvas.style.width = w + 'px';
     axisX.style.width = w + 'px';
@@ -536,22 +703,26 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
 
   function recompute() {
     const t0 = performance.now();
-    if (!cached || cached.fftSize !== state.fftSize || cached.winName !== state.winName) {
-      const spec = computeSpectrogram(samples, sampleRate, {
+    if (!cached || cached.fftSize !== state.fftSize || cached.winName !== state.winName || cached.mode !== state.mode) {
+      const params = {
         fftSize: state.fftSize,
         hopSize: Math.floor(state.fftSize / 4),
         window:  state.winName
-      });
+      };
+      const spec = state.mode === 'reassigned'
+        ? computeReassignedSpectrogram(samples, sampleRate, params)
+        : computeSpectrogram(samples, sampleRate, params);
       // Stats are signal-relative (independent of the dB floor / sensitivity), so
       // they only need computing once per spectrum - not on every render.
-      cached = { fftSize: state.fftSize, winName: state.winName, spec, stats: specStats(spec) };
+      cached = { fftSize: state.fftSize, winName: state.winName, mode: state.mode, spec, stats: specStats(spec) };
     }
     sizeCanvas();
     renderSpectrogram(canvas, cached.spec, { scale: state.scale, colormap: state.cmap, dbFloor: state.dbFloor });
     const duration = samples.length / sampleRate;
     buildFreqAxis(axisY, sampleRate, state.scale);
     buildTimeAxis(axisX, duration);
-    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate);
+    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate, loud);
+    scrollbar.update();
     const ms = (performance.now() - t0).toFixed(0);
     status.textContent = `${cached.spec.frames} frames × ${cached.spec.bins} bins | ${canvas.width}×${canvas.height} px | ${ms} ms`;
   }
@@ -560,7 +731,7 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   // (sensitivity, colour). No FFT recompute, no canvas resize, no stats re-scan.
   function renderOnly() {
     renderSpectrogram(canvas, cached.spec, { scale: state.scale, colormap: state.cmap, dbFloor: state.dbFloor });
-    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate);
+    buildSpecStats(stats, cached.stats, state.fftSize, sampleRate, loud);
   }
 
   btnLog.addEventListener('click', () => {
@@ -573,16 +744,27 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     btnLin.classList.add('is-active'); btnLog.classList.remove('is-active');
     recompute();
   });
+  modeSel.addEventListener('change',   () => { state.mode    = modeSel.value; recompute(); });
   fftSel.addEventListener('change',    () => { state.fftSize = parseInt(fftSel.value, 10); recompute(); });
   winSel.addEventListener('change',    () => { state.winName = winSel.value; recompute(); });
   cmapSel.addEventListener('change',   () => { state.cmap    = cmapSel.value; renderOnly(); });
   zoomSel.addEventListener('change',   () => { state.zoom    = parseFloat(zoomSel.value); recompute(); });
   heightSel.addEventListener('change', () => { state.height  = parseInt(heightSel.value, 10); recompute(); });
+  // The repaint is heavy (a full-canvas redraw), so doing it synchronously on
+  // every input event stalls the drag. Update the cheap bits (state + readout)
+  // immediately so the thumb tracks the pointer, and coalesce the redraw to at
+  // most one per animation frame.
+  let sensRaf = 0;
   sensIn.addEventListener('input', () => {
     const v = parseInt(sensIn.value, 10);
     state.dbFloor = -60 - (v / 100) * 30;   // 0% -> -60 dB, 100% -> -90 dB, 300% -> -150 dB
     sensOut.textContent = v + '%';
-    renderOnly();                           // pixels only - no recompute/resize/rescan
+    if (sensRaf) return;                    // a repaint is already queued for the next frame
+    sensRaf = requestAnimationFrame(() => { sensRaf = 0; renderOnly(); });
+  });
+  sensLabel.addEventListener('click', () => {
+    sensIn.value = '100';
+    sensIn.dispatchEvent(new Event('input'));  // reuse the input handler to reset state + repaint
   });
 
   saveBtn.addEventListener('click', () => specSavePng(canvas, opts.basename));
@@ -604,12 +786,17 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     resizeRaf = requestAnimationFrame(() => {
       const newW = Math.max(200, Math.round(availableWidth() * state.zoom));
       if (Math.abs(newW - canvas.width) > 2 || isFs()) recompute();
+      else scrollbar.update();   // viewport changed but canvas didn't - resync the bar
     });
   }, { signal: sig });
 
-  // Defer until in DOM so clientWidth is real
-  setTimeout(recompute, 0);
+  // Defer until in DOM so clientWidth is real. The first paint resolves
+  // card.firstPaint (guaranteed even if recompute throws) so the drop loader can
+  // wait for it.
+  setTimeout(() => { try { recompute(); } finally { markFirstPaint(); } }, 0);
   setTimeout(recompute, 80);
+  // Safety net: never let the loader hang on the spectrogram for more than ~6 s.
+  setTimeout(markFirstPaint, 6000);
 
   return card;
 }
@@ -642,7 +829,7 @@ function buildCoverArtCard(art, file) {
   // actually cover art to analyse, then render the analysis into its own box.
   const photoBox = el('div');
   frag.appendChild(photoBox);
-  import('./photo.js').then(({ renderPhoto }) => renderPhoto(artFile, photoBox)).catch(() => {});
+  import('./photo.js').then(({ renderPhoto }) => renderPhoto(artFile, photoBox, { inline: true })).catch(() => {});
 
   return frag;
 }
@@ -1077,7 +1264,8 @@ export async function renderAudio(file, resultsEl, opts = {}) {
 
   // ---- Spectrogram (sits directly under the file info) ----
   const basename = (file.name || 'spectrogram').replace(/\.[^/.]+$/, '');
-  resultsEl.appendChild(makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename, audioEl, signal: renderSignal, capture: true }));
+  const specPanel = makeSpectrogramPanel(mono, audioBuffer.sampleRate, { basename, audioEl, signal: renderSignal, capture: true });
+  resultsEl.appendChild(specPanel);
 
   // ---- Amplitude histogram (under the spectrogram) ----
   resultsEl.appendChild(buildHistogramCard(mono));
@@ -1150,6 +1338,11 @@ export async function renderAudio(file, resultsEl, opts = {}) {
 
     resultsEl.appendChild(stereoCard);
   }
+
+  // Keep the bottom "Reading…" loader up until the spectrogram has actually
+  // painted (it computes on a deferred timeout after the cards are built), so the
+  // bar doesn't vanish while the main visual is still blank.
+  if (specPanel && specPanel.firstPaint) { try { await specPanel.firstPaint; } catch (_) {} }
 }
 
 // --- Recording UI ---
@@ -1303,7 +1496,7 @@ async function startLive(resultsEl, liveBtn) {
     el('div', { class: 'anr-control anr-ctl-height' }, [el('label', {}, 'Height'), heightSel]),
     ctl('Speed', speedSel),
   ]));
-  controls.appendChild(group('Resolution', [
+  controls.appendChild(specAdvanced([
     ctl('FFT', fftSel),
   ]));
   const liveActions = [ctl('', saveBtn)];

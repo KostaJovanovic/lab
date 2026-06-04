@@ -42,7 +42,7 @@ import { renderMidi } from './midi.js';
 import { renderSubtitles } from './subtitles.js';
 import { renderGeo } from './geo.js';
 import { initSearch } from './search.js';
-import { fileExt, el, asciiBar, probeReadable, isUnreadableError, cloudFileWarning } from './util.js';
+import { fileExt, el, probeReadable, isUnreadableError, cloudFileWarning } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
 import {
   PHOTO_EXTS, AUDIO_EXTS, VIDEO_EXTS, CSV_EXTS, SVG_EXTS,
@@ -98,7 +98,15 @@ function showDropLoader(file, onCancel) {
   const name = (file && file.name) ? file.name : 'file';
   _dropLoaderTimer = setTimeout(() => {
     if (!_dropLoaderEl || !_dropLoaderEl.isConnected) {
-      const bar = asciiBar({ fit: true });
+      // A window of accent slashes ('////') bouncing left↔right inside brackets
+      // ([   ////   ]), stepped in discrete jumps via a CSS steps() timing so it
+      // reads choppy like the original ASCII bar. The motion is a CSS transform,
+      // NOT a requestAnimationFrame loop - rAF runs on the main thread, so it
+      // froze under the file's heavy synchronous work (FFTs, BPM, pixel stats),
+      // exactly when the loader is showing. A CSS animation keeps stepping.
+      const win = el('div', { class: 'anr-css-bar-win' }, '/'.repeat(40));
+      const track = el('div', { class: 'anr-css-bar-track' }, [win]);
+      const bar = el('div', { class: 'anr-css-bar' }, ['[', track, ']']);
       const label = el('div', { class: 'anr-drop-loader-label' }, '');
       // Cancel sits on the same line as the label, pushed to the right; it
       // hides the popup and aborts the in-flight load (see cancelLoad below).
@@ -111,11 +119,9 @@ function showDropLoader(file, onCancel) {
       const head = el('div', { class: 'anr-drop-loader-head' }, [label, cancelBtn]);
       _dropLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [head, bar]);
       _dropLoaderEl._label = label;
-      _dropLoaderEl._bar = bar;
       document.body.appendChild(_dropLoaderEl);
     }
     _dropLoaderEl._label.textContent = 'Reading ' + name + '…';
-    _dropLoaderEl._bar.indeterminate();
     requestAnimationFrame(() => _dropLoaderEl.classList.add('is-open'));
   }, 160);
 }
@@ -124,8 +130,9 @@ function hideDropLoader() {
   clearTimeout(_dropLoaderTimer);
   _dropLoaderOnCancel = null;
   if (_dropLoaderEl) {
+    // The bar's CSS animation pauses itself via `:not(.is-open)` (see CSS), so
+    // there's nothing to tear down here.
     _dropLoaderEl.classList.remove('is-open');
-    if (_dropLoaderEl._bar) _dropLoaderEl._bar.stop();
   }
 }
 
@@ -802,6 +809,14 @@ function boot() {
     };
     window.addEventListener('hashchange', scheduleHashClean);
     scheduleHashClean(); // handle a hash present on initial load
+
+    // Console easter egg, printed once per session for anyone who opens devtools.
+    try {
+      console.log(
+        "%cyou are probably looking for a test page. there is one but i'm not telling you how to find it.",
+        'font-family:monospace;font-size:13px;'
+      );
+    } catch (_) {}
 
     boot._once = true;
   } // end one-time guard

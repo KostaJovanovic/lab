@@ -199,6 +199,135 @@ export function computeSpectrogram(samples, sampleRate, options = {}) {
   return { frames, bins, sampleRate, fftSize, hopSize, data, dbMin, dbMax };
 }
 
+// ---------- REASSIGNED STFT ----------
+/**
+ * Reassigned spectrogram (method of reassignment).
+ *
+ * A plain STFT is blurred on both axes by the analysis window: the uncertainty
+ * principle ties its time and frequency resolution to the window length, so you
+ * can sharpen one only by smearing the other. Reassignment sidesteps that. For
+ * every STFT cell it computes where that cell's energy *actually* sits in time
+ * and frequency - the local centre of gravity - and moves the energy there.
+ * Diffuse blobs collapse into thin ridges, sharpening BOTH time and frequency at
+ * once, without changing the underlying FFT.
+ *
+ * It needs three STFTs per frame, all reusing the radix-2 fft() above:
+ *   F   - with the window  w(t)
+ *   F_t - with the window  t·w(t)        (time-weighted)
+ *   F_d - with the window  dw/dt         (window derivative)
+ *
+ * then, per bin, with P = |F|²:
+ *   t̂ = t_frame + Re(F_t · conj(F)) / P              (reassigned time, seconds)
+ *   f̂ = f_bin   − Im(F_d · conj(F)) / P / (2π)       (reassigned freq, Hz)
+ * and the bin's power is accumulated into the output cell nearest (t̂, f̂).
+ *
+ * Low-energy bins are gated out per frame (their reassignment is dominated by
+ * noise and would scatter speckle across the image). The result uses the SAME
+ * { frames, bins, data, … } layout as computeSpectrogram(), so renderSpectrogram,
+ * the axes, and the stats all consume it unchanged.
+ *
+ * Refs: Auger & Flandrin 1995; Fulop & Fitz 2006. See FFT-SUBSTITUTES-RESEARCH.md
+ * (Part B - time-frequency representations that beat the fixed-window STFT).
+ */
+export function computeReassignedSpectrogram(samples, sampleRate, options = {}) {
+  const N        = options.fftSize || 2048;
+  const hopSize  = options.hopSize || Math.floor(N / 4);
+  const winName  = options.window  || 'hann';
+  const w        = (windows[winName] || windows.hann)(N);
+
+  if (samples.length < N) {
+    return { frames: 0, bins: 0, sampleRate, fftSize: N, hopSize, data: new Float32Array(0), dbMin: -120, dbMax: 0 };
+  }
+
+  const bins   = N / 2;
+  const frames = 1 + Math.floor((samples.length - N) / hopSize);
+  const nyq    = sampleRate / 2;
+  const center = (N - 1) / 2;
+
+  // Time-weighted (seconds) and derivative (per-second) windows.
+  const wt = new Float32Array(N);
+  const wd = new Float32Array(N);
+  for (let i = 0; i < N; i++) wt[i] = ((i - center) / sampleRate) * w[i];
+  for (let i = 0; i < N; i++) {
+    const next = i + 1 < N ? w[i + 1] : 0;
+    const prev = i - 1 >= 0 ? w[i - 1] : 0;
+    wd[i] = (next - prev) * 0.5 * sampleRate;
+  }
+
+  let winSum = 0;
+  for (let i = 0; i < N; i++) winSum += w[i];
+  const norm = 1 / Math.max(winSum, 1e-9);
+
+  const reH = new Float32Array(N), imH = new Float32Array(N);
+  const reT = new Float32Array(N), imT = new Float32Array(N);
+  const reD = new Float32Array(N), imD = new Float32Array(N);
+  const mag2 = new Float32Array(bins);
+
+  // Accumulate reassigned power into a frames×bins grid (same layout as the STFT).
+  const power = new Float32Array(frames * bins);
+  const twoPi = 2 * Math.PI;
+
+  for (let f = 0; f < frames; f++) {
+    const start = f * hopSize;
+    for (let i = 0; i < N; i++) {
+      const s = samples[start + i];
+      reH[i] = s * w[i];  imH[i] = 0;
+      reT[i] = s * wt[i]; imT[i] = 0;
+      reD[i] = s * wd[i]; imD[i] = 0;
+    }
+    fft(reH, imH);
+    fft(reT, imT);
+    fft(reD, imD);
+
+    let fmax = 1e-30;
+    for (let b = 0; b < bins; b++) {
+      const p = reH[b] * reH[b] + imH[b] * imH[b];
+      mag2[b] = p;
+      if (p > fmax) fmax = p;
+    }
+    const gate = fmax * 1e-5;            // drop bins ~50 dB below the frame peak
+    const tFrame = (start + center) / sampleRate;
+
+    for (let b = 0; b < bins; b++) {
+      const p = mag2[b];
+      if (p < gate) continue;
+      const invP = 1 / p;
+      const reHb = reH[b], imHb = imH[b];
+
+      // t̂ = t_frame + Re(F_t · conj(F)) / P
+      const reTH = reT[b] * reHb + imT[b] * imHb;
+      const tHat = tFrame + reTH * invP;
+
+      // f̂ = f_bin − Im(F_d · conj(F)) / P / (2π)
+      const imDH = imD[b] * reHb - reD[b] * imHb;
+      const fHat = (b * sampleRate / N) - (imDH * invP) / twoPi;
+
+      if (fHat < 0 || fHat > nyq) continue;
+      let col = Math.round(tHat * sampleRate / hopSize);
+      if (col < 0) col = 0; else if (col >= frames) col = frames - 1;
+      let rowB = Math.round((fHat / nyq) * (bins - 1));
+      if (rowB < 0) rowB = 0; else if (rowB >= bins) rowB = bins - 1;
+
+      const mag = Math.sqrt(p) * norm * 2;
+      power[col * bins + rowB] += mag * mag;
+    }
+  }
+
+  const data = new Float32Array(frames * bins);
+  let dbMin = Infinity, dbMax = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    const db = 10 * Math.log10(power[i] + 1e-12);
+    data[i] = db;
+    if (power[i] > 0) {
+      if (db < dbMin) dbMin = db;
+      if (db > dbMax) dbMax = db;
+    }
+  }
+  if (!isFinite(dbMin)) { dbMin = -120; dbMax = 0; }
+
+  return { frames, bins, sampleRate, fftSize: N, hopSize, data, dbMin, dbMax };
+}
+
 // ---------- COLORMAPS ----------
 // Each returns [r,g,b] for t in [0,1]
 function lerp(a, b, t) { return a + (b - a) * t; }

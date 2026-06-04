@@ -68,6 +68,28 @@ function aspectRatio(w, h) {
   return `${w / d}:${h / d}  (${(w / h).toFixed(4)})`;
 }
 
+// The exact reduced ratio is often an ugly fraction (e.g. a 4288×2848 sensor is
+// 134:89). Snap the decimal to the nearest standard photo/video ratio so there's
+// a recognisable "≈ 3:2" to read next to it. Returns null when nothing common is
+// close enough (a genuinely odd crop), so we don't invent a misleading label.
+const COMMON_ASPECTS = [
+  [1, 1], [6, 5], [5, 4], [4, 3], [7, 5], [3, 2], [14, 9], [16, 10],
+  [5, 3], [16, 9], [2, 1], [21, 9], [7, 3], [5, 2], [3, 1],
+];
+function approxAspect(w, h) {
+  if (!w || !h) return null;
+  const landscape = w >= h;
+  const r = landscape ? w / h : h / w;   // normalise to >= 1, re-orient on output
+  let best = null, bestErr = Infinity;
+  for (const [a, b] of COMMON_ASPECTS) {
+    const err = Math.abs((a / b) - r);
+    if (err < bestErr) { bestErr = err; best = [a, b]; }
+  }
+  if (bestErr / r > 0.04) return null;   // nothing standard within ~4%
+  const [a, b] = best;
+  return landscape ? `${a}:${b}` : `${b}:${a}`;
+}
+
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -1048,7 +1070,13 @@ function closeLightbox() {
 }
 
 // ---------- main render ----------
-export async function renderPhoto(file, resultsEl) {
+export async function renderPhoto(file, resultsEl, opts = {}) {
+  // Inline mode (e.g. embedded cover art analysed inside the audio section):
+  // the preview, histogram, and OCR normally target fixed photo-section slots
+  // (#photoPreview / #photoHistSlot / #photoOcrSlot). When rendering inline,
+  // those slots belong to a different section, so route all three into the given
+  // container instead - otherwise they'd leak into the (empty) photo section.
+  const inline = !!opts.inline;
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Loading "${file.name}"...`));
@@ -1133,7 +1161,8 @@ export async function renderPhoto(file, resultsEl) {
   resultsEl.innerHTML = '';
 
   // ---- Preview thumb in section-meta column ----
-  const previewSlot = document.getElementById('photoPreview');
+  const previewSlot = inline ? el('div') : document.getElementById('photoPreview');
+  if (inline) resultsEl.appendChild(previewSlot);
   if (previewSlot) {
     previewSlot.innerHTML = '';
     const thumb = el('div', { class: 'section-meta-preview' });
@@ -1184,8 +1213,13 @@ export async function renderPhoto(file, resultsEl) {
   tbl.appendChild(row('Type',          file.type || '-'));
   tbl.appendChild(row('Modified',      file.lastModified ? new Date(file.lastModified).toISOString().replace('T', ' ').replace(/\..*$/, '') : '-'));
   tbl.appendChild(row('Dimensions',    `${w} × ${h} px`));
-  tbl.appendChild(rowHelp('Aspect ratio', aspectRatio(w, h),
-    'The width-to-height proportion of the image (e.g. 3:2 or 16:9).'));
+  const exactReduced = `${w / gcd(w, h)}:${h / gcd(w, h)}`;
+  const approx = approxAspect(w, h);
+  const aspectVal = (approx && approx !== exactReduced)
+    ? `${aspectRatio(w, h)}  ≈ ${approx}`
+    : aspectRatio(w, h);
+  tbl.appendChild(rowHelp('Aspect ratio', aspectVal,
+    'The width-to-height proportion of the image. The first figure is the exact reduced ratio (and its decimal); “≈” is the nearest standard ratio such as 3:2 or 16:9.'));
   tbl.appendChild(rowHelp('Megapixels', mp + ' MP',
     'Total number of pixels in the image, in millions (width × height ÷ 1,000,000).'));
   tbl.appendChild(rowHelp('Sharpness', sharpness.toFixed(1) + '  (' + sharpnessLabel(sharpness) + ')',
@@ -1293,7 +1327,8 @@ export async function renderPhoto(file, resultsEl) {
   }
 
   // ---- Histogram in section-meta column ----
-  const histSlot = document.getElementById('photoHistSlot');
+  const histSlot = inline ? el('div') : document.getElementById('photoHistSlot');
+  if (inline) resultsEl.appendChild(histSlot);
   if (histSlot) {
     histSlot.innerHTML = '';
     const histCard = el('div', { class: 'anr-card' });
@@ -1352,7 +1387,8 @@ export async function renderPhoto(file, resultsEl) {
   }).catch(() => { qrPlaceholder.remove(); });
 
   // ---- OCR in section-meta column ----
-  const ocrSlot = document.getElementById('photoOcrSlot');
+  const ocrSlot = inline ? el('div') : document.getElementById('photoOcrSlot');
+  if (inline) resultsEl.appendChild(ocrSlot);
   if (ocrSlot) {
     ocrSlot.innerHTML = '';
     ocrSlot.appendChild(makeOcrCard(file, img));
