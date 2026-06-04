@@ -62,7 +62,9 @@ import { el } from './util.js';
 export const PHOTO_EXTS = new Set([
   'jpg','jpeg','jpe','jif','jfif','png','gif','webp','heic','heif','heics','heifs',
   'bmp','tif','tiff','avif','jxl','ico',
-  'raw','arw','cr2','cr3','nef','dng','raf','rw2','orf','pef','sr2','srw','x3f'
+  'raw','arw','cr2','cr3','nef','dng','raf','rw2','orf','pef','sr2','srw','x3f',
+  // THM = the JPEG thumbnail a camera writes next to each movie clip (Canon et al.)
+  'thm'
 ]);
 
 export const AUDIO_EXTS = new Set([
@@ -104,7 +106,7 @@ export const ARCHIVE_EXTS = new Set([
 //           (used where a plain extension list undersells what we do, e.g. PDF)
 
 export const FULL_ANALYSIS = [
-  { label: 'Photo',     exts: 'JPG JPEG JIF JFIF PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F', tags: 'image picture camera photograph sony nikon canon fuji olympus pentax sigma samsung apple google pixel', desc: 'View EXIF, GPS, camera settings, histograms, OCR text, and AI-generation markers in JPG, PNG, HEIC, WebP, TIFF, and RAW photos from Sony, Nikon, Canon, Fujifilm, and more.' },
+  { label: 'Photo',     exts: 'JPG JPEG JIF JFIF PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F THM', tags: 'image picture camera photograph sony nikon canon fuji olympus pentax sigma samsung apple google pixel thm thumbnail movie video clip preview ixus powershot', desc: 'View EXIF, GPS, camera settings, histograms, OCR text, and AI-generation markers in JPG, PNG, HEIC, WebP, TIFF, and RAW photos from Sony, Nikon, Canon, Fujifilm, and more. Also opens THM movie-thumbnail files - the small JPEG preview a camera saves next to each video clip.' },
   { label: 'Sound',     exts: 'MP3 WAV M4A M4B AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA', tags: 'audio music podcast recording microphone audiobook', desc: 'Inspect the waveform, spectrogram, codec, bitrate, channels, and tags of MP3, WAV, FLAC, M4A, AAC, OGG, and Opus audio.' },
   { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP 3G2 MPG MPEG MTS M2TS TS VOB OGV', tags: 'movie film clip recording screen', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track.' },
   { label: 'PDF',       exts: 'PDF', tags: 'adobe acrobat document', desc: 'View pages, extract text and embedded images, run OCR, and read the metadata of PDF documents.' },
@@ -133,7 +135,8 @@ export const IDENTIFICATION = [
   { label: 'Music production', exts: 'ALS ALP FLP RPP LOGIC LOGICX PTX CPR BAND', tags: 'ableton fl studio fruity loops reaper logic pro tools cubase garageband steinberg daw', desc: 'Identify DAW project files and read version, tempo, and plugin data: Ableton Live (ALS), FL Studio (FLP), Reaper (RPP), Logic Pro, Pro Tools (PTX), and Cubase (CPR).' },
   { label: 'Databases',       exts: 'SQLite DB MDB ACCDB', tags: 'sqlite microsoft access database sql', desc: 'Identify and read metadata from SQLite, Microsoft Access (MDB, ACCDB), and other databases.' },
   { label: 'GIS / mapping',   exts: 'SHP KMZ', tags: 'geographic gis mapping google earth shapefile esri kmz', desc: 'Identify geographic files: Shapefile (SHP) and zipped Google Earth (KMZ). GPX, KML, and GeoJSON get full parsing + a map (see above).' },
-  { label: 'Disk images',     exts: 'ISO IMG VHD VHDX VMDK QCOW2 VDI', tags: 'virtual machine disk image hyper-v vmware virtualbox qemu boot', desc: 'Identify disk and virtual-machine images: ISO, VHD/VHDX (Hyper-V), VMDK (VMware), QCOW2 (QEMU), and VDI (VirtualBox).' },
+  { label: 'Disk images',     exts: 'ISO IMG VHD VHDX VMDK QCOW2 VDI', tags: 'virtual machine disk image hyper-v vmware virtualbox qemu boot partition table mbr gpt fat16 fat32 ntfs exfat volume sd card usb raw dd clone', desc: 'Identify disk and virtual-machine images: ISO, VHD/VHDX (Hyper-V), VMDK (VMware), QCOW2 (QEMU), and VDI (VirtualBox). For raw IMG images it decodes the partition table (MBR/GPT) and the first volume\'s filesystem - FAT16/32, NTFS, exFAT - with label, cluster size, and volume size.' },
+  { label: 'Recordings',      exts: 'REC', tags: 'pvr dvr recording video mpeg transport stream topfield humax camera cctv getdataback reclaime recovery session', desc: 'Identify REC files, telling apart PVR/DVR video recordings (MPEG-TS / MPEG program stream) from data-recovery session files (GetDataBack, ReclaiMe) and reading their details.' },
   { label: 'Game engines',    exts: 'UNITYPACKAGE UASSET UMAP GODOT TSCN TRES', tags: 'unity unreal godot game development asset', desc: 'Identify game-engine assets: Unity (UNITYPACKAGE), Unreal Engine (UASSET, UMAP), and Godot (TSCN, TRES).' },
   { label: 'Game saves',      exts: 'BEPIS', tags: 'ultrakill save game progress slot bepis hakita', desc: 'Identify game save files, including ULTRAKILL saves (BEPIS), and read their stored progress.' },
   { label: 'Valve / Steam',   exts: 'VDF ACF', tags: 'valve steam keyvalues kv source engine appmanifest libraryfolders loginusers config app manifest', desc: 'Parse Valve KeyValues files (VDF) and Steam app manifests (ACF) - appmanifest, libraryfolders, loginusers, and config - surfacing the App ID, name, install dir, size on disk, and the full key tree.' },
@@ -145,6 +148,8 @@ export const IDENTIFICATION = [
   { label: 'Certificates',    exts: 'CRT CER PEM DER', tags: 'x509 certificate ssl tls https security openssl public key private rsa ec', desc: 'Identify and decode X.509 security certificates (CRT, CER, PEM, DER) - subject, issuer, validity dates, and key details.' },
   { label: 'Engineering',     exts: 'CDP', tags: 'cdp4 comet data platform esa engineering systems concurrent design', desc: 'Identify CDP4 (COMET) concurrent-design engineering files from the ESA systems-engineering toolset.' },
   { label: 'Logs',            exts: 'LOG', tags: 'log file server apache nginx syslog error debug', desc: 'Identify log files and their origin - Apache, Nginx, syslog, Python, Java/Log4j, and Android logcat.' },
+  { label: 'Camera catalog',  exts: 'CTG', tags: 'canon dcim catalog index database camera memory card ixus powershot thumbnail eos digital ic', desc: 'Identify and decode Canon camera catalog files (CTG) - the DCIM index a Canon camera keeps to track each folder: the catalogued folder path, folder number, recorded-shot count, and photo / movie / voice-memo entry counts. Holds no image data.' },
+  { label: 'Shortcuts',       exts: 'LNK URL WEBLOC', tags: 'windows shortcut link lnk target arguments working directory internet shortcut url web macos webloc alias launcher pointer desktop', desc: 'Decode shortcut files: Windows shortcuts (LNK) - target path, arguments, working directory, icon, hotkey, window state, and target timestamp - plus internet shortcuts (URL) and macOS web shortcuts (WEBLOC), surfacing the URL or path they point to.' },
   { label: 'Other',           exts: 'TORRENT PART CRDOWNLOAD', tags: 'bittorrent peer to peer p2p download partial incomplete chrome firefox crdownload', desc: 'Identify BitTorrent files (TORRENT) and their file list, plus partial or incomplete downloads (PART, CRDOWNLOAD).' },
 ];
 

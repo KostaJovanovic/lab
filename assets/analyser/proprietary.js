@@ -315,6 +315,18 @@ const FORMATS = {
   // Valve / Steam
   vdf:     { app: 'Valve Data (KeyValues)', icon: 'VDF' },
   acf:     { app: 'Steam App Manifest', icon: 'ACF' },
+
+  // Camera catalog (the DCIM index a Canon camera writes alongside the photos)
+  ctg:     { app: 'Canon Camera Catalog', icon: 'CTG' },
+
+  // Shortcuts
+  lnk:     { app: 'Windows Shortcut', icon: 'LNK', magic: [0x4C, 0x00, 0x00, 0x00] },
+  url:     { app: 'Internet Shortcut', icon: 'URL', parse: 'text' },
+  webloc:  { app: 'macOS Web Shortcut', icon: 'WEB', parse: 'xml' },
+
+  // REC: ambiguous - a PVR/DVR video recording OR a data-recovery session.
+  // parseRec() sniffs the content to tell which.
+  rec:     { app: 'REC File', icon: 'REC' },
 };
 
 // ---------- helpers ----------
@@ -1749,6 +1761,353 @@ async function parseBepis(file, head) {
   return fields;
 }
 
+// ---------- Canon camera catalog (.CTG) ----------
+// A CTG is the index a Canon camera keeps under DCIM/CANONMSC so it knows what's
+// on the card without rescanning. There's no public spec; these offsets were
+// reverse-engineered from IXUS/PowerShot cards and are read defensively (every
+// field is bounds- and sanity-checked, so a different model's CTG still at least
+// identifies). It carries NO image data. Two variants:
+//   • per-folder (e.g. 107.CTG) - starts with the folder path "X:\DCIM\nnnCANON"
+//   • master    (D.CTG)         - starts with a uint32 folder count
+async function parseCtg(file) {
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 65536)).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const fields = { 'Vendor': 'Canon', 'File type': 'Camera catalog (DCIM index)' };
+
+  // Per-folder catalog begins with a drive path like "D:\DCIM\107CANON".
+  const isPath = buf.length > 8 &&
+    buf[0] >= 0x41 && buf[0] <= 0x5A &&        // drive letter A-Z
+    buf[1] === 0x3A &&                          // ':'
+    (buf[2] === 0x5C || buf[2] === 0x2F);       // '\' or '/'
+
+  if (isPath) {
+    fields['Catalog type'] = 'Per-folder index';
+    let end = 0;
+    while (end < buf.length && end < 260 && buf[end] !== 0) end++;
+    fields['Catalogues folder'] = new TextDecoder('latin1').decode(buf.subarray(0, end));
+
+    // Folder number + recorded-shot count (uint16 LE) at observed offsets.
+    if (buf.length > 0x84) {
+      const folderNo = dv.getUint16(0x80, true);
+      const shots = dv.getUint16(0x82, true);
+      if (folderNo >= 100 && folderNo <= 999) fields['Folder number'] = String(folderNo);
+      if (shots > 0 && shots <= 5000) fields['Shots recorded'] = String(shots);
+    }
+    // Presence bitmap (uint32 LE): one set bit per occupied frame slot.
+    if (buf.length > 0xec) {
+      const bmp = dv.getUint32(0xe8, true);
+      let bits = 0;
+      for (let i = 0; i < 32; i++) if ((bmp >>> i) & 1) bits++;
+      if (bits > 0 && bits <= 1000) fields['Frames in use (bitmap)'] = String(bits);
+    }
+    // Entry-prefix table near the end: IMG_ (photos), MVI_ (movies), SND_ (the
+    // voice-memo slot Canon pairs with each photo). Count by scanning the bytes.
+    const txt = ascii(buf, 0, buf.length);
+    const n = (re) => (txt.match(re) || []).length;
+    const nImg = n(/IMG_/g), nMvi = n(/MVI_/g), nSnd = n(/SND_/g);
+    if (nImg) fields['Photo entries (IMG_)'] = String(nImg);
+    if (nMvi) fields['Movie entries (MVI_)'] = String(nMvi);
+    if (nSnd) fields['Voice-memo slots (SND_)'] = String(nSnd);
+  } else {
+    fields['Catalog type'] = 'Master index (D.CTG)';
+    if (buf.length >= 4) {
+      const folders = dv.getUint32(0, true);
+      if (folders > 0 && folders < 100000) fields['Folders catalogued'] = String(folders);
+    }
+  }
+
+  fields['Contains'] = 'Index only — no image data';
+  return fields;
+}
+
+// ---------- Windows shortcut (.LNK) ----------
+// MS-SHLLINK shell link: a binary pointer to a file/folder. We read the header
+// (flags, target timestamps, size, window/hotkey), skip the LinkTargetIDList,
+// pull the real target path out of LinkInfo's LocalBasePath, then read the
+// StringData blocks (name / relative-path / working-dir / arguments / icon) that
+// the LinkFlags say are present. StringData is UTF-16 when the Unicode flag is set.
+const LNK_CLSID = [0x01,0x14,0x02,0x00,0x00,0x00,0x00,0x00,0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46];
+function lnkFiletime(dv, off) {
+  const lo = dv.getUint32(off, true), hi = dv.getUint32(off + 4, true);
+  const ft = hi * 4294967296 + lo;            // 100-ns ticks since 1601-01-01
+  if (!ft) return null;
+  const d = new Date(ft / 10000 - 11644473600000);
+  return isNaN(d.getTime()) ? null : d.toLocaleString();
+}
+function lnkCStr(buf, start) {                  // null-terminated ANSI string
+  if (start < 0 || start >= buf.length) return '';
+  let end = start;
+  while (end < buf.length && buf[end] !== 0) end++;
+  return new TextDecoder('latin1').decode(buf.subarray(start, end));
+}
+function lnkHotkey(raw) {
+  const key = raw & 0xFF, mod = (raw >> 8) & 0xFF;
+  if (!key) return null;
+  const parts = [];
+  if (mod & 0x02) parts.push('Ctrl');
+  if (mod & 0x04) parts.push('Alt');
+  if (mod & 0x01) parts.push('Shift');
+  if (key >= 0x30 && key <= 0x5A) parts.push(String.fromCharCode(key));
+  else if (key >= 0x70 && key <= 0x87) parts.push('F' + (key - 0x6F));
+  else parts.push('0x' + key.toString(16));
+  return parts.join(' + ');
+}
+async function parseLnk(file) {
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 262144)).arrayBuffer());
+  if (buf.length < 0x4C) return null;
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  if (dv.getUint32(0, true) !== 0x4C) return null;            // HeaderSize
+  for (let i = 0; i < 16; i++) if (buf[4 + i] !== LNK_CLSID[i]) return null;
+
+  const flags = dv.getUint32(0x14, true);
+  const attrs = dv.getUint32(0x18, true);
+  const targetSize = dv.getUint32(0x34, true);
+  const showCmd = dv.getUint32(0x3C, true);
+  const hotkey = dv.getUint16(0x40, true);
+  const isUni = !!(flags & 0x80);
+
+  let off = 0x4C;
+  if (flags & 0x01) {                          // HasLinkTargetIDList → skip it
+    if (off + 2 > buf.length) return null;
+    off += 2 + dv.getUint16(off, true);
+  }
+
+  let localPath = null;
+  if ((flags & 0x02) && off + 28 <= buf.length) {            // HasLinkInfo
+    const li = off;
+    const liSize = dv.getUint32(li, true);
+    const liFlags = dv.getUint32(li + 8, true);
+    const localBaseOff = dv.getUint32(li + 16, true);
+    const suffixOff = dv.getUint32(li + 24, true);
+    if ((liFlags & 0x01) && localBaseOff) {                  // VolumeIDAndLocalBasePath
+      localPath = lnkCStr(buf, li + localBaseOff);
+      if (suffixOff) localPath += lnkCStr(buf, li + suffixOff);
+    }
+    if (liSize > 0 && li + liSize <= buf.length) off = li + liSize;
+  }
+
+  const readStr = () => {                       // a StringData block
+    if (off + 2 > buf.length) return null;
+    const n = dv.getUint16(off, true); off += 2;
+    let s = '';
+    if (isUni) { for (let i = 0; i < n && off + 1 < buf.length; i++) { s += String.fromCharCode(dv.getUint16(off, true)); off += 2; } }
+    else       { for (let i = 0; i < n && off < buf.length; i++)     { s += String.fromCharCode(buf[off]); off += 1; } }
+    return s;
+  };
+  let name = null, rel = null, work = null, args = null, icon = null;
+  if (flags & 0x04) name = readStr();           // HasName (description)
+  if (flags & 0x08) rel  = readStr();           // HasRelativePath
+  if (flags & 0x10) work = readStr();           // HasWorkingDir
+  if (flags & 0x20) args = readStr();           // HasArguments
+  if (flags & 0x40) icon = readStr();           // HasIconLocation
+
+  const isDir = !!(attrs & 0x10);
+  const fields = { 'Type': 'Windows shortcut (.LNK)' };
+  const target = localPath || rel;
+  if (target) fields['Target'] = target;
+  if (isDir) fields['Target type'] = 'Folder';
+  if (rel && rel !== target) fields['Relative path'] = rel;
+  if (args) fields['Arguments'] = args;
+  if (work) fields['Working directory'] = work;
+  if (name) fields['Description'] = name;
+  if (icon) fields['Icon location'] = icon;
+  if (!isDir && targetSize) fields['Target size'] = fmtBytes(targetSize);
+  const showMap = { 1: 'Normal window', 3: 'Maximized', 7: 'Minimized' };
+  if (showMap[showCmd]) fields['Window'] = showMap[showCmd];
+  const hk = lnkHotkey(hotkey);
+  if (hk) fields['Hotkey'] = hk;
+  const wt = lnkFiletime(dv, 0x2C);
+  if (wt) fields['Target modified'] = wt;
+  return fields;
+}
+
+// ---------- Internet shortcut (.URL) ----------
+async function parseUrlShortcut(file) {
+  const text = await file.text();
+  const fields = { 'Type': 'Internet shortcut (.URL)' };
+  const grab = (re) => { const m = text.match(re); return m ? m[1].trim() : null; };
+  const url  = grab(/^\s*URL\s*=\s*(.+)$/im);
+  const icon = grab(/^\s*IconFile\s*=\s*(.+)$/im);
+  const idx  = grab(/^\s*IconIndex\s*=\s*(.+)$/im);
+  if (url)  fields['URL'] = url;
+  if (icon) fields['Icon file'] = icon;
+  if (idx)  fields['Icon index'] = idx;
+  return fields;
+}
+
+// ---------- macOS web shortcut (.webloc) ----------
+async function parseWebloc(file) {
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 65536)).arrayBuffer());
+  const text = new TextDecoder('latin1').decode(buf);
+  const fields = { 'Type': 'macOS web shortcut (.webloc)' };
+  fields['Format'] = text.startsWith('bplist') ? 'Binary plist' : 'XML plist';
+  const m = text.match(/<key>\s*URL\s*<\/key>\s*<string>([^<]+)<\/string>/i)
+        || text.match(/<string>([^<]+)<\/string>/i)
+        || text.match(/https?:\/\/[^\x00-\x1f"'<>\\]+/);
+  if (m) fields['URL'] = (m[1] || m[0]).trim();
+  return fields;
+}
+
+// ---------- Disk image (.IMG and other raw images) ----------
+// Decodes the partition scheme (MBR / GPT / none) and the first volume's
+// filesystem (FAT12/16/32, NTFS, exFAT) straight from the boot records, so a raw
+// card/USB/floppy image reports its real layout instead of just "disk image".
+const MBR_PART_TYPES = {
+  0x01: 'FAT12', 0x04: 'FAT16 (<32M)', 0x05: 'Extended', 0x06: 'FAT16',
+  0x07: 'NTFS / exFAT', 0x0b: 'FAT32 (CHS)', 0x0c: 'FAT32 (LBA)',
+  0x0e: 'FAT16 (LBA)', 0x0f: 'Extended (LBA)', 0x82: 'Linux swap',
+  0x83: 'Linux', 0xa5: 'FreeBSD', 0xaf: 'HFS / HFS+', 0xee: 'GPT protective',
+  0xef: 'EFI System',
+};
+function fmtGuid(b, o) {
+  const h = (i) => b[o + i].toString(16).padStart(2, '0');
+  return (h(3) + h(2) + h(1) + h(0) + '-' + h(5) + h(4) + '-' + h(7) + h(6) + '-' +
+          h(8) + h(9) + '-' + h(10) + h(11) + h(12) + h(13) + h(14) + h(15)).toUpperCase();
+}
+// Parse a FAT boot sector (BPB) at offset `off` in buf. Returns a fields object.
+function parseFatVbr(buf, off) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const out = {};
+  const oem = ascii(buf, off + 3, 8).trim();
+  const bps = dv.getUint16(off + 0x0b, true);
+  const spc = buf[off + 0x0d];
+  const totalSec = dv.getUint16(off + 0x13, true) || dv.getUint32(off + 0x20, true);
+  const fs36 = ascii(buf, off + 0x36, 8).trim();
+  const fs52 = ascii(buf, off + 0x52, 8).trim();
+  let fsType, label, serial;
+  if (fs52.startsWith('FAT32')) {
+    fsType = 'FAT32'; label = ascii(buf, off + 0x47, 11).trim(); serial = dv.getUint32(off + 0x43, true);
+  } else {
+    fsType = fs36.startsWith('FAT') ? fs36 : (ascii(buf, off + 3, 5) === 'NTFS' ? 'NTFS' : (ascii(buf, off + 3, 5) === 'EXFAT' ? 'exFAT' : null));
+    label = ascii(buf, off + 0x2b, 11).trim(); serial = dv.getUint32(off + 0x27, true);
+  }
+  if (fsType) out['Filesystem'] = fsType;
+  if (label && label !== 'NO NAME') out['Volume label'] = label;
+  if (oem) out['Formatted by'] = oem;
+  if (bps && spc) out['Cluster size'] = (bps * spc / 1024) + ' KB (' + spc + ' sectors)';
+  if (bps) out['Bytes/sector'] = String(bps);
+  if (totalSec && bps) out['Volume size'] = fmtBytes(totalSec * bps);
+  if (serial) out['Volume serial'] = (serial >>> 0).toString(16).toUpperCase().padStart(8, '0').replace(/(.{4})(.{4})/, '$1-$2');
+  return out;
+}
+async function parseDiskImage(file) {
+  const fields = { 'Type': 'Disk image' };
+  try {
+    const sec0 = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+    const dv = new DataView(sec0.buffer, sec0.byteOffset, sec0.byteLength);
+    const has55aa = sec0[510] === 0x55 && sec0[511] === 0xaa;
+
+    // Sector 0 is itself a volume boot record (superfloppy - no partition table)?
+    const fsAt36 = ascii(sec0, 0x36, 5), fsAt52 = ascii(sec0, 0x52, 5), at3 = ascii(sec0, 3, 5);
+    const vbrLike = (sec0[0] === 0xeb || sec0[0] === 0xe9) &&
+      (fsAt36.startsWith('FAT') || fsAt52.startsWith('FAT') || at3 === 'NTFS' || at3 === 'EXFAT');
+
+    if (vbrLike) {
+      fields['Partitioning'] = 'None (single volume / superfloppy)';
+      Object.assign(fields, parseFatVbr(sec0, 0));
+    } else if (has55aa) {
+      const parts = [];
+      for (let p = 0; p < 4; p++) {
+        const o = 0x1be + p * 16;
+        const type = sec0[o + 4];
+        if (type === 0) continue;
+        parts.push({ active: sec0[o] === 0x80, type, lba: dv.getUint32(o + 8, true), count: dv.getUint32(o + 12, true) });
+      }
+      // GPT (protective MBR = single type-0xEE entry)
+      if (parts.length === 1 && parts[0].type === 0xee) {
+        const gpt = new Uint8Array(await file.slice(512, 512 + 92).arrayBuffer());
+        if (ascii(gpt, 0, 8) === 'EFI PART') {
+          const gdv = new DataView(gpt.buffer, gpt.byteOffset, gpt.byteLength);
+          fields['Partitioning'] = 'GPT';
+          fields['Disk GUID'] = fmtGuid(gpt, 0x38);
+          const entLba = Number(gdv.getBigUint64(0x48, true));
+          const numEnt = gdv.getUint32(0x50, true);
+          const entSz = gdv.getUint32(0x54, true);
+          const arr = new Uint8Array(await file.slice(entLba * 512, entLba * 512 + Math.min(numEnt * entSz, 32768)).arrayBuffer());
+          const list = [];
+          for (let i = 0; i + entSz <= arr.length && i / entSz < numEnt; i += entSz) {
+            let empty = true;
+            for (let j = 0; j < 16; j++) if (arr[i + j] !== 0) { empty = false; break; }
+            if (empty) continue;
+            const edv = new DataView(arr.buffer, arr.byteOffset + i, entSz);
+            const first = Number(edv.getBigUint64(0x20, true)), last = Number(edv.getBigUint64(0x28, true));
+            let nm = '';
+            for (let c = 0; c < 36; c++) { const ch = arr[i + 0x38 + c * 2] | (arr[i + 0x38 + c * 2 + 1] << 8); if (!ch) break; nm += String.fromCharCode(ch); }
+            list.push((nm || 'Partition') + ' — ' + fmtBytes((last - first + 1) * 512));
+          }
+          fields['Partitions'] = String(list.length);
+          list.slice(0, 8).forEach((p, i) => { fields['Partition ' + (i + 1)] = p; });
+        } else {
+          fields['Partitioning'] = 'GPT (header unreadable)';
+        }
+      } else if (parts.length) {
+        fields['Partitioning'] = 'MBR';
+        fields['Partitions'] = String(parts.length);
+        parts.forEach((pt, i) => {
+          fields['Partition ' + (i + 1)] = (MBR_PART_TYPES[pt.type] || ('type 0x' + pt.type.toString(16))) +
+            ' — ' + fmtBytes(pt.count * 512) + (pt.active ? ' (active)' : '');
+        });
+        // Decode the first partition's filesystem from its boot sector.
+        const first = parts[0];
+        const off = first.lba * 512;
+        if (off + 512 <= file.size) {
+          const vbr = new Uint8Array(await file.slice(off, off + 512).arrayBuffer());
+          Object.assign(fields, parseFatVbr(vbr, 0));
+        }
+      } else {
+        fields['Partitioning'] = 'None (boot signature only)';
+      }
+    } else {
+      fields['Note'] = 'No MBR/VBR signature — raw or unrecognised image';
+    }
+  } catch (_) { /* best-effort; show whatever we gathered */ }
+  fields['Image size'] = fmtBytes(file.size);
+  return fields;
+}
+
+// ---------- REC: PVR/DVR recording OR data-recovery session ----------
+// .rec is overloaded: many DVRs/PVRs save video as .rec, but recovery tools
+// (GetDataBack, ReclaiMe) also save .rec session files. Sniff the bytes to tell
+// them apart. We pull only structural fields from session XML - never the embedded
+// license key.
+async function parseRec(file) {
+  const head = new Uint8Array(await file.slice(0, Math.min(file.size, 8192)).arrayBuffer());
+  const text = new TextDecoder('latin1').decode(head);
+  const trimmed = text.replace(/^﻿/, '').trimStart();
+  const fields = {};
+
+  if (trimmed.startsWith('<?xml') || trimmed[0] === '<') {
+    const g = (re) => { const m = text.match(re); return m ? m[1].trim() : null; };
+    if (/getdatabackrecovery/i.test(text)) {
+      fields['Type'] = 'GetDataBack recovery session';
+      const tool = g(/<recfilecreator>([^<]+)/i), ver = g(/<recfilecreatorversion>([^<]+)/i);
+      if (tool) fields['Tool'] = tool + (ver ? ' ' + ver : '');
+      const t = g(/<recfiletime>([^<]+)/i); if (t) fields['Saved'] = t;
+      const name = g(/<name>([^<]+)/i), kind = g(/<kind>([^<]+)/i);
+      if (name || kind) fields['Source'] = [name, kind].filter(Boolean).join(' — ');
+      const from = g(/<fromsector>(\d+)/i), to = g(/<tosector>(\d+)/i);
+      if (to) { const sec = (+to) - (+(from || 0)) + 1; fields['Imaged range'] = (+(from || 0)) + '–' + to + ' sectors (' + fmtBytes(sec * 512) + ')'; }
+      const id = g(/<recoveryid>([^<]+)/i); if (id) fields['Recovery ID'] = id;
+      return fields;
+    }
+    if (/reclaime/i.test(text)) { fields['Type'] = 'ReclaiMe recovery session'; return fields; }
+    fields['Type'] = 'XML session / recovery file';
+    return fields;
+  }
+
+  // Binary - most likely a PVR/DVR video recording.
+  if (head[0] === 0x47 && head[188] === 0x47 && head[376] === 0x47) {
+    fields['Type'] = 'Video recording (MPEG-TS)';
+    fields['Note'] = 'PVR/DVR transport-stream recording (188-byte packets)';
+  } else if (head[0] === 0x00 && head[1] === 0x00 && head[2] === 0x01 && head[3] === 0xba) {
+    fields['Type'] = 'Video recording (MPEG program stream)';
+  } else {
+    fields['Type'] = 'REC recording (unrecognised container)';
+    fields['Note'] = 'Commonly a PVR/DVR or camera video recording';
+  }
+  return fields;
+}
+
 // ---------- Rich Text Format (.rtf) ----------
 async function parseRtf(file) {
   try {
@@ -2035,6 +2394,12 @@ const PARSERS = {
   cdp:   c => parseCdp(c.file, c.head),
   rtf:   c => parseRtf(c.file),
   bepis: c => parseBepis(c.file, c.head),
+  ctg:   c => parseCtg(c.file),
+  lnk:   c => parseLnk(c.file),
+  url:   c => parseUrlShortcut(c.file),
+  webloc: c => parseWebloc(c.file),
+  img:   c => parseDiskImage(c.file),
+  rec:   c => parseRec(c.file),
 };
 
 // ---------- main render ----------
@@ -2174,28 +2539,22 @@ export async function renderProprietary(file, container) {
       openBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const overlay = el('div', {
-          class: 'anr-text-overlay',
-          style: 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;'
-        });
-        const inner = el('div', {
-          style: 'background:var(--bg);max-width:90vw;max-height:90vh;overflow:auto;padding:24px;border:1px solid var(--hairline);position:relative;width:900px;'
-        });
-        const closeBtn = el('button', {
-          type: 'button',
-          style: 'position:absolute;top:8px;right:12px;background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--fg);'
-        }, '×');
+        // Reuse the "Supported formats" overlay styling: the header (file name +
+        // close) lives OUTSIDE the scrolling body, so the close button stays put
+        // instead of scrolling away with the text. No search bar.
+        const closeBtn = el('button', { type: 'button', class: 'fmt-overlay-close' }, '×');
+        const header = el('div', { class: 'fmt-overlay-header' }, [el('h3', {}, file.name), closeBtn]);
         const fullPre = el('pre', { class: 'anr-code', style: 'font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0;' });
         fullPre.textContent = fullText;
-        inner.appendChild(closeBtn);
-        inner.appendChild(fullPre);
-        overlay.appendChild(inner);
+        const body = el('div', { class: 'fmt-overlay-body' }, [fullPre]);
+        const inner = el('div', { class: 'fmt-overlay-inner' }, [header, body]);
+        const overlay = el('div', { class: 'fmt-overlay anr-text-overlay' }, [inner]);
         document.body.appendChild(overlay);
         document.body.style.overflow = 'hidden';
-        function close() { overlay.remove(); document.body.style.overflow = ''; }
+        const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+        function close() { overlay.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
         closeBtn.addEventListener('click', close);
         overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close(); });
-        const onKey = (ev) => { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
         document.addEventListener('keydown', onKey);
       });
       summary.appendChild(openBtn);

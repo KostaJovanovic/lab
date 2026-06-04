@@ -41,6 +41,7 @@ import { renderLrc } from './lrc.js';
 import { renderMidi } from './midi.js';
 import { renderSubtitles } from './subtitles.js';
 import { renderGeo } from './geo.js';
+import { renderMarkdown } from './markdown.js';
 import { initSearch } from './search.js';
 import { fileExt, el, probeReadable, isUnreadableError, cloudFileWarning } from './util.js';
 import { walkItems, renderFolder } from './folder.js';
@@ -201,6 +202,9 @@ function classifyFile(file) {
   // Subtitles + geo files are otherwise identification-only (proprietary.js).
   if (ext === 'srt' || ext === 'vtt' || ext === 'ass' || ext === 'ssa') return 'subtitles';
   if (ext === 'gpx' || ext === 'kml' || ext === 'geojson') return 'geo';
+  // Markdown gets a real rendered view - route it before the proprietary `md`
+  // (plain-text) entry would otherwise catch it.
+  if (ext === 'md' || ext === 'markdown') return 'markdown';
   if (PHOTO_EXTS.has(ext)) return 'photo';
   if (AUDIO_EXTS.has(ext)) return 'audio';
   if (VIDEO_EXTS.has(ext)) return 'video';
@@ -225,6 +229,7 @@ const ROUTES = {
   midi:        { render: renderMidi,        results: 'unknown', scroll: '#unknownResults' },
   subtitles:   { render: renderSubtitles,   results: 'unknown', scroll: '#unknownResults' },
   geo:         { render: renderGeo,         results: 'unknown', scroll: '#unknownResults' },
+  markdown:    { render: renderMarkdown,    results: 'unknown', scroll: '#unknownResults' },
   pdf:         { render: renderPdf,         results: 'unknown', scroll: '#unknownResults' },
   zip:         { render: renderArchive,     results: 'unknown', scroll: '#unknownResults' },
   svg:         { render: renderSvg,         results: 'unknown', scroll: '#unknownResults' },

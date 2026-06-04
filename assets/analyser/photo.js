@@ -1210,7 +1210,13 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
   const tbl = el('table', { class: 'anr-readout' });
   tbl.appendChild(row('Name',          file.name));
   tbl.appendChild(row('Size',          fmtBytes(file.size)));
-  tbl.appendChild(row('Type',          file.type || '-'));
+  // .THM has no MIME type, so fill the slot with what it actually is: the small
+  // JPEG preview a camera writes beside each movie clip.
+  const isThm = /\.thm$/i.test(file.name || '');
+  tbl.appendChild(rowHelp('Type', file.type || (isThm ? 'image/jpeg — movie thumbnail (.THM)' : '-'),
+    isThm
+      ? 'A .THM file is the thumbnail a camera saves next to a video clip - a small JPEG (here ' + w + '×' + h + ') previewing the movie. Canon, and others, write one per clip. It is a normal JPEG, just with a .THM extension.'
+      : "The MIME type is the standard label for the file's format. The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
   tbl.appendChild(row('Modified',      file.lastModified ? new Date(file.lastModified).toISOString().replace('T', ' ').replace(/\..*$/, '') : '-'));
   tbl.appendChild(row('Dimensions',    `${w} × ${h} px`));
   const exactReduced = `${w / gcd(w, h)}:${h / gcd(w, h)}`;
