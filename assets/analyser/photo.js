@@ -7,7 +7,7 @@
    - On-device OCR via lazy-loaded Tesseract.js with language picker
    - SHA-256 file hash */
 
-import { el, row, rowHelp, fmtBytes, h3help, fileExt, sha256Row, loadScript, loadCss, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, wireInfoToggle, fileExt, sha256Row, loadScript, loadCss, isUnreadableError, cloudFileWarning, errorCard } from './util.js';
 import { HEIC_EXTS, RAW_EXTS } from './formats.js';
 import { convertHeic, extractRawPreview, convertWithImageMagick } from './photo-convert.js';
 
@@ -553,11 +553,11 @@ function makeOcrCard(file, img) {
   const det = el('details');
   const ocrHelpText = '<strong>Optical Character Recognition</strong> scans the image for text using <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>, an open-source OCR engine running entirely in your browser.<br><br><strong>How it works:</strong> the image is upscaled if needed, then Tesseract looks for letter-shaped patterns, groups them into words and lines, and assigns a confidence score to each word. Words below 60% confidence are filtered out to reduce noise.<br><br><strong>Limitations:</strong> Tesseract was designed for scanned documents - clean text on plain backgrounds. On photos it will often hallucinate text from textures, foliage, buildings, or noise. Handwriting, stylised fonts, low contrast, small text, and rotated or curved text all reduce accuracy significantly. Results are best on screenshots, signs, printed labels, and document photos.';
   const ocrInfoBtn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info' }, '[?]');
-  const summary = el('summary', {}, ['OCR - Extract text', ocrInfoBtn]);
+  const summary = el('summary', {}, [el('span', { class: 'anr-summary-label' }, ['OCR - Extract text', ocrInfoBtn])]);
   det.appendChild(summary);
   const detContent = el('div');
-  const ocrPanel = el('div', { class: 'anr-info-panel', style: 'display:none;', html: ocrHelpText });
-  ocrInfoBtn.addEventListener('click', (e) => { e.preventDefault(); ocrPanel.style.display = ocrPanel.style.display === 'none' ? 'block' : 'none'; });
+  const ocrPanel = el('div', { class: 'anr-info-panel is-hidden', html: ocrHelpText });
+  wireInfoToggle(ocrInfoBtn, ocrPanel);
   detContent.appendChild(ocrPanel);
 
   const ocrCanvas = img ? prepareOcrCanvas(img) : null;
@@ -1419,14 +1419,10 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
   const lsbSummary = el('summary', {});
   // Title + [?] grouped in one span so the summary's flex space-between keeps them
   // together on the left (only the open/close marker sits at the right edge).
-  const lsbTitle = el('span', {});
+  const lsbTitle = el('span', { class: 'anr-summary-label' });
   lsbTitle.appendChild(document.createTextNode('LSB Analysis '));
-  const lsbInfoBtn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info', style: 'float:none;' }, '[?]');
-  lsbInfoBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    lsbHelp.classList.toggle('is-hidden');
-  });
+  const lsbInfoBtn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info' }, '[?]');
+  wireInfoToggle(lsbInfoBtn, lsbHelp);
   lsbTitle.appendChild(lsbInfoBtn);
   lsbSummary.appendChild(lsbTitle);
   lsbDet.appendChild(lsbSummary);

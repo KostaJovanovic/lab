@@ -187,12 +187,34 @@ export function fmtBytes(n) {
   return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
+// Wire a [?] info button to an inline dropdown panel (.anr-info-panel shown/hidden
+// via .is-hidden). The button label flips between [?] (closed) and [-] (open). If
+// the button sits inside a collapsed <details>, the first click also opens that
+// section so the panel is actually visible. Use this for every dropdown-style [?]
+// (the popup [?] in rowHelp is intentionally left as a plain tip).
+export function wireInfoToggle(btn, panel) {
+  const sync = () => { btn.textContent = panel.classList.contains('is-hidden') ? '[?]' : '[-]'; };
+  sync();
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const det = btn.closest('details');
+    if (det && !det.open) {
+      det.open = true;
+      panel.classList.remove('is-hidden');
+    } else {
+      panel.classList.toggle('is-hidden');
+    }
+    sync();
+  });
+}
+
 export function h3help(title, helpHtml) {
   const h = el('h3', {});
   h.appendChild(document.createTextNode(title));
   const btn = el('button', { type: 'button', class: 'anr-info-btn', title: 'Info' }, '[?]');
   const panel = el('div', { class: 'anr-info-panel is-hidden', html: helpHtml });
-  btn.addEventListener('click', () => { panel.classList.toggle('is-hidden'); });
+  wireInfoToggle(btn, panel);
   h.appendChild(btn);
   return [h, panel];
 }

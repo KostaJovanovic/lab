@@ -851,8 +851,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       const waveWrap = el('div', { style: 'position:relative; width:100%;' });
       const waveCanvas = el('canvas', { class: 'anr-waveform' }); waveCanvas.width = 1024; waveCanvas.height = 80;
       renderWaveform(waveCanvas, mono);
-      const waveLine = el('div', { class: 'anr-playhead' });
-      waveLine.style.cssText = 'pointer-events:auto;width:7px;margin-left:-3px;cursor:col-resize;background:transparent;border-left:1px solid #fff;';
+      const waveLine = el('div', { class: 'anr-playhead is-grabbable' });
       waveWrap.appendChild(waveCanvas); waveWrap.appendChild(waveLine);
       audioCard.appendChild(waveWrap);
       audioResultsEl.appendChild(buildHistogramCard(mono));
@@ -1118,8 +1117,7 @@ export async function renderVideo(file, resultsEl) {
         const waveCanvas = el('canvas', { class: 'anr-waveform' });
         waveCanvas.width = 1024; waveCanvas.height = 80;
         renderWaveform(waveCanvas, mono);
-        const waveLine = el('div', { class: 'anr-playhead' });
-        waveLine.style.cssText = 'pointer-events:auto; width:7px; margin-left:-3px; cursor:col-resize; background:transparent; border-left:1px solid #fff;';
+        const waveLine = el('div', { class: 'anr-playhead is-grabbable' });
         waveWrap.appendChild(waveCanvas);
         waveWrap.appendChild(waveLine);
         audioCard.appendChild(waveWrap);
@@ -1726,13 +1724,7 @@ export async function renderVideo(file, resultsEl) {
       const waveCanvas = el('canvas', { class: 'anr-waveform' });
       waveCanvas.width = 1024; waveCanvas.height = 80;
       renderWaveform(waveCanvas, mono);
-      const waveLine = el('div', { class: 'anr-playhead' });
-      waveLine.style.pointerEvents = 'auto';
-      waveLine.style.width = '7px';
-      waveLine.style.marginLeft = '-3px';
-      waveLine.style.cursor = 'col-resize';
-      waveLine.style.background = 'transparent';
-      waveLine.style.borderLeft = '1px solid #fff';
+      const waveLine = el('div', { class: 'anr-playhead is-grabbable' });
       waveWrap.appendChild(waveCanvas);
       waveWrap.appendChild(waveLine);
       audioCard.appendChild(waveWrap);

@@ -3,27 +3,34 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 set FORCE_MODE=0
+set COMMIT_ONLY=0
 set ACTION=%~1
 
-if /i "%ACTION%"=="--force" (set FORCE_MODE=1 & set ACTION=save)
-if /i "%ACTION%"=="save"  goto save
-if /i "%ACTION%"=="push"  goto push
-if /i "%ACTION%"=="pull"  goto pull
+if /i "%ACTION%"=="--force"   (set FORCE_MODE=1 & set ACTION=save)
+if /i "%ACTION%"=="commit"    (set COMMIT_ONLY=1 & set ACTION=save)
+if /i "%ACTION%"=="--commit"  (set COMMIT_ONLY=1 & set ACTION=save)
+if /i "%ACTION%"=="--no-push" (set COMMIT_ONLY=1 & set ACTION=save)
+if /i "%ACTION%"=="save"   goto save
+if /i "%ACTION%"=="commit" goto save
+if /i "%ACTION%"=="push"   goto push
+if /i "%ACTION%"=="pull"   goto pull
 
 :menu
 echo.
 echo === GIT ===
 echo.
-echo   1. Save  (add + commit + push)
-echo   2. Push  (push current branch)
-echo   3. Pull  (pull current branch)
-echo   4. Quit
+echo   1. Save    (add + commit + push)
+echo   2. Commit  (add + commit, no push)
+echo   3. Push    (push current branch)
+echo   4. Pull    (pull current branch)
+echo   5. Quit
 echo.
-set /p CHOICE=Choose [1-4]:
+set /p CHOICE=Choose [1-5]:
 if "%CHOICE%"=="1" goto save
-if "%CHOICE%"=="2" goto push
-if "%CHOICE%"=="3" goto pull
-if "%CHOICE%"=="4" exit /b 0
+if "%CHOICE%"=="2" (set COMMIT_ONLY=1 & goto save)
+if "%CHOICE%"=="3" goto push
+if "%CHOICE%"=="4" goto pull
+if "%CHOICE%"=="5" exit /b 0
 echo Invalid choice.
 goto menu
 
@@ -63,6 +70,7 @@ if errorlevel 1 (
   goto end
 )
 
+if "%COMMIT_ONLY%"=="1" goto committed
 if "%FORCE_MODE%"=="1" goto forcepush
 
 echo.
@@ -107,6 +115,12 @@ goto end
 :skipped
 echo.
 echo Skipped push.
+goto end
+
+
+:committed
+echo.
+echo Committed locally as %VERLABEL% (not pushed).
 goto end
 
 

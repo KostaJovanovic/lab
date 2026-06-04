@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 46;
+const COMMIT_COUNT = 49;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). A commit listed in RELEASE_COMMITS bumps the
@@ -926,7 +926,7 @@ function boot() {
 
   const TIERS = {
     essentials: [
-      './', './index.html', './about.html', './manifest.json', './assets/analyser.css', './assets/fonts.css',
+      './', './index.html', './about.html', './patch.html', './manifest.json', './assets/analyser.css', './assets/fonts.css',
       './assets/analyser/app.js', './assets/analyser/formats.js', './assets/analyser/util.js', './assets/analyser/search.js',
       './assets/analyser/photo.js', './assets/analyser/audio.js', './assets/analyser/audio-analysis.js',
       './assets/analyser/audio-codec.js', './assets/analyser/video.js', './assets/analyser/spectrogram.js',
@@ -937,6 +937,8 @@ function boot() {
       './assets/analyser/photo-convert.js', './assets/analyser/audio-player.js', './assets/analyser/video-avi.js',
       './assets/analyser/docx.js', './assets/analyser/xlsx.js', './assets/analyser/epub.js',
       './assets/analyser/pptx.js', './assets/analyser/stl.js', './assets/analyser/zip.js',
+      './assets/analyser/lrc.js', './assets/analyser/midi.js', './assets/analyser/subtitles.js',
+      './assets/analyser/geo.js', './assets/analyser/markdown.js',
       './assets/favicon.svg', './assets/icon.png', './assets/icon-192.png', './assets/icon-512.png',
       './assets/vendor/exifr.umd.js',
       './assets/fonts/geist-latin.woff2', './assets/fonts/geist-latin-ext.woff2',

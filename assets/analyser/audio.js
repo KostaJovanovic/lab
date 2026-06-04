@@ -6,7 +6,7 @@ import {
   computeSpectrogram, computeReassignedSpectrogram, renderSpectrogram, colormaps,
   frequencyTicks, timeTicks, formatHz, formatTime
 } from './spectrogram.js';
-import { el, row, rowHelp, fmtBytes, h3help, errorCard, integrityCard } from './util.js';
+import { el, row, rowHelp, fmtBytes, h3help, wireInfoToggle, errorCard, integrityCard } from './util.js';
 import {
   computeStats, computeCentroid, computeLufs,
   detectPitch, detectBPM, computeStereoStats
@@ -331,7 +331,7 @@ function specStatsHelp() {
     el('span', { class: 'anr-spec-stats-title' }, 'Analysis'),
     btn,
   ]);
-  btn.addEventListener('click', () => panel.classList.toggle('is-hidden'));
+  wireInfoToggle(btn, panel);
   return [head, panel];
 }
 
@@ -1088,7 +1088,7 @@ export function buildHistogramCard(samples) {
     hctx.fillStyle = `rgb(${g},${g},${g})`;
     hctx.fillRect(i * barW, ch - h, barW, h);
   }
-  hctx.strokeStyle = '#e60023';
+  hctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e60023';
   hctx.lineWidth = 1;
   const center = Math.floor(bins / 2) * barW;
   hctx.beginPath();

@@ -104,7 +104,7 @@ function parseRuns(paragraph, imageMap) {
       for (const t of child.getElementsByTagNameNS(W, 't')) text += t.textContent;
       if (text) {
         const span = document.createElement('span');
-        span.style.cssText = 'color:#2563eb;text-decoration:underline;';
+        span.style.cssText = 'color:var(--accent);text-decoration:underline;';
         span.textContent = text;
         frag.appendChild(span);
       }
@@ -171,7 +171,7 @@ function renderTable(tbl, imageMap) {
     const rowEl = document.createElement('tr');
     for (const tc of wChildren(tr, 'tc')) {
       const td = document.createElement('td');
-      td.style.cssText = 'border:1px solid #ccc;padding:6px 8px;vertical-align:top;';
+      td.style.cssText = 'border:1px solid var(--rule);padding:6px 8px;vertical-align:top;';
       for (const child of tc.children) {
         if (child.namespaceURI !== W) continue;
         if (child.localName === 'p') td.appendChild(renderParagraph(child, imageMap));
@@ -322,7 +322,7 @@ export async function renderDocx(file, container) {
     docCard.appendChild(el('h3', {}, 'Document'));
     const rendered = renderDocumentXml(docXml, imageMap);
     rendered.style.cssText =
-      'max-height:700px;overflow:auto;padding:24px 28px;background:#fff;color:#1a1a1a;' +
+      'max-height:700px;overflow:auto;padding:24px 28px;background:var(--bg);color:var(--fg);' +
       'border:1px solid var(--rule);font-family:Georgia,"Times New Roman",serif;' +
       'font-size:15px;line-height:1.7;';
     docCard.appendChild(rendered);
