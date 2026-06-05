@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 52;
+const COMMIT_COUNT = 53;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). A commit listed in RELEASE_COMMITS bumps the
@@ -425,7 +425,7 @@ function setupHeaderFx() {
     const letters = initLetters();
     let mx = -9999, my = -9999, inside = false;
     let sweep = null;                 // { t0, duration, sx, ex, cy, vx, radius } | null
-    let raf = 0, running = false;
+    let raf = 0, running = false, fxT = 0;
 
     function letterWeight(l) {
       const r = l.el.getBoundingClientRect();
@@ -444,14 +444,21 @@ function setupHeaderFx() {
         sweep.vx = sweep.sx + e * (sweep.ex - sweep.sx);
         if (p >= 1) sweep = null;
       }
-      for (const l of letters) l.el.style.fontWeight = letterWeight(l);
-      if (inside || sweep) raf = requestAnimationFrame(frame);
-      else { running = false; settle(); }
+      if (inside || sweep) {
+        for (const l of letters) l.el.style.fontWeight = letterWeight(l);
+        raf = requestAnimationFrame(frame);
+      } else {
+        // Don't overwrite to base here - leave the letters at their last hover
+        // weight so settle() can ease them back over 0.4s instead of snapping.
+        running = false;
+        settle();
+      }
     }
     function ensureRunning() { if (!running) { running = true; raf = requestAnimationFrame(frame); } }
     function settle() {
+      clearTimeout(fxT);
       for (const l of letters) { l.el.style.transition = 'font-weight 0.4s ease'; l.el.style.fontWeight = l.base; }
-      setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
+      fxT = setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 500);
     }
     function startSweep(radius) {
       const rect = mark.getBoundingClientRect();
@@ -462,7 +469,14 @@ function setupHeaderFx() {
 
     if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
       const activateHover = () => {
-        if (!inside) { inside = true; for (const l of letters) l.el.style.transition = ''; }
+        if (!inside) {
+          inside = true;
+          // Ease the letters into their hover weight on entry, then drop the
+          // transition so subsequent cursor tracking stays instant (no lag).
+          clearTimeout(fxT);
+          for (const l of letters) l.el.style.transition = 'font-weight 0.4s ease';
+          fxT = setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 420);
+        }
         ensureRunning();
       };
       mark.addEventListener('mouseenter', activateHover);
@@ -512,7 +526,7 @@ function setupSectionFx() {
     };
     const unlockWidths = () => { for (const w of words) w.style.width = ''; };
 
-    let mx = -9999, my = -9999, inside = false, raf = 0, running = false;
+    let mx = -9999, my = -9999, inside = false, raf = 0, running = false, fxT = 0;
     const weight = (l) => {
       const r = l.el.getBoundingClientRect();
       const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -520,20 +534,30 @@ function setupSectionFx() {
       return Math.round(l.base * t + 300 * (1 - t));
     };
     const settle = () => {
+      clearTimeout(fxT);
       for (const l of letters) { l.el.style.transition = 'font-weight 0.4s ease'; l.el.style.fontWeight = l.base; }
       // Release the width locks only after letters have eased back to base weight,
       // so removing them can't itself cause a reflow.
-      setTimeout(() => { for (const l of letters) l.el.style.transition = ''; unlockWidths(); }, 500);
+      fxT = setTimeout(() => { for (const l of letters) l.el.style.transition = ''; unlockWidths(); }, 500);
     };
     const frame = () => {
-      for (const l of letters) l.el.style.fontWeight = weight(l);
-      if (inside) raf = requestAnimationFrame(frame);
-      else { running = false; settle(); }
+      if (inside) {
+        for (const l of letters) l.el.style.fontWeight = weight(l);
+        raf = requestAnimationFrame(frame);
+      } else {
+        // Leave letters at their last hover weight so settle() can ease them
+        // back over 0.4s rather than snapping straight to base.
+        running = false;
+        settle();
+      }
     };
     section.addEventListener('mouseenter', () => {
       lockWidths();                 // measure/apply base widths before any weight change
       inside = true;
-      for (const l of letters) l.el.style.transition = '';
+      // Ease the letters in on entry, then drop the transition so tracking is instant.
+      clearTimeout(fxT);
+      for (const l of letters) l.el.style.transition = 'font-weight 0.4s ease';
+      fxT = setTimeout(() => { for (const l of letters) l.el.style.transition = ''; }, 420);
       if (!running) { running = true; raf = requestAnimationFrame(frame); }
     });
     section.addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; });
