@@ -4,7 +4,7 @@
    (waveform + spectrogram via audio module). */
 
 import { makeSpectrogramPanel, makePlayer, buildHistogramCard } from './audio.js';
-import { renderPhoto } from './photo.js';
+import { renderPhoto, revealPhotoSection } from './photo.js';
 import { el, row, rowHelp, fmtBytes, h3help, sha256Row, integrityCard, roundFps, asciiBar } from '../core/util.js';
 import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
 
@@ -136,6 +136,92 @@ async function ffmpegExtractAudio(file, container) {
   const ac = new (window.AudioContext || window.webkitAudioContext)();
   const buf = await wavBlob.arrayBuffer();
   return await ac.decodeAudioData(buf);
+}
+
+// Mean luma (0-255) of a JPEG blob, sampled on a small canvas. Used to tell a
+// black/blank frame from a frame with real picture in it. Returns null on failure.
+async function meanLuma(blob) {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const w = Math.min(160, bmp.width || 160);
+    const h = Math.max(1, Math.round((bmp.height || 90) * (w / (bmp.width || 160))));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0, w, h);
+    if (bmp.close) bmp.close();
+    const d = ctx.getImageData(0, 0, w, h).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return sum / (d.length / 4);
+  } catch (_) {
+    return null;
+  }
+}
+
+// Grab the first non-black frame from a video the browser itself can't decode
+// (ProRes, DNxHD, uncompressed, ...) using the FFmpeg WASM fallback. Seeks a
+// small ladder of timestamps and returns the first frame whose mean luma clears
+// a "not black" threshold (or the brightest one sampled), as { blob, time, luma }.
+// Prefers a WORKERFS mount so multi-GB masters are read by seeking rather than
+// copied whole into WASM memory; falls back to an in-memory copy for smaller
+// files. Returns null if nothing usable could be extracted. Fully guarded.
+const FRAME_BLACK_THRESHOLD = 12;       // mean luma above this = "has picture"
+const FRAME_GRAB_TIMES = [0, 0.2, 0.5, 1, 2, 4, 7, 12];
+
+async function ffmpegFirstNonBlackFrame(file, signal) {
+  const ff = await loadFFmpeg();
+  if (signal && signal.aborted) return null;
+
+  const MOUNT = '/anrmnt';
+  let input = null;
+  let cleanup = async () => {};
+  try {
+    // Preferred path: mount the File via WORKERFS (no full in-memory copy).
+    let mounted = false;
+    try {
+      await ff.createDir(MOUNT);
+      mounted = await ff.mount('WORKERFS', { files: [file] }, MOUNT);
+    } catch (_) { mounted = false; }
+    if (mounted) {
+      input = MOUNT + '/' + file.name;
+      cleanup = async () => {
+        try { await ff.unmount(MOUNT); } catch (_) {}
+        try { await ff.deleteDir(MOUNT); } catch (_) {}
+      };
+    } else {
+      // Fallback: copy into MEMFS, but only when small enough to fit WASM memory.
+      try { await ff.deleteDir(MOUNT); } catch (_) {}
+      if (file.size > 1_200 * 1024 * 1024) return null;
+      const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
+      await ff.writeFile('anr_input', await fetchFile(file));
+      input = 'anr_input';
+      cleanup = async () => { try { await ff.deleteFile('anr_input'); } catch (_) {} };
+    }
+
+    let best = null;
+    for (const t of FRAME_GRAB_TIMES) {
+      if (signal && signal.aborted) break;
+      try {
+        // -ss before -i = fast input seek (exact for all-intra codecs like ProRes).
+        await ff.exec(['-ss', String(t), '-i', input, '-frames:v', '1', '-q:v', '3', '-y', 'anr_frame.jpg'], 45000);
+      } catch (_) { continue; }
+      let data = null;
+      try { data = await ff.readFile('anr_frame.jpg'); } catch (_) {}
+      try { await ff.deleteFile('anr_frame.jpg'); } catch (_) {}
+      if (!data || !data.length) continue;
+      const blob = new Blob([data.buffer || data], { type: 'image/jpeg' });
+      const luma = await meanLuma(blob);
+      if (luma == null) continue;
+      if (luma > FRAME_BLACK_THRESHOLD) return { blob, time: t, luma };
+      if (!best || luma > best.luma) best = { blob, time: t, luma };
+    }
+    return best; // all sampled frames were ~black: return the brightest (or null)
+  } catch (_) {
+    return null;
+  } finally {
+    await cleanup();
+  }
 }
 
 // ---------- helpers ----------
@@ -407,8 +493,26 @@ const VIDEO_CODEC_NAMES = {
   hvc1: 'H.265 / HEVC', hev1: 'H.265 / HEVC',
   av01: 'AV1', vp09: 'VP9', vp08: 'VP8',
   mp4v: 'MPEG-4 Visual', 'dvh1': 'Dolby Vision (HEVC)', 'dvhe': 'Dolby Vision (HEVC)',
-  s263: 'H.263', 'mjpg': 'Motion JPEG', jpeg: 'Motion JPEG'
+  s263: 'H.263', 'mjpg': 'Motion JPEG', jpeg: 'Motion JPEG',
+  // Professional / intermediate codecs. Browsers ship no decoder for these, so
+  // they never play in <video>; we still name them for identification and to
+  // explain why playback fails (see PRO_VIDEO_CODECS / renderUnplayableVideoInfo).
+  apco: 'Apple ProRes 422 Proxy', apcs: 'Apple ProRes 422 LT',
+  apcn: 'Apple ProRes 422', apch: 'Apple ProRes 422 HQ',
+  ap4h: 'Apple ProRes 4444', ap4x: 'Apple ProRes 4444 XQ',
+  AVdn: 'Avid DNxHD / DNxHR', AVdh: 'Avid DNxHR',
+  cfhd: 'GoPro CineForm', CFHD: 'GoPro CineForm',
+  dvc: 'DV', dvcp: 'DV (PAL)', dvpp: 'DVCPRO', dv5p: 'DVCPRO50', dvh5: 'DVCPRO HD',
+  icod: 'Apple Intermediate Codec', 'rle ': 'QuickTime Animation (RLE)',
+  png: 'PNG (video track)', 'v210': 'Uncompressed 10-bit 4:2:2', '2vuy': 'Uncompressed 8-bit 4:2:2'
 };
+// Codecs that are professional/intermediate/uncompressed - identifiable but never
+// playable in a browser. Used to tailor the "can't play this codec" explanation.
+const PRO_VIDEO_CODECS = new Set([
+  'apco', 'apcs', 'apcn', 'apch', 'ap4h', 'ap4x', 'AVdn', 'AVdh',
+  'cfhd', 'CFHD', 'dvc', 'dvcp', 'dvpp', 'dv5p', 'dvh5', 'icod',
+  'rle ', 'v210', '2vuy'
+]);
 const AUDIO_CODEC_NAMES = {
   mp4a: 'AAC', alac: 'Apple Lossless (ALAC)', 'ac-3': 'Dolby Digital (AC-3)',
   'ec-3': 'Dolby Digital Plus (E-AC-3)', 'Opus': 'Opus', sowt: 'PCM', twos: 'PCM',
@@ -488,6 +592,16 @@ async function detectIsobmffTracks(file) {
 
     if (isVideo && !result.video) {
       const v = { codec: codecFcc, codecName: VIDEO_CODEC_NAMES[codecFcc] || codecFcc };
+
+      // Stored pixel dimensions from the VisualSampleEntry: box hdr(8) +
+      // SampleEntry(8) + 16 pre-defined/reserved, then width(2) height(2).
+      try {
+        const dim = entryStart + 8 + 8 + 16;
+        if (dim + 4 <= moovSize) {
+          const w = view.getUint16(dim), h = view.getUint16(dim + 2);
+          if (w > 0 && h > 0) { v.width = w; v.height = h; }
+        }
+      } catch (_) {}
 
       // Rotation from tkhd matrix. tkhd: version(1) flags(3) then times; matrix
       // sits at a fixed offset from the box data start (version-dependent).
@@ -577,6 +691,25 @@ async function detectIsobmffTracks(file) {
     }
   }
 
+  // Movie duration (seconds) from mvhd, for the bitrate/duration readout when the
+  // file can't be decoded by the browser.
+  try {
+    const mvhd = findAllBoxes(view, 8, moovSize, 'mvhd')[0];
+    if (mvhd) {
+      const d = mvhd.offset + mvhd.headerSize;
+      const ver = view.getUint8(d);
+      let timescale, duration;
+      if (ver === 1) {
+        timescale = view.getUint32(d + 20);
+        duration = view.getUint32(d + 24) * 0x100000000 + view.getUint32(d + 28);
+      } else {
+        timescale = view.getUint32(d + 12);
+        duration = view.getUint32(d + 16);
+      }
+      if (timescale > 0 && duration > 0) result.durationSec = duration / timescale;
+    }
+  } catch (_) {}
+
   if (!result.video && !result.audio) return null;
   return result;
 }
@@ -617,6 +750,92 @@ function appendTrackRows(tbl, tracks) {
     if (a.channels) label += '  (' + (a.channels === 1 ? 'mono' : a.channels === 2 ? 'stereo' : a.channels + 'ch') + ')';
     tbl.appendChild(rowHelp('Audio codec', label,
       'The audio compression format and channel layout of the embedded sound track, read from the MP4/MOV sample-description box.'));
+  }
+}
+
+// Shown when neither the off-screen probe nor a visible <video> can decode the
+// file: the browser has no decoder for this codec (ProRes, DNxHD, uncompressed,
+// etc.). Instead of a bare "couldn't load" error, surface the container/codec
+// metadata read straight from the file, with a plain explanation of why it won't
+// play and how to make it playable. Degrades gracefully for non-ISOBMFF files
+// (shows name / size / container only).
+async function renderUnplayableVideoInfo(file, header, resultsEl, signal) {
+  let tracks = null;
+  try { tracks = await detectIsobmffTracks(file); } catch (_) {}
+  const v = tracks && tracks.video;
+  const isPro = !!(v && PRO_VIDEO_CODECS.has(v.codec));
+  const named = !!(v && v.codecName && v.codecName !== v.codec);
+
+  let msg;
+  if (isPro) {
+    msg = (v.codecName || 'This codec') + ' is a professional editing / master format that no web browser can decode, so it can’t be played here. The file is fine - convert it to H.264 (MP4) to view it in a browser.';
+  } else if (named) {
+    msg = 'Your browser has no decoder for this video’s codec (' + v.codecName + '), so it can’t be played here. The file itself is fine - converting it to H.264 (MP4) will make it playable.';
+  } else {
+    msg = 'Your browser can’t decode this video’s codec, so it can’t be played here. The file itself may be fine - converting it to H.264 (MP4) usually makes it playable.';
+  }
+  resultsEl.appendChild(el('div', { class: 'anr-info' }, msg));
+
+  // Preview placeholder - filled in (or removed) after the FFmpeg frame grab at
+  // the end of this function. Sits above the metadata so the picture leads.
+  const prevCard = el('div', { class: 'anr-card' });
+  prevCard.appendChild(el('h3', {}, 'Preview'));
+  const prevStatus = el('p', { class: 'anr-hint' }, 'Extracting the first visible frame with FFmpeg…');
+  prevCard.appendChild(prevStatus);
+  resultsEl.appendChild(prevCard);
+
+  const infoCard = el('div', { class: 'anr-card' });
+  infoCard.appendChild(el('h3', {}, 'File info'));
+  const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Name', file.name));
+  tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
+  tbl.appendChild(rowHelp('MIME', file.type || '-', "The MIME type is the standard label for the file's format (for example image/jpeg or audio/mpeg). The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
+  if (header && header.container) tbl.appendChild(row('Container', header.container + (header.brand ? '  (' + header.brand + ')' : '')));
+  if (v && v.width && v.height) {
+    tbl.appendChild(row('Resolution', `${v.width} × ${v.height} px`));
+    tbl.appendChild(row('Aspect ratio', aspectRatio(v.width, v.height)));
+  }
+  const dur = tracks && tracks.durationSec;
+  if (dur && dur > 0) {
+    tbl.appendChild(row('Duration', formatDuration(dur)));
+    const bitrate = (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)';
+    tbl.appendChild(rowHelp('Bitrate (total)', bitrate, 'Average data rate across the whole file - video, audio, and container overhead combined. Computed as file size ÷ duration, so it is an overall average, not the encoder’s target bitrate.'));
+  }
+  if (v && v.width && v.height) {
+    tbl.appendChild(rowHelp('Frame size', ((v.width * v.height) / 1_000_000).toFixed(2) + ' MP', 'Pixels per frame in megapixels (width × height ÷ 1,000,000). A rough indicator of how much raw image data each frame holds before compression.'));
+  }
+  // Codec / rotation / HDR / audio-codec rows from the moov walk (best-effort).
+  try { appendTrackRows(tbl, tracks); } catch (_) {}
+  infoCard.appendChild(tbl);
+  resultsEl.appendChild(infoCard);
+
+  // SHA-256 (skipped for very large files, matching the other video paths).
+  if (file.size <= 500 * 1024 * 1024) resultsEl.appendChild(integrityCard(file));
+
+  // Pull the first non-black frame out via FFmpeg (decodes ProRes/DNxHD/etc. that
+  // the browser can't). Best-effort: on failure the placeholder is just removed.
+  try {
+    const frame = await ffmpegFirstNonBlackFrame(file, signal);
+    if (signal && signal.aborted) return;
+    if (!frame) { prevCard.remove(); return; }
+    prevStatus.remove();
+    prevCard.appendChild(el('img', {
+      src: URL.createObjectURL(frame.blob),
+      alt: 'First frame of ' + file.name,
+      style: 'max-width:100%; max-height:480px; display:block; border:1px solid var(--hairline); background:#0a0a0a;',
+    }));
+    prevCard.appendChild(el('p', { class: 'anr-hint' }, frame.luma > FRAME_BLACK_THRESHOLD
+      ? 'First non-black frame, at ' + frame.time.toFixed(1) + 's. Decoded with FFmpeg since the browser can’t play this codec.'
+      : 'This video appears to open on black; showing the brightest of the first frames (' + frame.time.toFixed(1) + 's).'));
+    const basename = (file.name || 'video').replace(/\.[^/.]+$/, '');
+    const frameFile = new File([frame.blob], basename + '_frame_' + frame.time.toFixed(1) + 's.jpg', { type: 'image/jpeg' });
+    const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+      const pr = revealPhotoSection();
+      renderPhoto(frameFile, pr, { sourceNote: 'Frame extracted from ' + file.name + ' at ' + frame.time.toFixed(1) + 's (the video itself can’t be decoded in the browser).' });
+    } }, 'Analyse in Photo section');
+    prevCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [analyseBtn]));
+  } catch (_) {
+    prevCard.remove();
   }
 }
 
@@ -916,8 +1135,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
         const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
         const frameFile = new File([blob], `frame_${playerEl.currentTime.toFixed(3)}s.png`, { type: 'image/png' });
         const pr = document.getElementById('photoResults');
-        if (pr) { renderPhoto(frameFile, pr); const ps = document.getElementById('photo');
-          if (ps) window.scrollTo({ top: ps.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' }); }
+        if (pr) { renderPhoto(frameFile, pr); }
       } catch (_) {}
       analyseBtn.disabled = false; analyseBtn.textContent = 'Analyse frame';
     }}, 'Analyse frame');
@@ -1253,8 +1471,6 @@ export async function renderVideo(file, resultsEl) {
           const photoResults = document.getElementById('photoResults');
           if (photoResults) {
             renderPhoto(frameFile, photoResults);
-            const photoSection = document.getElementById('photo');
-            if (photoSection) window.scrollTo({ top: photoSection.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
           }
         }}, 'Analyse frame');
 
@@ -1391,8 +1607,10 @@ export async function renderVideo(file, resultsEl) {
     const shownFallback = await renderVisibleVideoFallback(file, url, header, resultsEl, renderSignal);
     if (shownFallback) return;
 
-    resultsEl.appendChild(el('div', { class: 'anr-error' },
-      'Could not load this video. Format may not be supported by your browser.'));
+    // The browser genuinely can't decode this codec (ProRes, DNxHD, etc.). Show
+    // the container/codec metadata and a clear explanation instead of a bare error,
+    // and try to pull the first visible frame out with FFmpeg.
+    await renderUnplayableVideoInfo(file, header, resultsEl, renderSignal);
     return;
   }
 
@@ -1585,8 +1803,6 @@ export async function renderVideo(file, resultsEl) {
     const photoResults = document.getElementById('photoResults');
     if (photoResults) {
       renderPhoto(frameFile, photoResults);
-      const photoSection = document.getElementById('photo');
-      if (photoSection) window.scrollTo({ top: photoSection.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
     }
     analyseFrameBtn.disabled = false;
     analyseFrameBtn.textContent = 'Analyse frame';

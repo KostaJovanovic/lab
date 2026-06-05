@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 56;
+const COMMIT_COUNT = 57;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). A commit listed in RELEASE_COMMITS bumps the
@@ -346,16 +346,14 @@ function splitText(container, baseWeight) {
   let word = null;  // current per-word wrapper; null between words
   function makeSpan(ch, parent) {
     if (ch === ' ') {
-      // Space ends the word and becomes the sole wrap point: a fixed-width
-      // inline-block (so the header sweep glides smoothly across the gap) plus a
-      // <wbr> so the line can break here. Without grouping, adjacent inline-block
-      // letters break between themselves and a word can split mid-letter.
+      // Space ends the word and is the sole wrap point. A plain text space (not a
+      // fixed-width inline-block) is used so it collapses at line ends like normal
+      // whitespace - an inline-block space stays as a visible box when the heading
+      // wraps, throwing a stray gap onto the wrapped line. The per-word nowrap
+      // wrappers still keep words from splitting mid-letter, and a single space is
+      // a consistent enough width for the header sweep to glide across.
       word = null;
-      const sp = document.createElement('span');
-      sp.style.display = 'inline-block';
-      sp.style.width = '0.25em';
-      parent.appendChild(sp);
-      parent.appendChild(document.createElement('wbr'));
+      parent.appendChild(document.createTextNode(' '));
       return;
     }
     if (!word) {
@@ -387,6 +385,102 @@ function splitText(container, baseWeight) {
     word = null;
   }
   return spans;
+}
+
+// Changelog "tl;dr" summaries - one short (<=3 sentence) recap per patch, keyed by
+// the version number shown on patch.html. The tl;dr button (setupPatchTldr) swaps
+// each entry's full bullet list for the matching line here. When you add a new
+// patch entry to patch.html, add its one-liner here too (newest at the top).
+const PATCH_TLDR = {
+  '1.28': 'The Changelog gains a tl;dr button that condenses every release into a sentence or two apiece, so you can skim the whole history at once. Tap again for the full notes.',
+  '1.27': 'Internal cleanup - duplicated helper code across the format parsers was merged into shared utilities. Nothing changes in how the app works.',
+  '1.26': 'Images pulled from other files (album art, e-book covers, rendered PDF pages) now open in the Photo section with the full readout. PDF-page OCR asks which language and can remember it, and the supported-formats list is grouped into Full, Core and Extended. Opening a PDF in the browser now opens a new tab instead of downloading it.',
+  '1.25': 'Internal reorganisation of the site’s files and folders, with every reference updated to match. Purely tidier under the hood; nothing changes for you.',
+  '1.24': 'The title and section-heading hover effect now eases smoothly as the cursor both arrives and leaves, instead of snapping back abruptly.',
+  '1.23': 'Many more camera RAW formats open with full photo analysis, and the shutter-actuation count is read where present. Edit sidecars (Lightroom and Camera Raw .xmp, Capture One, DxO) can be imported to list the applied develop settings, and computational-photo wrappers like ProRAW, Live/Motion Photo and Ultra HDR are flagged.',
+  '1.22': 'Hundreds more formats are recognised, with new viewers for comic books, SQLite databases and JPEG 2000. Files you could already open gain deeper analysis - PNG AI prompts, MP3 bitrate, video codec/rotation/HDR, PDF and Office internals, ZIP safety, GPX elevation - and a file with the wrong or missing extension is detected for what it really is.',
+  '1.21': 'The letter-thinning hover effect now reaches the section headings on the About and Changelog pages. Heading letter-spacing also holds steady when you zoom the page.',
+  '1.20': 'A site-wide visual tidy-up - one accent colour, consistent spacing and type, unified hover and focus states. Every control now shows a keyboard focus outline, and the phone layout switches at one consistent width.',
+  '1.19': 'Shortcut files are decoded - Windows .lnk reveals its target and details, while .url and .webloc show their address. THM camera thumbnails open as photos, Canon catalogs and raw disk images (partition table plus filesystem) are read, and Markdown opens reliably in its viewer.',
+  '1.18': 'Markdown opens as a formatted, readable page, and the spectrogram gains a sharper Reassigned view, deeper zoom, and a Peak stat that points to the loudest moment. Photo aspect ratio now names the nearest standard ratio, and the loading animation no longer stutters under load.',
+  '1.17': 'Cover art in music files and EPUB books is fully analysed as a photo right where it appears. More readouts carry plain-language help notes, and dropping a file onto the About or Changelog page now reliably hands it to the analyser.',
+  '1.16': 'Pictures inside Word, PowerPoint, EPUB and PDF files can be analysed in place. Audio the browser cannot play (WMA, AC3, DTS, AMR) still yields its tags, lyrics and cover art; ZIP shows per-file compression and CRC, Lightroom catalogs are read, and more file types get a SHA-256 fingerprint.',
+  '1.15': 'Subtitle files open as a timed cue list and MIDI files as a readable score (tempo, instruments, note counts). Map data - GPX, KML and GeoJSON - is plotted on a map with distance, elevation range and bounds.',
+  '1.14': 'The audio amplitude histogram now sits directly under the spectrogram, lined up with it. In fullscreen a floating exit button appears and the redundant Height control is hidden.',
+  '1.13': 'Music files surface their tags and lyrics, including .lrc timed lyrics, and FLAC reports its true sample rate, bit depth and channels. The spectrogram controls are reorganised with a rolling 15-second live buffer, and video scene detection no longer hijacks the player.',
+  '1.12': 'The spectrogram gains a Sensitivity slider and an at-a-glance stats line - peak frequency, range, dynamic range and resolution. The Patch notes page is renamed Changelog, alongside several header and About-page layout fixes.',
+  '1.11': 'Plain-language help buttons now sit beside almost every readout, across photos, sound, video, PDF, STL models and unknown files. The photo LSB explanation became a tidy toggle.',
+  '1.10': 'The file-loading popup gains a Cancel button that aborts a slow or huge load - even mid folder-scan - and hands the page back. Typography was tidied site-wide.',
+  '1.09': 'Drop a folder or ZIP for an interactive treemap sized by disk use, clickable down to individual files. Audio cover art is shown and analysable, cloud-only files are detected and explained, executables reveal far more detail, and Steam and Valve files are parsed.',
+  '1.08': 'Published the 1.07 update notes.',
+  '1.07': 'OCR now bundles only English for offline use; every other language streams from a CDN on first use, then caches. All 32 languages stay in the picker, and the Complete download still grabs them all.',
+  '1.06': 'The FFmpeg extractor and larger OCR packs now stream from a CDN the first time they are needed, with a progress bar, then cache for offline use. Unknown addresses fall back to the home page.',
+  '1.05': 'The app now updates itself - a freshly-deployed version is detected and applied automatically, with no hard-refresh needed.',
+  '1.04': 'A loading bar slides up while a large file is read, and the About page describes every format with deep-links to any format or extension. Added a proper 404 page and refreshed share previews.',
+  '1.03': 'Internal version-numbering housekeeping. No visible change.',
+  '1.02': 'Relabelled the displayed version number. No feature change.',
+  '1.01': 'OCR now reads 32 languages and the DOCX viewer renders embedded images inline. A Clear all site data button wipes caches, and the app runs fully offline including FFmpeg and OCR.',
+  '1.0': 'The big release - Analyser becomes a full document and 3D workstation, adding Excel, EPUB and PowerPoint viewers and an interactive 3D STL viewer. Folders and ZIPs show as a tree, many new formats are identified, and PDF gains image extraction, page export and hover-to-Analyse-or-OCR.',
+  '0.28': 'Published the 0.27 update notes and tidied older releases into the dropdown.',
+  '0.27': 'Dark mode now follows your operating-system setting until you choose one yourself. Saved settings auto-expire after 7 idle days.',
+  '0.26': 'New Word (DOCX) viewer, AI-image detection from 30+ tools, plus G-code and log-file analysis. Full iPhone-video analysis, and the mobile picker no longer opens the camera on iOS.',
+  '0.25': 'The decorative side rules now stay anchored on wide displays.',
+  '0.24': 'Real metadata pulled from many proprietary files - fonts, FL Studio, RAR, 7-Zip, SQLite and GIMP XCF. BPM is read from tags, transparent images get a checkerboard toggle, and HTML files get a sandboxed preview.',
+  '0.23': 'Video scene detection runs automatically, scoring each cut and tucking thumbnails into a dropdown. Photos with no GPS fix no longer show a 0,0 map.',
+  '0.22': 'Internal module split. Behaviour unchanged.',
+  '0.21': 'Thin edge guides on very wide screens mark where the page ends, and the codebase began to be modularised.',
+  '0.20': 'A central format catalog now drives the supported-types list, the search and the About tables. Mobile gains tap-to-upload, and the About page is cached offline.',
+  '0.19': 'Inline help explanations for audio and photo stats such as RMS, peak and spectral centroid. The spectrogram playhead now tracks correctly when zoomed.',
+  '0.18': 'Drop a folder for a count, size and type overview with a tree, and AVI files are analysed directly. Dropzones accept any file with a searchable formats popup, and 100+ more formats are identified.',
+  '0.17': 'First public build - a new About page lists every supported format with offline download tiers. Over 100 proprietary formats are identified, and PDF gains all-pages text plus OCR of image-only pages.',
+  '0.16': 'Search across every metadata field, new CSV and SVG handlers, and unknown-file identification with a hex dump.',
+  '0.15': 'The spectrogram defaults to a linear axis and compact height, with icon buttons, smoother scrolling and a new Slowest speed.',
+  '0.14': 'Step through search matches with prev/next arrows, plus a mobile search overlay. The live spectrogram gains Save PNG, Pause/Resume and Record.',
+  '0.13': 'A nav search box highlights and jumps to matching cards and metadata rows; Esc clears it.',
+  '0.12': 'Lightbox inspection tools - Focus peaking, Highlights (blown-out) and Shadows (crushed). Converted files now state preview versus full resolution.',
+  '0.11': 'Custom play, pause and seek players for audio and video, with audio synced to the spectrogram. Added help across the photo tools, and OCR filters low-confidence words and gains a Stop button.',
+  '0.10': 'Dropping a new file fully clears the previous results. Added inline help for the spectrogram and LSB, and a default magma colourmap.',
+  '0.09': 'Analyse frame runs the full photo analysis on any video frame, and unviewable RAW photos decode through a built-in ImageMagick converter. Video audio-track extraction gains an FFmpeg fallback.',
+  '0.08': 'Camera RAW support (ARW, CR2/CR3, NEF, DNG and more) via the embedded preview, with per-language OCR. Added a lightbox toolbar with a GPS map and zoomable histogram and LSB.',
+  '0.07': 'Added PDF, ZIP, SVG and CSV/TSV viewers. Plus photo LSB planes, audio BPM and a stereo vectorscope, video scene-change detection, and self-hosted fonts for a faster offline load.',
+  '0.06': 'Removed unused scratch favicon files.',
+  '0.05': 'Pretty-printed JSON and XML with text statistics, drag-select and export a waveform region as WAV, and video frame-stepping with a contact-sheet PNG.',
+  '0.04': 'New video support - container, codec, resolution, frame rate, bitrate, frame capture and audio extraction - and a dark mode. Added paste-from-clipboard, multi-file drop and automatic HEIC to JPEG.',
+  '0.03': 'Code documentation only. No visible change.',
+  '0.02': 'The progress label no longer overlaps the OCR box, and all eight palette swatches fit on one row.',
+  '0.01': 'Analyser launches - on-device file analysis with nothing ever uploaded. Drop any file for magic-byte ID, a hex dump, SHA-256 and a text preview, full photo EXIF with a GPS map and OCR, and a live audio waveform and spectrogram.',
+};
+
+// Wire the changelog "tl;dr" button: inject each patch's condensed summary (once),
+// then toggle a class that swaps the bullet lists for those summaries and force-opens
+// the "Older updates" fold so the entire history shows at once. Re-runs per navigation;
+// guarded on the button element so it binds only once per DOM.
+function setupPatchTldr() {
+  const section = document.getElementById('when');
+  const btn = document.getElementById('tldrToggle');
+  if (!section || !btn || btn._tldrBound) return;
+  btn._tldrBound = true;
+
+  section.querySelectorAll('.patch-entry').forEach((entry) => {
+    if (entry.querySelector('.patch-tldr')) return;
+    const verEl = entry.querySelector('.patch-version');
+    const ver = verEl ? (verEl.textContent || '').trim().split(/\s+/)[0] : '';
+    const text = PATCH_TLDR[ver];
+    if (!text) return;
+    const p = el('p', { class: 'patch-tldr' }, text);
+    entry.insertBefore(p, entry.querySelector('.patch-list'));
+  });
+
+  const fold = section.querySelector('.about-formats');
+  btn.addEventListener('click', () => {
+    const on = section.classList.toggle('tldr-mode');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.classList.toggle('is-active', on);
+    if (fold) {
+      if (on) { fold._tldrPrevOpen = fold.open; fold.open = true; }
+      else { fold.open = fold._tldrPrevOpen || false; }
+    }
+  });
 }
 
 // Header letter-proximity / sweep effect. Re-runs per navigation because
@@ -608,6 +702,21 @@ function boot() {
     document.querySelectorAll('.nav-link.is-disabled').forEach(link => link.classList.remove('is-disabled'));
   }
 
+  // Once a file is loaded the three pick-a-file dropzones are redundant, so swap
+  // them for a single "Analyse next file?" button that reloads to a fresh page.
+  function showAnalyseNext() {
+    const grid = document.querySelector('.quickdrop');
+    const btn = $('analyseNext');
+    if (grid) grid.hidden = true;
+    if (btn) btn.hidden = false;
+  }
+  function restoreQuickdrop() {
+    const grid = document.querySelector('.quickdrop');
+    const btn = $('analyseNext');
+    if (grid) grid.hidden = false;
+    if (btn) btn.hidden = true;
+  }
+
   // Stop the in-flight load: drop its results and restore the empty page state
   // (the three analysis sections are explainer sections - visible by default).
   function cancelLoad(token) {
@@ -615,6 +724,7 @@ function boot() {
     token.cancelled = true;
     if (_currentToken === token) _currentToken = null;
     clearResultsUI();
+    restoreQuickdrop();
     ['photo', 'audio', 'video'].forEach((id) => { const sec = $(id); if (sec) sec.hidden = false; });
   }
 
@@ -636,6 +746,7 @@ function boot() {
 
     firstFileLoaded = true;
     if (pageDropEl) pageDropEl.hidden = true;
+    showAnalyseNext();
 
     // Probe that the bytes are actually readable before any renderer tries. A
     // cloud-only file (OneDrive/iCloud/etc.) whose sync app can't hydrate it has
@@ -651,7 +762,6 @@ function boot() {
       card.appendChild(el('h3', {}, 'File unavailable'));
       card.appendChild(cloudFileWarning(file));
       unknownResults.appendChild(card);
-      unknownResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
@@ -726,14 +836,6 @@ function boot() {
     // moves its heading up into the numbered card and hides the lede.
     function markAnalysed(id) { const sec = $(id); if (sec) sec.classList.add('is-analysed'); }
 
-    function scrollTo(hash) {
-      const el = document.querySelector(hash);
-      if (el) {
-        const top = el.getBoundingClientRect().top + window.scrollY - 60;
-        window.scrollTo({ top, behavior: 'smooth' });
-      }
-    }
-
     const sectionPhoto = $('photo');
     const sectionAudio = $('audio');
     const sectionVideo = $('video');
@@ -763,7 +865,6 @@ function boot() {
     };
     (route.nav || []).forEach(markNav);
     (route.analysed || []).forEach(markAnalysed);
-    scrollTo(route.scroll);
     const extOverride = force && force.ext;
     let renderPromise;
     if ((kind === 'proprietary' || kind === 'comic') && extOverride) {
@@ -794,6 +895,13 @@ function boot() {
   }
   _handleFile = handleFile;
   window._anrHandleFile = handleFile;
+
+  // "Analyse next file?" (shown once a file is loaded) reloads to a clean page.
+  const analyseNextBtn = $('analyseNext');
+  if (analyseNextBtn && !analyseNextBtn._wired) {
+    analyseNextBtn._wired = true;
+    analyseNextBtn.addEventListener('click', () => location.reload());
+  }
 
   if ($('photoDrop')) initPhoto({
     dropEl:    $('photoDrop'),
@@ -1125,6 +1233,9 @@ function boot() {
     });
   });
 
+  // Changelog "tl;dr" button (patch.html only; no-ops elsewhere).
+  setupPatchTldr();
+
   // ----- Scroll-spy for the sticky nav (re-binds per page) -----
   const links = Array.from(document.querySelectorAll('.site-nav a[href^="#"]'));
   const sections = links
@@ -1144,22 +1255,24 @@ function boot() {
   window.addEventListener('scroll', _scrollHandler, { passive: true });
   _scrollHandler();
 
-  // ----- Smooth in-page anchors -----
-  for (const a of document.querySelectorAll('a[href^="#"]')) {
-    a.addEventListener('click', (e) => {
-      const target = document.querySelector(a.getAttribute('href'));
-      if (!target) return;
-      e.preventDefault();
-      const top = target.getBoundingClientRect().top + window.scrollY - 60;
-      window.scrollTo({ top, behavior: 'smooth' });
+  // ----- Collapsible analysis cards -----
+  // One delegated listener (added once) toggles a card open/closed when its title
+  // (a direct-child <h3>) is clicked. Cards render open; .is-collapsed hides the
+  // body via CSS. Clicks on interactive controls in a title don't toggle.
+  if (!boot._cardToggleWired) {
+    boot._cardToggleWired = true;
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, input, select, textarea, label')) return;
+      const h3 = e.target.closest('h3');
+      if (!h3) return;
+      const card = h3.parentElement;
+      if (card && card.classList.contains('anr-card')) card.classList.toggle('is-collapsed');
     });
   }
 
-  // ----- Home button -----
-  const homeBtn = $('navHomeBtn');
-  if (homeBtn) {
-    homeBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  }
+  // ----- In-page anchors -----
+  // Native anchor jumps handle navigation (offset via CSS scroll-margin-top); no
+  // programmatic/animated autoscroll.
 
   // ----- Desktop only: match the Sound nav button to the sound dropzone width -----
   const soundLink = document.querySelector('.site-nav a[href="#audio"]');
@@ -1235,6 +1348,11 @@ function boot() {
       TESS_DATA + '/tesseract-core-lstm.wasm',
       './assets/vendor/leaflet/leaflet.css',
       './assets/vendor/leaflet/leaflet.js',
+      './assets/vendor/leaflet/images/marker-icon.png',
+      './assets/vendor/leaflet/images/marker-icon-2x.png',
+      './assets/vendor/leaflet/images/marker-shadow.png',
+      './assets/vendor/leaflet/images/layers.png',
+      './assets/vendor/leaflet/images/layers-2x.png',
       './assets/vendor/heic2any.min.js',
       './assets/vendor/pdfjs/pdf.min.mjs',
       './assets/vendor/pdfjs/pdf.worker.min.mjs',
@@ -1435,8 +1553,13 @@ function boot() {
     const target = document.getElementById(id);
     if (!target) return;
     const details = target.closest('details');
-    if (details) details.open = true;
-    requestAnimationFrame(() => target.scrollIntoView({ block: 'center' }));
+    // Only reveal+scroll when the deep-link target is inside a collapsed <details>
+    // (the supported-formats list), which a native hash jump can't reach. Plain
+    // section anchors are left to the browser's native jump - no extra autoscroll.
+    if (details) {
+      details.open = true;
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'center' }));
+    }
   }
   revealHashTarget();
   if (!boot._hashWired) {

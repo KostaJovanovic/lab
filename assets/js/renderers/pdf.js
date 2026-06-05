@@ -559,7 +559,6 @@ export async function renderPdf(file, resultsEl) {
             if (photoResults) {
               renderPhoto(photoFile, photoResults,
                 { sourceNote: 'Page ' + pageNum + ' of ' + (file.name || 'this PDF') + ', rendered and analysed as an image.' });
-              photoResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
             analyseBtn.textContent = 'Analyse';
           }, 'image/png');

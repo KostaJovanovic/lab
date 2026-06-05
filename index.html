@@ -71,7 +71,7 @@
       <span class="site-kicker">A 01 - 03</span>
       <h1 class="site-title">Analyser</h1>
       <p class="site-byline">by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
-      <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
+      <p class="site-sub">Photos, sound, video - and almost any other file. Fully local; nothing you drop ever leaves your browser.</p>
       <nav class="site-mark-nav" aria-label="Pages">
         <a href="about.html" class="header-btn">About</a>
         <a href="patch.html" class="header-btn">Changelog</a>
@@ -89,9 +89,6 @@
 </header>
 
 <nav class="site-nav" aria-label="Primary">
-  <div class="nav-home" id="navHomeWrap">
-    <button type="button" class="nav-home-btn" id="navHomeBtn" aria-label="Home - scroll to top"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7.1 7.5 1.8l6 5.3"/><path d="M3.2 6.1V13.2h8.6V6.1"/></svg></button>
-  </div>
   <a href="#photo" class="nav-link"><span class="nav-num">01</span><span>Photo</span></a>
   <a href="#audio" class="nav-link"><span class="nav-num">02</span><span>Sound</span></a>
   <a href="#video" class="nav-link"><span class="nav-num">03</span><span>Video</span></a>
@@ -140,6 +137,8 @@
     </div>
   </section>
 
+  <button type="button" id="analyseNext" class="analyse-next" hidden>Analyse next file?</button>
+
   <div id="fmtOverlay" class="fmt-overlay" hidden>
     <div class="fmt-overlay-inner">
       <div class="fmt-overlay-header">
@@ -164,7 +163,7 @@
         <div id="photoOcrSlot"  class="section-meta-slot"></div>
       </aside>
       <div class="section-content">
-        <h2 class="section-head">Read every byte of metadata a camera left behind.</h2>
+        <h2 class="section-head">See every byte of metadata a camera left behind.</h2>
         <p class="section-lede">EXIF, IPTC, XMP, ICC. Dimensions, exact aspect ratio, RGB histogram, dominant palette, GPS map, on-device OCR.</p>
 
         <div id="photoResults" class="anr-results" hidden></div>

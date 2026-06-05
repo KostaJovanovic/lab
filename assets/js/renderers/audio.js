@@ -572,7 +572,6 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
       const topRecBtn = document.getElementById('audioRecord');
       if (topRecBtn && topRecBtn.classList.contains('is-recording')) return;
       if (ar) startRecording(ar, topRecBtn || recBtn);
-      document.getElementById('audio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     liveBtn.addEventListener('click', () => document.getElementById('audioLive')?.click());
     actions.push(ctl('', recBtn), ctl('', liveBtn));
@@ -1532,7 +1531,6 @@ async function startLive(resultsEl, liveBtn) {
   wrap.appendChild(yWrap); wrap.appendChild(scrollEl);
   card.appendChild(wrap);
   resultsEl.appendChild(card);
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   let state = { scale: 'linear', cmap: 'magma', height: 320 };
 
@@ -1774,7 +1772,6 @@ export function initAudio({ dropEl, inputEl, recordBtn, liveBtn, resultsEl, onFi
   recordBtn.addEventListener('click', () => {
     if (recordBtn.classList.contains('is-recording')) return;
     startRecording(resultsEl, recordBtn);
-    document.getElementById('audio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   liveBtn.addEventListener('click', () => {

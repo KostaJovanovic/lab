@@ -329,7 +329,7 @@ input:not([type="range"]):focus-visible,
   background: var(--bg);
   border-bottom: 1px solid var(--hairline);
   display: grid;
-  grid-template-columns: 48px 1fr 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr auto;
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--pad-x);
@@ -374,29 +374,6 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
 .nav-link.is-active.has-data::after {
   background: var(--bg);
 }
-.nav-home {
-  display: flex;
-  align-items: stretch;
-  border-left: 1px solid var(--rule);
-  border-right: 1px solid var(--rule);
-}
-.nav-home-btn { /* hover fade matches the nav arrows (0.15s) */
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--fg);
-  opacity: 0.5;
-  height: 48px;
-  transition: opacity 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  width: 48px;
-  min-width: 48px;
-}
-.nav-home-btn:hover { opacity: 1; }
-
 .nav-search {
   display: flex;
   align-items: stretch;
@@ -870,6 +847,32 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   padding-bottom: 8px;
   border-bottom: 1px solid var(--hairline);
 }
+/* Collapsible analysis cards. Every card title (a direct-child <h3>) toggles its
+   own body open/closed; cards render open, so the expanded view is unchanged save
+   for the +/- disclosure glyph used everywhere else on the site (details summary).
+   JS adds .is-collapsed on click. Open = minus, collapsed = plus. */
+.anr-card > h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.anr-card > h3::after {
+  content: "\2212";                  /* minus = open */
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+  flex: none;
+  transition: color 0.15s ease;
+}
+.anr-card > h3:hover { color: var(--accent); }
+.anr-card > h3:hover::after { color: var(--accent); }
+.anr-card.is-collapsed > h3 { margin-bottom: 0; }
+.anr-card.is-collapsed > h3::after { content: "+"; }   /* plus = closed */
+.anr-card.is-collapsed > :not(h3) { display: none; }
 .anr-card-empty { color: var(--muted); font-style: italic; }
 
 /* ---------- PREVIEW ---------- */
@@ -2295,6 +2298,49 @@ details[open] summary::after { content: "\2212"; }
 }
 .patch-list a:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
+/* Changelog "tl;dr" toggle - swaps every patch's bullet list for a short summary,
+   and reveals the folded older entries so the whole history reads at a glance. */
+.patch-head-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.patch-tldr-toggle {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.patch-tldr-toggle:hover { background: var(--fg); color: var(--bg); }
+.patch-tldr-toggle.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+/* The condensed summary sits where the bullet list would be; shown only in tl;dr mode. */
+.patch-tldr {
+  display: none;
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 70ch;
+}
+.tldr-mode .patch-list { display: none; }
+.tldr-mode .patch-tldr { display: block; }
+/* In tl;dr mode the older entries are force-revealed, so drop the fold's chrome. */
+.tldr-mode .about-formats { border-top: none; margin-top: 0; }
+.tldr-mode .about-formats > summary { display: none; }
+
 /* Little category tags: New / Fix / Faster */
 .patch-tag {
   display: inline-block;
@@ -2375,6 +2421,39 @@ details[open] summary::after { content: "\2212"; }
   margin: 0 auto;
   border-bottom: 1px solid var(--hairline);
 }
+/* Replaces the three dropzones once a file is loaded; reloads to a clean page.
+   Swiss treatment: a mono, tracked, uppercase label in a sharp-cornered box that
+   inverts on hover, with an arrow that nudges forward. */
+.analyse-next {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--pad-x));
+  margin: 22px auto;
+  padding: 13px 22px;
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.analyse-next::after {
+  content: '→';
+  font-size: 1.1em;
+  letter-spacing: 0;
+  transition: transform 0.18s ease;
+}
+.analyse-next:hover { background: var(--fg); color: var(--bg); }
+.analyse-next:hover::after { transform: translateX(5px); }
+.analyse-next:active { transform: translateY(1px); }
+.analyse-next[hidden] { display: none; }
 .quickdrop-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2507,7 +2586,40 @@ details[open] summary::after { content: "\2212"; }
   cursor: pointer;
   user-select: none;
 }
-.anr-ocr-lang-remember input { cursor: pointer; }
+/* Square Swiss checkbox to match the custom range control - a hairline box that
+   fills with the accent and shows a thin tick when ticked (no native rounding). */
+.anr-ocr-lang-remember input {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  border-radius: 0;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.anr-ocr-lang-remember input::before {
+  content: '';
+  width: 3px;
+  height: 7px;
+  margin-top: -1px;
+  border: solid var(--accent-fg, #fff);
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.12s ease;
+}
+.anr-ocr-lang-remember input:hover { border-color: var(--fg); }
+.anr-ocr-lang-remember input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.anr-ocr-lang-remember input:checked::before { transform: rotate(45deg) scale(1); }
+.anr-ocr-lang-remember:hover { color: var(--fg); }
 /* "downloaded"/"offline" trained-data languages get an accent tint in the menu. */
 .anr-dropdown-item-size.is-downloaded { color: var(--accent); }
 .anr-dropdown-item.is-selected .anr-dropdown-item-size.is-downloaded { color: inherit; }
@@ -2994,6 +3106,7 @@ details[open] summary::after { content: "\2212"; }
 /* ---------- UNKNOWN FILE RESULTS ---------- */
 .anr-unknown-results:not([hidden]) {
   padding: 36px var(--pad-x) 40px;
+  border-top: 1px solid var(--hairline);     /* heavy rule above the readout, matching the nav */
   border-bottom: 1px solid var(--hairline);
   max-width: 1440px;
   margin: 0 auto;
@@ -3155,14 +3268,13 @@ details[open] summary::after { content: "\2212"; }
   .nav-search.is-open .nav-search-btn { display: block; }
   .nav-search.is-open .nav-search-input,
   .nav-search.is-open .nav-search-arrow { display: none; }
-  /* About page: drop the home + search controls on mobile so the four section
-     links get the full nav width. (The nav is a sibling of main.about-page, so
-     :has() on the body is used to detect the page.) */
-  body:has(.about-page) .nav-home,
+  /* About page: drop the search control on mobile so the section links get the
+     full nav width. (The nav is a sibling of main.about-page, so :has() on the
+     body is used to detect the page.) */
   body:has(.about-page) .nav-search { display: none; }
-  /* Hiding home + search removes the 48px-tall buttons that otherwise set the
-     bar's height, so the links alone would make the nav noticeably shorter.
-     Pad the links to keep the about-page nav the same height as the main one. */
+  /* Hiding search removes the 48px-tall button that otherwise sets the bar's
+     height, so the links alone would make the nav noticeably shorter. Pad the
+     links to keep the about-page nav the same height as the main one. */
   body:has(.about-page) .nav-link { padding-top: 16px; padding-bottom: 16px; }
 }
 

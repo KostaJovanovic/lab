@@ -37,8 +37,6 @@
       var main = document.querySelector('.site-main');
       if (main) main.after(newFooter);
     }
-
-    window.scrollTo(0, 0);
   }
 
   function navigateTo(url, push) {

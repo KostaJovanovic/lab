@@ -57,7 +57,7 @@
       <span class="site-kicker">Z 21 - 47</span>
       <h1 class="site-title">Changelog</h1>
       <p class="site-byline"><a href="index.html" style="color:inherit;text-decoration:none">Analyser</a> by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
-      <p class="site-sub">A small, local, forensic tool for photos, sound, and video. Just drop a file. Everything is read and processed in your browser; nothing is uploaded.</p>
+      <p class="site-sub">Photos, sound, video - and almost any other file. Fully local; nothing you drop ever leaves your browser.</p>
       <nav class="site-mark-nav" aria-label="Pages">
         <a href="index.html" class="header-btn">Home</a>
         <a href="about.html" class="header-btn">About</a>
@@ -79,7 +79,10 @@
   <section id="when" class="section">
     <div class="grid">
       <div class="section-content">
-        <h2 class="section-head">Update notes.</h2>
+        <div class="patch-head-row">
+          <h2 class="section-head">Update notes.</h2>
+          <button type="button" id="tldrToggle" class="patch-tldr-toggle" aria-pressed="false" title="Show every patch condensed to a few sentences">tl;dr</button>
+        </div>
 
         <!-- =====================================================================
              PATCH NOTES PAGE - GUIDE FOR FUTURE CLAUDES (read before editing)
@@ -105,6 +108,9 @@
                2. Move what is now the 4th-from-top entry down into the
                   <details class="about-formats"> "Older updates" block, so that
                   EXACTLY the latest 3 entries stay visible above the fold.
+               3. Add a matching one-liner to PATCH_TLDR in app.js, keyed by this
+                  version number (<=3 sentences). That map drives the "tl;dr"
+                  button - an entry with no key simply shows nothing in tl;dr mode.
 
              ENTRY STRUCTURE (keep this element order; notation only, no nested
              HTML comments here - a stray close-comment would break the page):
@@ -175,6 +181,15 @@
              ===================================================================== -->
 
         <div class="patch-entry">
+          <p class="patch-version">1.28</p>
+          <p class="patch-name">In Brief</p>
+          <p class="patch-date">5 June 2026, 20:30</p>
+          <ul class="patch-list">
+            <li><span class="patch-tag">New</span>The Changelog gains a <strong>tl;dr</strong> button - one tap condenses every release, top to bottom, into a sentence or two apiece, so you can skim the whole history at a glance. Tap it again for the full notes.</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
           <p class="patch-version">1.27</p>
           <p class="patch-name">Dovetail</p>
           <p class="patch-date">5 June 2026, 20:00</p>
@@ -195,6 +210,9 @@
           </ul>
         </div>
 
+        <details class="about-formats">
+          <summary>Older updates</summary>
+
         <div class="patch-entry">
           <p class="patch-version">1.25</p>
           <p class="patch-name">Floor Plan</p>
@@ -203,9 +221,6 @@
             <li>Maintenance - the website&rsquo;s files were reorganised into clearer folders (the code grouped by role under <strong>assets/js</strong>, with styles and images moved into their own folders) and every reference updated to match. Nothing changes in how the app works; it&rsquo;s purely tidier under the hood.</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">1.24</p>

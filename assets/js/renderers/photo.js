@@ -1791,7 +1791,6 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
   const showDevelop = (xmpText, label) => {
     developContainer.innerHTML = '';
     developContainer.appendChild(buildDevelopCard(xmpText, label));
-    developContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
   const previewSlot = inline ? el('div') : document.getElementById('photoPreview');
@@ -1874,11 +1873,24 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
       : "The MIME type is the standard label for the file's format. The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
   tbl.appendChild(row('Modified',      file.lastModified ? new Date(file.lastModified).toISOString().replace('T', ' ').replace(/\..*$/, '') : '-'));
   tbl.appendChild(row('Dimensions',    `${w} × ${h} px`));
-  const exactReduced = `${w / gcd(w, h)}:${h / gcd(w, h)}`;
+  const d = gcd(w, h);
+  const exactReduced = `${w / d}:${h / d}`;
   const approx = approxAspect(w, h);
-  const aspectVal = (approx && approx !== exactReduced)
-    ? `${aspectRatio(w, h)}  ≈ ${approx}`
-    : aspectRatio(w, h);
+  // Decimal of the estimated (nearest-standard) ratio, in the same orientation
+  // as w:h, so it can be compared against the true proportion.
+  let approxDec = null;
+  if (approx) { const [an, ad] = approx.split(':').map(Number); if (an && ad) approxDec = an / ad; }
+  let aspectVal;
+  if (approx && (d === 1 || d === 2) && approxDec !== null && Math.abs(w / h - approxDec) < 0.0002) {
+    // The exact reduced ratio is just the raw resolution (or half it: gcd 1 or 2),
+    // so the fraction carries no meaning - yet the proportion sits within 0.0002
+    // of a standard ratio. Show only that standard ratio, unqualified (no "≈").
+    aspectVal = `${approx}  (${(w / h).toFixed(4)})`;
+  } else if (approx && approx !== exactReduced) {
+    aspectVal = `${aspectRatio(w, h)}  ≈ ${approx}`;
+  } else {
+    aspectVal = aspectRatio(w, h);
+  }
   tbl.appendChild(rowHelp('Aspect ratio', aspectVal,
     'The width-to-height proportion of the image. The first figure is the exact reduced ratio (and its decimal); “≈” is the nearest standard ratio such as 3:2 or 16:9.'));
   tbl.appendChild(rowHelp('Megapixels', mp + ' MP',
