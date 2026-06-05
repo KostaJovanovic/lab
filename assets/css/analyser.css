@@ -2452,6 +2452,66 @@ details[open] summary::after { content: "\2212"; }
 }
 .fmt-help-btn:hover { background: var(--fg); color: var(--bg); border-top-color: var(--fg); border-left-color: var(--fg); }
 
+/* OCR language picker modal (PDF page OCR; same menu as the image OCR dropdown) */
+.anr-ocr-lang {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.anr-ocr-lang-inner {
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  max-width: 420px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.anr-ocr-lang-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 8px;
+}
+.anr-ocr-lang-head h3 { margin: 0; font-size: var(--t-h3); }
+.anr-ocr-lang-list {
+  margin: 0 20px;
+  padding: 0;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.anr-ocr-lang-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 20px 20px;
+}
+.anr-ocr-lang-run { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.anr-ocr-lang-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px 0;
+  font-size: var(--t-tiny);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.anr-ocr-lang-remember input { cursor: pointer; }
+/* "downloaded"/"offline" trained-data languages get an accent tint in the menu. */
+.anr-dropdown-item-size.is-downloaded { color: var(--accent); }
+.anr-dropdown-item.is-selected .anr-dropdown-item-size.is-downloaded { color: inherit; }
+
 /* Format overlay */
 .fmt-overlay {
   position: fixed;
@@ -2522,6 +2582,13 @@ details[open] summary::after { content: "\2212"; }
   padding-top: 18px;
   border-top: 1px solid var(--hairline);
 }
+.fmt-section-note {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  font-weight: 400;
+}
+.fmt-section-note::before { content: ' · '; }
 /* First section ("Full analysis") needs no divider above it. */
 .fmt-section-label:first-child {
   margin-top: 4px;

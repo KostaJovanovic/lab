@@ -145,16 +145,18 @@ export async function renderEpub(file, resultsEl) {
     if (bytes) {
       const mime = manifest[coverId].type || 'image/jpeg';
       const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-      // A slim label, then the cover auto-analysed as a photo inline below it.
+      // A slim pointer here; the cover is analysed in the dedicated Photo section.
       const labelCard = el('div', { class: 'anr-card' });
       labelCard.appendChild(el('h3', {}, 'Cover'));
       labelCard.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;' },
-        'The book’s cover image, analysed as a photo below.'));
+        'The book’s cover image, analysed in the Photo section.'));
       resultsEl.appendChild(labelCard);
-      const photoBox = el('div');
-      resultsEl.appendChild(photoBox);
+      const note = 'Cover image from ' + (file.name || 'this e-book') + '.';
       import('./photo.js')
-        .then(({ renderPhoto }) => renderPhoto(new File([bytes], 'cover.' + ext, { type: mime }), photoBox))
+        .then(({ renderPhoto, revealPhotoSection }) => {
+          const photoResults = revealPhotoSection();
+          if (photoResults) renderPhoto(new File([bytes], 'cover.' + ext, { type: mime }), photoResults, { sourceNote: note });
+        })
         .catch(() => {});
     }
   }

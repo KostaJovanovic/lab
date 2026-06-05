@@ -811,27 +811,27 @@ function tagRow(name, value) {
 }
 
 function buildCoverArtCard(art, file) {
-  // Embedded cover art is auto-analysed as a photo, inline. A slim label card
-  // marks where it came from, then the full photo analysis renders below it.
-  const frag = document.createDocumentFragment();
+  // Embedded cover art is promoted to the dedicated Photo section and given the
+  // full photo analysis there (preview, histogram, EXIF, OCR) - the Photo tab is
+  // re-enabled for it. A slim pointer card stays here to say where it went.
+  const ext = art.mime === 'image/png' ? 'png' : art.mime === 'image/bmp' ? 'bmp' : 'jpg';
+  const base = (file.name || 'cover').replace(/\.[^.]+$/, '') || 'cover';
+  const artFile = new File([art.bytes], base + '-cover.' + ext, { type: art.mime });
+  const note = 'Embedded cover art from ' + (file.name || 'this audio file')
+    + ' (' + art.mime + ' · ' + fmtBytes(art.bytes.length) + ').';
+
+  // Lazy-load the photo module (kept out of the audio bundle) only when there is
+  // actually cover art to analyse, then reveal the Photo section and render there.
+  import('./photo.js').then(({ renderPhoto, revealPhotoSection }) => {
+    const photoResults = revealPhotoSection();
+    if (photoResults) renderPhoto(artFile, photoResults, { sourceNote: note });
+  }).catch(() => {});
 
   const labelCard = el('div', { class: 'anr-card' });
   labelCard.appendChild(el('h3', {}, 'Embedded cover art'));
   labelCard.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;' },
-    'Pulled from the file’s metadata (' + art.mime + ' · ' + fmtBytes(art.bytes.length) + ') and analysed as a photo below.'));
-  frag.appendChild(labelCard);
-
-  const ext = art.mime === 'image/png' ? 'png' : art.mime === 'image/bmp' ? 'bmp' : 'jpg';
-  const base = (file.name || 'cover').replace(/\.[^.]+$/, '') || 'cover';
-  const artFile = new File([art.bytes], base + '-cover.' + ext, { type: art.mime });
-
-  // Lazy-load the photo module (kept out of the audio bundle) only when there is
-  // actually cover art to analyse, then render the analysis into its own box.
-  const photoBox = el('div');
-  frag.appendChild(photoBox);
-  import('./photo.js').then(({ renderPhoto }) => renderPhoto(artFile, photoBox, { inline: true })).catch(() => {});
-
-  return frag;
+    'Found in the file’s metadata (' + art.mime + ' · ' + fmtBytes(art.bytes.length) + ') and analysed in the Photo section.'));
+  return labelCard;
 }
 
 function buildWaveformCard(file, mono, audioBuffer, audioEl) {

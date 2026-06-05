@@ -125,7 +125,11 @@ export const FULL_ANALYSIS = [
   { label: 'Web / code', exts: 'HTML CSS JS TS TSX JSX JSON YAML XML MD', tags: 'programming development website react typescript javascript node', desc: 'Preview and inspect HTML, CSS, JavaScript, TypeScript, JSON, YAML, XML, and Markdown source files.' },
 ];
 
-export const IDENTIFICATION = [
+// EXTENDED = the big format-coverage expansion (the long tail of newer formats,
+// one row per parser-chunk domain). CORE = the original, well-known proprietary
+// formats. They render as two separate groups; IDENTIFICATION below recombines
+// them for formatCount() and any whole-catalog use.
+export const IDENTIFICATION_EXTENDED = [
   { label: 'Developer / data', exts: 'JWT HAR IPYNB JSONL NDJSON DIFF PATCH WASM CLASS NPY Safetensors GGUF MAP SQL SLN CSPROJ VBPROJ FSPROJ VCXPROJ Gradle TF TFState EditorConfig PROTO GraphQL GQL SARIF PYC PLIST', tags: 'developer code json web token jwt auth http archive har devtools jupyter notebook ipynb webassembly wasm java class bytecode numpy npy safetensors gguf llm ai model machine learning source map sourcemap sql dump database visual studio solution sln dotnet msbuild csproj terraform tfstate protobuf protocol buffers graphql sarif python pyc property list plist apple serialization', desc: 'Identify and read metadata from developer and data files: JWT tokens (header + claims + expiry), HAR captures, Jupyter notebooks, WebAssembly, Java class files, NumPy/Safetensors/GGUF model files, source maps, SQL dumps, Visual Studio/.NET projects, Terraform, Protobuf, GraphQL, SARIF, Python bytecode, and Apple property lists (XML + binary).' },
   { label: 'RAW sidecars / cinema', exts: 'AAE PP3 COS COF COP DOP NKSC R3D BRAW CRM ARI CINE FPF EIP BAY PXN RWZ', tags: 'raw edit sidecar adjustments apple photos rawtherapee pp3 capture one cos dxo photolab dop nikon nx studio nksc redcode r3d blackmagic braw canon cinema raw light crm arriraw ari phantom cine flir thermal fpf casio bay logitech pxn rawzor rwz developer recipe', desc: 'Identify camera RAW edit sidecars - Apple Photos adjustments (AAE), RawTherapee (PP3), Capture One (COS), DxO PhotoLab (DOP) and Nikon NX Studio (NKSC) - reading the applied-edit recipe, plus cinema and rare camera RAW: REDCODE (R3D), Blackmagic (BRAW), Canon Cinema RAW Light (CRM), ARRIRAW (ARI), Phantom CINE and FLIR thermal (FPF).' },
   { label: 'Archives (packages)', exts: 'LZ4 LZMA Z CPIO A WHL NUPKG CRX XPI VSIX ASAR APPX MSIX APKG CONDA DEB RPM GEM CAB ACE ARJ LZH LHA ZOO ARC', tags: 'archive package installer compression lz4 lzma compress lzw cpio initramfs unix ar static library python wheel pip pypa nuget dotnet chrome extension firefox addon vs code vsix electron asar windows app package msix anki conda anaconda debian ubuntu apt dpkg redhat fedora rpm rubygems gem microsoft cabinet ace arj lha lharc zoo arc', desc: 'Read software packages and Unix archive streams: Python wheels, NuGet, Chrome/Firefox/VS Code extensions, Electron ASAR, Windows APPX/MSIX, Debian (DEB), RPM, RubyGems, conda, Anki, Microsoft CAB, cpio and ar — showing name, version, dependencies and the file tree — plus lz4/lzma/compress stream headers.' },
@@ -141,6 +145,9 @@ export const IDENTIFICATION = [
   { label: 'Audio (more)', exts: 'APE WV TAK TTA OFR DSF DFF MPC CAF RF64 BW64 W64 AU SND VOC BWF SPX AWB QCP 3GA M4R GSM MP2 MP1 SF2 SF3 SFZ DLS RMI MMF GIG RTTTL IMY SAP MOD XM IT S3M STM MTM MED 669 FAR OKT NSF NSFE SPC VGM VGZ GBS AY YM AUP AUP3 PSF', tags: "monkeys audio ape wavpack wv tak true audio tta optimfrog dsd dsf dsdiff dff sacd musepack mpc core audio caf rf64 bw64 wave64 w64 sun next au snd creative voice voc broadcast wave bwf smpte timecode speex spx amr-wb awb qualcomm qcp purevoice 3gpp 3ga iphone ringtone m4r gsm mpeg layer 2 mp2 soundfont sf2 sf3 sfz sampler downloadable sounds dls riff midi rmi smaf yamaha gigastudio gig rtttl nokia ringtone imelody imy atari sap protracker amiga mod fasttracker xm impulse tracker it scream tracker s3m stm multitracker mtm octamed med composer 669 farandole far oktalyzer okt nes sound nsf famicom snes spc700 spc vgm vgz game boy gbs ay zx spectrum ym atari st audacity aup aup3 chiptune tracker module", desc: 'Identify many more audio formats: lossless/hi-res codecs (Monkey’s Audio, WavPack, TAK, True Audio, DSD/SACD, Musepack), pro containers (Core Audio, RF64/BW64, Wave64, Sun AU, Broadcast Wave with timecode), speech/mobile (Speex, AMR-WB, QCP, 3GA, M4R, GSM), MPEG Layer I/II, instrument banks (SoundFont, SFZ, DLS, RIFF MIDI, GigaStudio), ringtones (RTTTL, iMelody, SAP), tracker modules (MOD, XM, IT, S3M, OctaMED, 669, Oktalyzer), chiptunes (NES NSF, SNES SPC, VGM, Game Boy GBS, AY, YM) and Audacity projects.' },
   { label: 'Video / streaming (more)', exts: 'M3U8 M3U MPD ISM ISMC F4M ASX WPL XSPF PLS MXF GXF LXF DV DIF ASF DVR-MS RM RMVB DIVX F4V INSV INSP LRV GIFV IVF Y4M M2V M1V MPV H264 H265 HEVC AVC OBU M2P M2T TRP WTV OGM NUT DPX CIN DAV YUV', tags: 'hls m3u8 apple playlist mpeg-dash mpd manifest adaptive bitrate smooth streaming ism microsoft adobe hds f4m asx wpl xspf pls winamp playlist mxf material exchange smpte avid sony xdcam gxf lxf dv dvcam ntsc pal asf advanced systems wmv realmedia rm rmvb realvideo divx f4v flash insta360 insv insp 360 lrv gopro dji proxy gifv imgur ivf vp8 vp9 av1 y4m yuv4mpeg raw h264 avc h265 hevc x264 x265 obu aom mpeg-2 program transport stream pat pmt wtv windows media center dvr-ms ogm ogg nut ffmpeg dpx cineon cin dahua dav cctv pvr dvb', desc: 'Inspect streaming manifests and video containers: HLS/DASH/Smooth Streaming/HDS manifests and playlists; pro/broadcast MXF/GXF/LXF/DV; ASF/.dvr-ms and RealMedia; DivX/F4V/Insta360/GoPro proxies/GIFV; raw elementary streams (IVF, Y4M, MPEG-1/2, H.264/H.265 SPS, AV1 OBU); MPEG program/transport and PVR/DVB recordings; Windows Recorded TV, Ogg Media, NUT; DPX/Cineon/Dahua/.yuv identified.' },
   { label: 'Documents / ebooks (more)', exts: 'CBZ CBR CBT CB7 XPS OXPS HWPX HWP FB3 IBOOKS SCRIV ABW SXW SXC FODT FODS OTT DOTX DOTM VSDX TEX LATEX BIB RST ADOC ORG TEXTILE TEI RMD QMD RTFD MHT MHTML WARC MAFF JATS NXML DVI CHM WPD QXD PMD LIT KFX', tags: 'comic book cbz cbr cbt cb7 comicinfo manga reader xps oxps openxps hwpx hwp hancom hangul korean fictionbook fb3 ibooks apple author scrivener abiword abw staroffice openoffice sxw sxc odf flat fodt template ott dotx dotm macro visio vsdx tex latex bibtex bibliography restructuredtext rst asciidoc adoc org-mode emacs textile tei r markdown rmd quarto qmd rtfd mhtml mht web archive warc maff mozilla jats nxml pubmed journal dvi chm help wordperfect wpd quarkxpress qxd pagemaker pmd ms reader lit kindle kfx', desc: 'Open documents, ebooks and publishing files beyond Office: comic books (CBZ/CBT with ComicInfo + first-page preview; CBR/CB7 identified), Microsoft XPS, Hangul HWPX, FictionBook FB3, iBooks, Scrivener, AbiWord, StarOffice, ODF flat XML and templates, Word templates (DOTX/DOTM macro detection), Visio VSDX, TeX/LaTeX/BibTeX, reStructuredText, AsciiDoc, Org-mode, TEI, R Markdown/Quarto, RTFD, MHTML and WARC/MAFF web archives, JATS journal XML and TeX DVI.' },
+];
+
+export const IDENTIFICATION_CORE = [
   { label: 'Documents',       exts: 'DOC XLS PPT PPSX ODT ODS ODP ODG RTF Pages Numbers Keynote', tags: 'microsoft office word excel powerpoint apple iwork libreoffice openoffice google docs sheets slides rich text format wordpad', desc: 'Identify and read metadata from legacy and open-document files: Microsoft Word, Excel, and PowerPoint (DOC, XLS, PPT), Apple iWork (Pages, Numbers, Keynote), LibreOffice/OpenOffice (ODT, ODS, ODP), and RTF.' },
   { label: 'Adobe',           exts: 'PSD PSB AI INDD INDT IDML AEP AEPX AET PRPROJ MOGRT SESX XD FLA SWF XMP LRtemplate LRcat ACV ACO ASL ABR GRD PAT', tags: 'photoshop illustrator indesign after effects premiere pro audition xd animate flash lightroom substance', desc: 'Identify Adobe project files and read their metadata: Photoshop (PSD, PSB), Illustrator (AI), InDesign (INDD), After Effects (AEP, AEPX), Premiere Pro (PRPROJ), XD, Animate (FLA), and Lightroom.' },
   { label: 'Design',          exts: 'FIG Sketch afphoto afdesign afpub Procreate XCF KRA PDN SPP SBSAR SBS', tags: 'figma sketch affinity photo designer publisher procreate gimp krita paint.net substance painter', desc: 'Identify design-app files: Figma (FIG), Sketch, Affinity Photo/Designer/Publisher, Procreate, GIMP (XCF), Krita (KRA), Paint.NET, and Substance.' },
@@ -171,6 +178,9 @@ export const IDENTIFICATION = [
   { label: 'Shortcuts',       exts: 'LNK URL WEBLOC', tags: 'windows shortcut link lnk target arguments working directory internet shortcut url web macos webloc alias launcher pointer desktop', desc: 'Decode shortcut files: Windows shortcuts (LNK) - target path, arguments, working directory, icon, hotkey, window state, and target timestamp - plus internet shortcuts (URL) and macOS web shortcuts (WEBLOC), surfacing the URL or path they point to.' },
   { label: 'Other',           exts: 'TORRENT PART CRDOWNLOAD', tags: 'bittorrent peer to peer p2p download partial incomplete chrome firefox crdownload', desc: 'Identify BitTorrent files (TORRENT) and their file list, plus partial or incomplete downloads (PART, CRDOWNLOAD).' },
 ];
+
+// Whole identification catalog (Core + Extended), for formatCount() and search.
+export const IDENTIFICATION = [...IDENTIFICATION_CORE, ...IDENTIFICATION_EXTENDED];
 
 // ---------- count helper ----------
 
@@ -224,14 +234,17 @@ function fmtItem(r, opts = {}) {
 // Render both catalog sections as collapsible items into a container.
 function renderFmtItems(container, opts) {
   container.innerHTML = '';
-  const section = (title, rows) => {
-    container.appendChild(el('p', { class: 'fmt-section-label' }, title));
+  const section = (title, rows, note) => {
+    const head = el('p', { class: 'fmt-section-label' }, title);
+    if (note) head.appendChild(el('span', { class: 'fmt-section-note' }, note));
+    container.appendChild(head);
     const list = el('div', { class: 'fmt-list' });
     for (const r of rows) list.appendChild(fmtItem(r, opts));
     container.appendChild(list);
   };
-  section('Full analysis', FULL_ANALYSIS);
-  section('Identification + basic metadata', IDENTIFICATION);
+  section('Full analysis', FULL_ANALYSIS, 'viewer + deep metadata');
+  section('Core formats', IDENTIFICATION_CORE, 'identified + header metadata');
+  section('Extended formats', IDENTIFICATION_EXTENDED, 'the long tail of newer formats');
 }
 
 // Format help overlay on index.html / about.html. Each format is a collapsible

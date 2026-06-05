@@ -22,43 +22,163 @@ const LEAFLET_JS    = 'assets/vendor/leaflet/leaflet.js';
 // service worker after first use. LOCAL_OCR_LANGS decides which langPath a
 // worker uses; keeping only English bundled keeps the repo small and well
 // under Cloudflare's 25 MiB asset cap.
-const LOCAL_OCR_LANGS = new Set(['eng']);
-const TESS_CDN_LANGPATH = 'https://tessdata.projectnaptha.com/4.0.0';
+export const LOCAL_OCR_LANGS = new Set(['eng']);
+export const TESS_CDN_LANGPATH = 'https://tessdata.projectnaptha.com/4.0.0';
 
-const TESSERACT_LANGS = [
+// English first (the only bundled/offline language), then Serbian Latin and
+// Cyrillic (primary audience), then every other language alphabetically by name.
+export const TESSERACT_LANGS = [
   ['eng', 'English', '10 MB'],
-  ['spa', 'Spanish', '9 MB'],
+  ['srp_latn', 'Serbian (Latin)', '2 MB'],
+  ['srp', 'Serbian (Cyrillic)', '2 MB'],
+  ['ara', 'Arabic', '2 MB'],
+  ['bul', 'Bulgarian', '2 MB'],
+  ['chi_sim', 'Chinese (Simplified)', '18 MB'],
+  ['chi_tra', 'Chinese (Traditional)', '25 MB'],
+  ['hrv', 'Croatian', '2 MB'],
+  ['ces', 'Czech', '3 MB'],
+  ['dan', 'Danish', '4 MB'],
+  ['nld', 'Dutch', '5 MB'],
+  ['fin', 'Finnish', '4 MB'],
   ['fra', 'French', '9 MB'],
   ['deu', 'German', '9 MB'],
-  ['ita', 'Italian', '8 MB'],
-  ['por', 'Portuguese', '8 MB'],
-  ['rus', 'Russian', '11 MB'],
-  ['chi_sim', 'Chinese (Simplified)', '18 MB'],
-  ['jpn', 'Japanese', '14 MB'],
-  ['srp', 'Serbian (Cyrillic)', '2 MB'],
-  ['srp_latn', 'Serbian (Latin)', '2 MB'],
-  ['hrv', 'Croatian', '2 MB'],
   ['ell', 'Greek', '2 MB'],
-  ['ara', 'Arabic', '2 MB'],
-  ['chi_tra', 'Chinese (Traditional)', '25 MB'],
-  ['kor', 'Korean', '5 MB'],
   ['heb', 'Hebrew', '2 MB'],
-  ['tur', 'Turkish', '4 MB'],
-  ['ukr', 'Ukrainian', '3 MB'],
-  ['pol', 'Polish', '4 MB'],
-  ['ron', 'Romanian', '2 MB'],
   ['hun', 'Hungarian', '4 MB'],
-  ['ces', 'Czech', '3 MB'],
+  ['ita', 'Italian', '8 MB'],
+  ['jpn', 'Japanese', '14 MB'],
+  ['kor', 'Korean', '5 MB'],
+  ['mkd', 'Macedonian', '1 MB'],
+  ['nor', 'Norwegian', '4 MB'],
+  ['pol', 'Polish', '4 MB'],
+  ['por', 'Portuguese', '8 MB'],
+  ['ron', 'Romanian', '2 MB'],
+  ['rus', 'Russian', '11 MB'],
   ['slk', 'Slovak', '3 MB'],
   ['slv', 'Slovenian', '2 MB'],
-  ['bul', 'Bulgarian', '2 MB'],
-  ['mkd', 'Macedonian', '1 MB'],
-  ['nld', 'Dutch', '5 MB'],
+  ['spa', 'Spanish', '9 MB'],
   ['swe', 'Swedish', '3 MB'],
-  ['nor', 'Norwegian', '4 MB'],
-  ['fin', 'Finnish', '4 MB'],
-  ['dan', 'Danish', '4 MB']
+  ['tur', 'Turkish', '4 MB'],
+  ['ukr', 'Ukrainian', '3 MB']
 ];
+
+// Tesseract langPath for a code: bundled English loads locally (offline); every
+// other language streams from the CDN (then the service worker caches it).
+export function ocrLangPath(code) {
+  return LOCAL_OCR_LANGS.has(code) ? 'assets/vendor/tesseract' : TESS_CDN_LANGPATH;
+}
+
+// Where the trained-data file for a language lives (used both to load it and to
+// check whether it has already been downloaded into the cache).
+function ocrLangDataUrl(code) {
+  return ocrLangPath(code) + '/' + code + '.traineddata.gz';
+}
+
+// Has this language's trained data already been downloaded (cached by the
+// service worker)? Bundled English is always available offline.
+async function ocrLangCached(code) {
+  if (LOCAL_OCR_LANGS.has(code)) return true;
+  if (typeof caches === 'undefined') return false;
+  try {
+    const hit = await caches.match(ocrLangDataUrl(code), { ignoreSearch: true });
+    return !!hit;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Size/status span for a language menu item. Starts as "[size · …]" then resolves
+// to "offline" (bundled), "downloaded" (already cached) or "download" (fetched on
+// first use). Shared by the popup and the inline image-OCR dropdown.
+function ocrLangSizeSpan(code, size) {
+  const span = el('span', { class: 'anr-dropdown-item-size' }, '[' + size + ' · …]');
+  ocrLangCached(code).then((cached) => {
+    if (LOCAL_OCR_LANGS.has(code)) {
+      span.textContent = '[' + size + ' · offline]';
+      span.classList.add('is-downloaded');
+    } else if (cached) {
+      span.textContent = '[' + size + ' · downloaded]';
+      span.classList.add('is-downloaded');
+    } else {
+      span.textContent = '[' + size + ' · download]';
+    }
+  });
+  return span;
+}
+
+// Modal language picker for OCR, reused wherever OCR is started outside the
+// inline image picker (e.g. the PDF page-OCR popup). Same language menu as the
+// image OCR dropdown. Resolves with the chosen Tesseract code, or null if the
+// user cancels (Esc / backdrop / Cancel).
+let _sessionOcrLang = null;
+
+// The session language chosen via the popup's "Remember" checkbox (or null).
+// Used by the image OCR picker to default to the same language.
+export function sessionOcrLang() { return _sessionOcrLang; }
+
+export function pickOcrLanguage(opts = {}) {
+  // Once "Remember for this session" is ticked, skip the popup and reuse that
+  // language for every OCR until the page is reloaded.
+  if (_sessionOcrLang) return Promise.resolve(_sessionOcrLang);
+  return new Promise((resolve) => {
+    let selected = 'eng';
+    const remember = el('input', { type: 'checkbox' });
+    const backdrop = el('div', { class: 'anr-ocr-lang', role: 'dialog', 'aria-modal': 'true' });
+    const panel = el('div', { class: 'anr-ocr-lang-inner' });
+    const head = el('div', { class: 'anr-ocr-lang-head' }, [
+      el('h3', {}, opts.title || 'OCR language'),
+      el('button', { type: 'button', class: 'fmt-overlay-close', 'aria-label': 'Cancel' }, '×')
+    ]);
+    panel.appendChild(head);
+    panel.appendChild(el('p', { class: 'anr-hint', style: 'margin:0 20px 12px;' },
+      'Pick the language of the text. English works offline; the rest download once, then are cached.'));
+    const list = el('ul', { class: 'anr-ocr-lang-list' });
+    const items = [];
+    for (const [code, name, size] of TESSERACT_LANGS) {
+      const item = el('li', { class: 'anr-dropdown-item' + (code === 'eng' ? ' is-selected' : '') }, [
+        el('span', {}, name),
+        ocrLangSizeSpan(code, size)
+      ]);
+      item.dataset.value = code;
+      item.addEventListener('click', () => {
+        selected = code;
+        items.forEach((li) => li.classList.remove('is-selected'));
+        item.classList.add('is-selected');
+      });
+      item.addEventListener('dblclick', () => confirm(code));
+      items.push(item);
+      list.appendChild(item);
+    }
+    panel.appendChild(list);
+    const rememberRow = el('label', { class: 'anr-ocr-lang-remember' }, [
+      remember, el('span', {}, 'Remember for this session')
+    ]);
+    panel.appendChild(rememberRow);
+    const cancelBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Cancel');
+    const runBtn = el('button', { type: 'button', class: 'anr-btn anr-ocr-lang-run' }, 'Run OCR');
+    panel.appendChild(el('div', { class: 'anr-ocr-lang-actions' }, [cancelBtn, runBtn]));
+    backdrop.appendChild(panel);
+
+    function close(val) {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    }
+    // Run with a language; if "Remember" is ticked, persist it for the session.
+    function confirm(code) {
+      if (remember.checked) _sessionOcrLang = code;
+      close(code);
+    }
+    const onKey = (e) => { if (e.key === 'Escape') close(null); };
+    head.querySelector('.fmt-overlay-close').addEventListener('click', () => close(null));
+    cancelBtn.addEventListener('click', () => close(null));
+    runBtn.addEventListener('click', () => confirm(selected));
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(null); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(backdrop);
+    runBtn.focus();
+  });
+}
 
 // ---------- helpers ----------
 function gcd(a, b) { return b ? gcd(b, a % b) : a; }
@@ -668,16 +788,16 @@ function makeOcrCard(file, img) {
   const ocrCanvas = img ? prepareOcrCanvas(img) : null;
   const ocrInput = ocrCanvas || file;
 
-  const langState = { value: 'eng', disabled: false };
+  const langState = { value: sessionOcrLang() || 'eng', disabled: false };
+  const _curLang = TESSERACT_LANGS.find((l) => l[0] === langState.value);
   const dropdown = el('div', { class: 'anr-dropdown' });
-  const trigger = el('div', { class: 'anr-dropdown-trigger' }, 'English');
+  const trigger = el('div', { class: 'anr-dropdown-trigger' }, _curLang ? _curLang[1] : 'English');
   const list = el('ul', { class: 'anr-dropdown-list' });
 
   for (const [code, name, size] of TESSERACT_LANGS) {
-    const sizeText = LOCAL_OCR_LANGS.has(code) ? '[' + size + ']' : '[' + size + ' · online]';
-    const item = el('li', { class: 'anr-dropdown-item' + (code === 'eng' ? ' is-selected' : '') }, [
+    const item = el('li', { class: 'anr-dropdown-item' + (code === langState.value ? ' is-selected' : '') }, [
       el('span', {}, name),
-      el('span', { class: 'anr-dropdown-item-size' }, sizeText)
+      ocrLangSizeSpan(code, size)
     ]);
     item.dataset.value = code;
     item.addEventListener('click', () => {
@@ -1548,6 +1668,20 @@ function buildContainerCard(container) {
 }
 
 // ---------- main render ----------
+// Reveal the dedicated Photo section and re-enable its nav tab, so an image
+// extracted from a non-photo file (audio cover art, an EPUB cover, a PDF page)
+// can be analysed there instead of inline. Returns the #photoResults container
+// (or null if the page has no photo section). The caller then renders into it.
+export function revealPhotoSection() {
+  const photoResults = document.getElementById('photoResults');
+  const photoSection = document.getElementById('photo');
+  if (photoSection) photoSection.hidden = false;
+  if (photoResults) photoResults.hidden = false;
+  const navLink = document.querySelector('.site-nav a[href="#photo"]');
+  if (navLink) navLink.classList.remove('is-disabled');
+  return photoResults;
+}
+
 export async function renderPhoto(file, resultsEl, opts = {}) {
   // Inline mode (e.g. embedded cover art analysed inside the audio section):
   // the preview, histogram, and OCR normally target fixed photo-section slots
@@ -1641,6 +1775,14 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
   }
 
   resultsEl.innerHTML = '';
+
+  // When this image was extracted from another file (audio cover art, an EPUB
+  // cover, a PDF page), a one-line note records where it came from.
+  if (opts.sourceNote) {
+    const srcCard = el('div', { class: 'anr-card' });
+    srcCard.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;' }, opts.sourceNote));
+    resultsEl.appendChild(srcCard);
+  }
 
   // ---- Preview thumb in section-meta column ----
   // Develop-settings (.xmp sidecar) card. showDevelop fills/replaces it; it's fed

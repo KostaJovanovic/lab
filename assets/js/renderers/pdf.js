@@ -2,7 +2,7 @@
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
 import { el, row, rowHelp, fmtBytes, errorCard, integrityCard } from '../core/util.js';
-import { renderPhoto } from './photo.js';
+import { renderPhoto, revealPhotoSection, pickOcrLanguage, ocrLangPath } from './photo.js';
 
 // Resolved against this module's URL so the dynamic import() gets a valid
 // absolute specifier (a bare "assets/..." path is not a resolvable module id).
@@ -89,6 +89,22 @@ function fmtDate(d) {
 }
 
 // ---------- main render ----------
+// Open a PDF in a new browser tab. A File with an empty/blank MIME type (e.g.
+// one rebuilt by the type-detection path) makes the browser download a blob URL
+// instead of rendering it, so wrap the bytes in an explicitly typed Blob. Falls
+// back to a same-gesture anchor click if the popup is blocked.
+function openPdfInTab(file) {
+  const blob = file.type === 'application/pdf' ? file : new Blob([file], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank', 'noopener');
+  if (!win) {
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 export async function renderPdf(file, resultsEl) {
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
@@ -156,10 +172,7 @@ export async function renderPdf(file, resultsEl) {
     const hMm = (hPt / 72 * 25.4).toFixed(1);
     tbl.appendChild(rowHelp('Page 1 size', `${wPt.toFixed(0)} x ${hPt.toFixed(0)} pt  (${wIn} x ${hIn} in / ${wMm} x ${hMm} mm)`, 'The physical dimensions of the first page, shown in points with inch and millimetre equivalents. 1 point equals 1/72 of an inch.'));
   } catch (_) {}
-  const openBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
-    const url = URL.createObjectURL(file);
-    window.open(url, '_blank');
-  }}, 'Open PDF in browser');
+  const openBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => openPdfInTab(file) }, 'Open PDF in browser');
   infoCard.appendChild(tbl);
   infoCard.appendChild(el('div', { class: 'anr-btn-row' }, [openBtn]));
   resultsEl.appendChild(infoCard);
@@ -380,7 +393,7 @@ export async function renderPdf(file, resultsEl) {
   const thumbHeadRow = el('div', { style: 'display:flex;align-items:center;gap:10px;' });
   thumbHeadRow.appendChild(el('h3', {}, 'Page previews'));
   const openPdfBtn = el('button', { type: 'button', class: 'anr-btn', style: 'font-size:11px;padding:3px 10px;' }, 'Open in browser');
-  openPdfBtn.addEventListener('click', () => window.open(URL.createObjectURL(file), '_blank'));
+  openPdfBtn.addEventListener('click', () => openPdfInTab(file));
   thumbHeadRow.appendChild(openPdfBtn);
   thumbCard.appendChild(thumbHeadRow);
   const thumbContainer = el('div', {
@@ -542,12 +555,10 @@ export async function renderPdf(file, resultsEl) {
           const cv = await renderPageHiRes(pageNum);
           cv.toBlob((blob) => {
             const photoFile = new File([blob], 'page-' + pageNum + '.png', { type: 'image/png' });
-            const photoResults = document.getElementById('photoResults');
-            const photoSection = document.getElementById('photo');
-            if (photoSection) photoSection.hidden = false;
+            const photoResults = revealPhotoSection();
             if (photoResults) {
-              photoResults.hidden = false;
-              renderPhoto(photoFile, photoResults);
+              renderPhoto(photoFile, photoResults,
+                { sourceNote: 'Page ' + pageNum + ' of ' + (file.name || 'this PDF') + ', rendered and analysed as an image.' });
               photoResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
             analyseBtn.textContent = 'Analyse';
@@ -557,6 +568,8 @@ export async function renderPdf(file, resultsEl) {
 
       ocrBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        const lang = await pickOcrLanguage({ title: 'OCR language - page ' + pageNum });
+        if (!lang) return;
         ocrBtn.textContent = '…';
         try {
           if (!window.Tesseract) {
@@ -565,9 +578,9 @@ export async function renderPdf(file, resultsEl) {
             await new Promise((res, rej) => { s.onload = res; s.onerror = rej; document.head.appendChild(s); });
           }
           const cv = await renderPageHiRes(pageNum);
-          const worker = await window.Tesseract.createWorker('eng', undefined, {
+          const worker = await window.Tesseract.createWorker(lang, undefined, {
             workerPath: 'assets/vendor/tesseract/worker.min.js',
-            langPath: 'assets/vendor/tesseract',
+            langPath: ocrLangPath(lang),
             corePath: 'assets/vendor/tesseract'
           });
           const result = await worker.recognize(cv);
@@ -756,6 +769,8 @@ export async function renderPdf(file, resultsEl) {
 
   ocrRunBtn.addEventListener('click', async () => {
     if (ocrBusy) return;
+    const ocrLang = await pickOcrLanguage({ title: 'OCR language - all pages' });
+    if (!ocrLang) return;
     ocrBusy = true;
     ocrRunBtn.textContent = 'Scanning…';
     ocrRunBtn.disabled = true;
@@ -787,9 +802,9 @@ export async function renderPdf(file, resultsEl) {
         cv.width = Math.floor(scaled.width);
         cv.height = Math.floor(scaled.height);
         await page.render({ canvasContext: cv.getContext('2d'), viewport: scaled }).promise;
-        const worker = await T.createWorker('eng', undefined, {
+        const worker = await T.createWorker(ocrLang, undefined, {
           workerPath: 'assets/vendor/tesseract/worker.min.js',
-          langPath: 'assets/vendor/tesseract',
+          langPath: ocrLangPath(ocrLang),
           corePath: 'assets/vendor/tesseract'
         });
         const result = await worker.recognize(cv);
