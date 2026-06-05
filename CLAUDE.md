@@ -2,13 +2,13 @@
 
 ## Adding a new file type
 
-**`assets/analyser/formats.js` is the single source of truth for supported file
+**`assets/js/core/formats.js` is the single source of truth for supported file
 types.** The format overlay (index.html), the "All supported file types" tables
 (about.html), the overlay search, and the `classifyFile()` routing in app.js are
 all driven from it — edit one file and they all update.
 
 ### 1. The catalog (formats.js) — almost always the only file you touch
-File: `assets/analyser/formats.js`
+File: `assets/js/core/formats.js`
 
 - **Routing**: add the lowercase extension to the right classification set —
   `PHOTO_EXTS`, `AUDIO_EXTS`, `VIDEO_EXTS`, `CSV_EXTS`, or `SVG_EXTS`. These drive
@@ -32,7 +32,7 @@ That's it for the common cases (a new photo/audio/video extension, or a new
 identification-only format that also needs a parser — see step 2).
 
 ### 2. Header parser for identification-only formats (proprietary.js)
-File: `assets/analyser/proprietary.js`
+File: `assets/js/renderers/proprietary.js`
 
 - Add an entry to the `FORMATS` object: key is the lowercase extension, value is
   `{ app, icon, magic?, parse?, zip? }`. `magic` matches header bytes; `parse`
@@ -45,7 +45,7 @@ File: `assets/analyser/proprietary.js`
 
 ### 3. New top-level category (rare)
 If the format isn't photo/audio/video/csv/svg and needs its own renderer:
-- Create a module (e.g. `assets/analyser/newtype.js`), export
+- Create a module (e.g. `assets/js/renderers/newtype.js`), export
   `renderNewtype(file, resultsEl)`.
 - Import it in app.js and add a branch in `classifyFile()` and `handleFile()`.
   See how `csv`, `svg`, `pdf`, `zip`, `proprietary` are wired.
@@ -85,7 +85,7 @@ patch notes in `about.html` (`id="when"`) were rewritten to one entry per commit
 
 ## SPA navigation
 
-Pages use `assets/analyser/navigate.js` for View Transitions API-based SPA navigation. When the page swaps:
+Pages use `assets/js/core/navigate.js` for View Transitions API-based SPA navigation. When the page swaps:
 - `boot()` in `app.js` re-runs (triggered by `anr:navigate` event).
 - One-time setup (window listeners, letter hover effect) is guarded by `boot._once`.
 - Per-navigation setup (scroll-spy, anchors, dark mode, search) runs every time.
@@ -100,24 +100,28 @@ about.html          — about/info page
 sw.js               — service worker
 save.bat            — git add + commit + push with version bump
 assets/
-  analyser.css      — all styles
-  analyser/
-    app.js          — entry point, file classification, boot()
-    formats.js      — central format catalog (sets + display tables + renderers)
-    photo.js        — photo analysis (EXIF, histogram, OCR, etc.)
-    audio.js        — audio analysis (waveform, spectrogram, player)
-    audio-analysis.js — audio stats helpers
-    audio-codec.js  — codec detection from file headers
-    video.js        — video analysis (container, fps, frames, scene detection)
-    spectrogram.js  — FFT and spectrogram rendering
-    pdf.js          — PDF viewer and text extraction
-    archive.js      — ZIP browser
-    svg.js          — SVG viewer
-    csv.js          — CSV/TSV table viewer
-    unknown.js      — hex dump and basic identification
-    proprietary.js  — 200+ format identification by magic bytes
-    folder.js       — folder drop overview
-    search.js       — metadata search
-    navigate.js     — SPA router (View Transitions API)
-    util.js         — shared DOM helpers and formatters
+  css/
+    analyser.css    — all styles
+    fonts.css       — @font-face declarations (url(../fonts/...))
+  fonts/            — Geist woff2 files
+  img/              — banner, favicons, app icons
+  vendor/           — third-party libraries (exifr, ffmpeg, imagemagick, ...)
+  js/
+    core/
+      app.js        — entry point, file classification, boot()
+      formats.js    — central format catalog (sets + display tables + renderers)
+      search.js     — metadata search
+      navigate.js   — SPA router (View Transitions API)
+      util.js       — shared DOM helpers and formatters
+      binutil.js    — shared binary toolkit (cursor reader, decoders, magic)
+    renderers/      — one module per top-level type:
+      photo.js      — photo analysis (EXIF, histogram, OCR, etc.)
+      audio.js / audio-analysis.js / audio-codec.js / audio-player.js
+      video.js / video-avi.js / spectrogram.js
+      pdf.js · archive.js · svg.js · csv.js · markdown.js · comic.js · geo.js
+      docx.js · xlsx.js · epub.js · pptx.js · stl.js · zip.js · folder.js
+      unknown.js    — hex dump and basic identification
+      proprietary.js — 200+ format identification by magic bytes (lazy chunk dispatch)
+    parsers/        — parsers-*.js, lazy per-domain metadata parser chunks
+    lib/            — plist · cfbf · sqlite · *-loader (shared binary + WASM helpers)
 ```

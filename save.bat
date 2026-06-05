@@ -53,7 +53,7 @@ set RELEASE=29
 for /f %%v in ('powershell -NoProfile -Command "$n=%NEXT_COUNT%; $r=%RELEASE%; if($n -lt $r){'0.{0:D2}' -f $n} elseif($n -eq $r){'1.0'} else{'1.{0:D2}' -f ($n-$r)}"') do set VERLABEL=%%v
 echo Bumping version to %VERLABEL% (commit %NEXT_COUNT%)
 
-powershell -Command "(Get-Content 'assets/analyser/app.js') -replace 'const COMMIT_COUNT = \d+;', 'const COMMIT_COUNT = %NEXT_COUNT%;' | Set-Content 'assets/analyser/app.js' -Encoding utf8"
+powershell -Command "(Get-Content 'assets/js/core/app.js') -replace 'const COMMIT_COUNT = \d+;', 'const COMMIT_COUNT = %NEXT_COUNT%;' | Set-Content 'assets/js/core/app.js' -Encoding utf8"
 
 git add .
 git status

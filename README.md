@@ -1,6 +1,6 @@
 <div align="center">
 
-![Analyser](assets/banner.jpg)
+![Analyser](assets/img/banner.jpg)
 
 # Analyser
 
@@ -74,12 +74,16 @@ No build step. No `node_modules`. No config.
 `HTML + CSS + vanilla JS (ES modules)` · service-worker caching · View Transitions SPA router · hand-rolled radix-2 FFT · a pile of lazy-loaded WASM (FFmpeg, ImageMagick, Tesseract, pdf.js) that only download when you actually need them.
 
 ```
-assets/analyser/
-  app.js          entry point + file classification
-  formats.js      central catalog of every supported type
-  photo · audio · video · pdf · archive · svg · csv · stl · ...   the renderers
-  proprietary.js  200+ formats by magic bytes
-  util.js         shared DOM + format helpers
+assets/js/
+  core/       app.js (entry + file classification), formats.js (catalog),
+              util.js (helpers), search.js, navigate.js, binutil.js
+  renderers/  photo · audio · video · pdf · archive · svg · csv · stl · ...
+              the per-type renderers (+ proprietary.js, 200+ formats by magic bytes)
+  parsers/    parsers-*.js   lazy per-domain metadata parser chunks
+  lib/        plist · cfbf · sqlite · *-loader   shared binary + WASM helpers
+assets/css/   analyser.css, fonts.css
+assets/img/   banner, favicons, app icons
+assets/vendor/  third-party libraries
 ```
 
 ## Status
