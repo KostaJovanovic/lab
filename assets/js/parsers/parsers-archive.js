@@ -12,7 +12,7 @@
    formats we cannot decode natively (7z/rar bodies, squashfs, snap, stuffit,
    ace, …) stay identification-only. No top-level side effects. */
 
-import { el, row, fmtBytes, loadScript } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, fmtDate, loadScript } from '../core/util.js';
 import { Reader, ascii, matchMagic, latin1, utf8, gunzip } from '../core/binutil.js';
 import { openZip } from '../renderers/zip.js';
 import { xzDecompress } from '../lib/xz-loader.js';
@@ -34,14 +34,6 @@ async function zstdDecompress(bytes) {
 
 // ---------- small shared helpers ----------
 
-// A scrollable <pre> for raw text / file lists.
-function preBlock(text, cls) {
-  return el('pre', {
-    class: cls || 'anr-code',
-    style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;',
-  }, text);
-}
-
 // Read up to `n` bytes from the file (for parses needing more than the 4KB head).
 async function readBytes(file, n) {
   return new Uint8Array(await file.slice(0, Math.min(file.size, n)).arrayBuffer());
@@ -51,8 +43,6 @@ async function readBytes(file, n) {
 async function readRange(file, start, end) {
   return new Uint8Array(await file.slice(start, Math.min(end, file.size)).arrayBuffer());
 }
-
-const fmtDate = (d) => (d instanceof Date && !isNaN(d)) ? d.toLocaleString() : String(d);
 
 // Build a file-list section node from rows of {name, size, extra}.
 function fileListSection(title, items, open) {

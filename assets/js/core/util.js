@@ -187,6 +187,26 @@ export function fmtBytes(n) {
   return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
+// A scrollable, wrapping <pre> for raw text payloads (hex dumps, headers, etc.).
+// Shared by the lazy parser chunks so every readout block looks the same.
+export function preBlock(text, cls) {
+  return el('pre', {
+    class: cls || 'anr-code',
+    style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;',
+  }, text || '');
+}
+
+// Format a Date for display, tolerating non-Date / invalid values.
+export const fmtDate = (d) => (d instanceof Date && !isNaN(d)) ? d.toLocaleString() : String(d);
+
+// Read up to `n` bytes from a File starting at `off`. Returns a Uint8Array
+// (empty when the offset is past EOF). Shared by the binary parser chunks.
+export async function readSlice(file, off, n) {
+  const end = Math.min(file.size, off + n);
+  if (off >= file.size || end <= off) return new Uint8Array(0);
+  return new Uint8Array(await file.slice(off, end).arrayBuffer());
+}
+
 // Wire a [?] info button to an inline dropdown panel (.anr-info-panel shown/hidden
 // via .is-hidden). The button label flips between [?] (closed) and [-] (open). If
 // the button sits inside a collapsed <details>, the first click also opens that

@@ -4,12 +4,8 @@
    non-destructive edits a raw developer applied. The RAW images themselves are
    handled by the photo renderer; these are the adjustment recipes. */
 
-import { el } from '../core/util.js';
+import { el, preBlock } from '../core/util.js';
 import { parsePlist } from '../lib/plist.js';
-
-function preBlock(text) {
-  return el('pre', { class: 'anr-code', style: 'max-height:320px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
 
 // Apple Photos .aae adjustments sidecar (XML or binary plist).
 async function parseAae(file) {

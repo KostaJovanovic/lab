@@ -9,17 +9,11 @@
 
    Dependency-free: only the shared toolkit (util/binutil/plist) is imported. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, fmtDate } from '../core/util.js';
 import { Reader, ascii, cp437, latin1, utf8, filetimeToDate } from '../core/binutil.js';
 import { parsePlist } from '../lib/plist.js';
 
 // ---------- small helpers ----------
-const fmtDate = (d) => (d instanceof Date && !isNaN(d)) ? d.toLocaleString() : String(d);
-
-// A scrollable <pre> for raw text payloads.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
 // A monospace block that preserves ASCII art (no wrapping, horizontal scroll).
 function monoBlock(text) {
   return el('pre', { class: 'anr-code', style: 'max-height:480px;overflow:auto;font-size:12px;line-height:1.2;white-space:pre;margin:0;font-family:monospace;' }, text);

@@ -6,13 +6,11 @@
    optionally carrying `_sections: [{title, node, open?}]` for collapsible blocks.
    Return null to fall back to the generic identification card. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock } from '../core/util.js';
 import { Reader, ascii, findBytes } from '../core/binutil.js';
 import { parsePlist } from '../lib/plist.js';
 
 // ---------- small helpers ----------
-const fmtDate = (d) => (d instanceof Date && !isNaN(d)) ? d.toLocaleString() : String(d);
-
 function b64urlToBytes(s) {
   s = s.replace(/-/g, '+').replace(/_/g, '/');
   while (s.length % 4) s += '=';
@@ -23,10 +21,6 @@ function b64urlToBytes(s) {
 }
 const b64urlToStr = (s) => new TextDecoder('utf-8').decode(b64urlToBytes(s));
 
-// A scrollable <pre> for raw JSON / text payloads.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
 // A simple two-column readout table from an array of [label, value] pairs.
 function rowsTable(pairs) {
   const t = el('table', { class: 'anr-readout' });

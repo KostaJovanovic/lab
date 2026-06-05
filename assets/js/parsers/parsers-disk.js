@@ -15,18 +15,11 @@
    zstd/gzip; esd uses LZMS) stay metadata-only. Anything rated rare AND hard is
    identification-only. No top-level side effects. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, fmtDate } from '../core/util.js';
 import { Reader, ascii, findBytes, matchMagic, startsWithAscii, latin1, utf8, utf16, fmtGuid } from '../core/binutil.js';
 import { openZip } from '../renderers/zip.js';
 
 // ---------- small shared helpers ----------
-
-function preBlock(text, cls) {
-  return el('pre', {
-    class: cls || 'anr-code',
-    style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;',
-  }, text);
-}
 
 async function readBytes(file, n) {
   return new Uint8Array(await file.slice(0, Math.min(file.size, n)).arrayBuffer());
@@ -37,8 +30,6 @@ async function readRange(file, start, end) {
   if (end <= start) return new Uint8Array(0);
   return new Uint8Array(await file.slice(start, end).arrayBuffer());
 }
-
-const fmtDate = (d) => (d instanceof Date && !isNaN(d)) ? d.toLocaleString() : String(d);
 const hex = (n, w = 8) => '0x' + (n >>> 0).toString(16).toUpperCase().padStart(w, '0');
 const hex64 = (n) => '0x' + n.toString(16).toUpperCase();
 

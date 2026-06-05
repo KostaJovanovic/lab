@@ -7,23 +7,11 @@
    for a decoded preview. Return null to fall back to the generic identification
    card. Dependency-free: only the shared toolkit + zip reader. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, readSlice } from '../core/util.js';
 import { Reader, ascii, findBytes, matchMagic, startsWithAscii, latin1, gunzip, fmtGuid } from '../core/binutil.js';
 import { openZip } from '../renderers/zip.js';
 
 // ---------- small helpers ----------
-
-// A scrollable <pre> for raw text / listings.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
-
-// Read up to `n` bytes from a File starting at `off`. Returns Uint8Array.
-async function readSlice(file, off, n) {
-  const end = Math.min(file.size, off + n);
-  if (off >= file.size) return new Uint8Array(0);
-  return new Uint8Array(await file.slice(off, end).arrayBuffer());
-}
 
 // CRC32 (IEEE) over a Uint8Array.
 let CRC_TABLE = null;

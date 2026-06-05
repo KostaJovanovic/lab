@@ -14,22 +14,10 @@
    MPEG PS/TS); recordings (wtv, dvr-ms, trp/tp PVR, ogm); other containers (nut);
    plus identification-only for the rare+hard ones (dpx, cin, dav, yuv). */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, readSlice } from '../core/util.js';
 import { Reader, ascii, findBytes, matchMagic, startsWithAscii, latin1, utf8 } from '../core/binutil.js';
 
 // ---------- small helpers ----------
-
-// A scrollable <pre> for raw text / listings.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
-
-// Read up to `n` bytes from a File starting at `off`. Returns Uint8Array.
-async function readSlice(file, off, n) {
-  const end = Math.min(file.size, off + n);
-  if (off >= file.size) return new Uint8Array(0);
-  return new Uint8Array(await file.slice(off, end).arrayBuffer());
-}
 
 // Seconds -> H:MM:SS(.mmm) string.
 function fmtDuration(sec) {

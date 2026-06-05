@@ -9,16 +9,11 @@
    HEADER / METADATA extraction only - no WebGL viewer, no mesh render. Just
    counts and metadata. Dependency-free. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock } from '../core/util.js';
 import { Reader, ascii, findBytes, matchMagic, startsWithAscii, latin1, utf8, gunzip } from '../core/binutil.js';
 import { openZip } from '../renderers/zip.js';
 
 // ---------- small helpers ----------
-
-// Scrollable <pre> for raw text payloads.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
 
 // Read the first `n` bytes of a file as a Uint8Array (clamped to file size).
 async function head(file, n) {

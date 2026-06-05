@@ -10,16 +10,11 @@
    HEADER / METADATA ONLY — there is a separate map renderer (geo.js) for
    gpx/kml/geojson; this chunk covers the *other* geospatial formats with no map. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock } from '../core/util.js';
 import { Reader, ascii, findBytes, latin1, utf8 } from '../core/binutil.js';
 import { sqliteSummary } from '../lib/sqlite.js';
 
 // ---------- small helpers ----------
-
-// A scrollable <pre> for raw text / list payloads.
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text);
-}
 
 // Read up to `max` bytes of the file as text (UTF-8, lossy).
 async function readText(file, max = 1_000_000) {

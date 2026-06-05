@@ -13,19 +13,11 @@
    PageMaker/LIT/AZW/KFX, and CFBF-backed .pub/.hwp) stay identification-only.
    No top-level side effects. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock } from '../core/util.js';
 import { Reader, ascii, findBytes, latin1, utf8 } from '../core/binutil.js';
 import { openZip } from '../renderers/zip.js';
 
 // ---------- small shared helpers ----------
-
-// A scrollable <pre> for raw text / outlines / file lists.
-function preBlock(text, cls) {
-  return el('pre', {
-    class: cls || 'anr-code',
-    style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;',
-  }, text);
-}
 
 async function fileText(file, cap = 4 * 1024 * 1024) {
   return file.slice(0, Math.min(file.size, cap)).text();

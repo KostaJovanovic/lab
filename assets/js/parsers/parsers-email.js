@@ -13,17 +13,12 @@
    or proprietary DB engine we don't ship, so they get an identification-only
    card. */
 
-import { el, row, fmtBytes } from '../core/util.js';
+import { el, row, fmtBytes, preBlock } from '../core/util.js';
 import { Reader, ascii, findBytes, latin1, utf8, utf16, filetimeToDate } from '../core/binutil.js';
 import { parsePlist } from '../lib/plist.js';
 import { openCfbf } from '../lib/cfbf.js';
 
 // ---------- shared helpers ----------
-
-// A scrollable <pre> for raw text payloads (headers, body previews, member lists).
-function preBlock(text, cls) {
-  return el('pre', { class: cls || 'anr-code', style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;' }, text || '');
-}
 
 // How large a slice we read for the text-based formats (most mail/calendar
 // files are small; for mbox/big calendars we sample the head).

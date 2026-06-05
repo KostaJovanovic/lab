@@ -15,19 +15,12 @@
    (PICT, FLIF, JBIG/JBIG2, CGM, CDR) is identification-only. No top-level side
    effects. */
 
-import { el, row, fmtBytes, loadScript } from '../core/util.js';
+import { el, row, fmtBytes, preBlock, loadScript } from '../core/util.js';
 import { Reader, ascii, findBytes, matchMagic, startsWithAscii, latin1, utf8 } from '../core/binutil.js';
 
 // ---------- shared helpers ----------
 
 const MAX_EDGE = 1024;   // cap decoded preview's longest edge
-
-function preBlock(text, cls) {
-  return el('pre', {
-    class: cls || 'anr-code',
-    style: 'max-height:360px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:0;',
-  }, text);
-}
 
 async function readAll(file, cap = 32 * 1024 * 1024) {
   return new Uint8Array(await file.slice(0, Math.min(file.size, cap)).arrayBuffer());
