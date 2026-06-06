@@ -173,6 +173,48 @@ function audioDownloadRow(wavUrl, file) {
   return el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [link]);
 }
 
+// Extracting and analysing a video's audio track (full decode + waveform +
+// spectrogram) is heavy, so it no longer runs automatically. Instead this drops
+// an "Analyse audio" prompt card into the Sound section; the supplied routine
+// only fires when the user clicks it. Returns nothing - purely a UI mount.
+function mountAudioAnalyseButton(audioResultsEl, run) {
+  audioResultsEl.hidden = false;
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Audio track'));
+  card.appendChild(el('p', { class: 'anr-info' },
+    'This video carries an embedded sound track. Extract it for a player, waveform, spectrogram and level stats.'));
+  const btn = el('button', { type: 'button', class: 'anr-btn' }, 'Analyse audio');
+  card.appendChild(btn);
+  audioResultsEl.appendChild(card);
+  btn.addEventListener('click', () => {
+    card.remove();
+    audioResultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Show the bottom loading popup while the (heavy) decode + spectrogram runs.
+    const loader = window._anrLoader;
+    if (loader) loader.show('Analysing audio…');
+    Promise.resolve(run()).catch(() => {}).finally(() => { if (loader) loader.hide(); });
+  });
+}
+
+// Photo counterpart of mountAudioAnalyseButton: a video's first frame is no
+// longer pushed into the Photo section automatically. This drops an "Analyse
+// photo" prompt card there; the frame is only analysed when the user clicks.
+function mountPhotoAnalyseButton(photoResultsEl, run) {
+  photoResultsEl.hidden = false;
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Frame analysis'));
+  card.appendChild(el('p', { class: 'anr-info' },
+    'Pull this video’s first frame into the photo tools for colours, dimensions, EXIF and the rest.'));
+  const btn = el('button', { type: 'button', class: 'anr-btn' }, 'Analyse photo');
+  card.appendChild(btn);
+  photoResultsEl.appendChild(card);
+  btn.addEventListener('click', () => {
+    card.remove();
+    scrollToPhoto();
+    Promise.resolve(run()).catch(() => {});
+  });
+}
+
 // ---------- progress-tracked fetch ----------
 async function fetchWithProgress(url, onProgress) {
   const resp = await fetch(url);
@@ -270,6 +312,29 @@ async function ffmpegExtractAudio(file, container) {
   const ac = new (window.AudioContext || window.webkitAudioContext)();
   const buf = await wavBlob.arrayBuffer();
   return await ac.decodeAudioData(buf);
+}
+
+// Remux a raw H.264/H.265 elementary stream (Annex B, no container) into an MP4
+// using FFmpeg WASM. Stream copy only (-c copy) - the bitstream is unchanged, so
+// it's fast and lossless; it just gains an MP4 container the browser can play.
+// faststart moves the moov atom to the front so it plays without a full read.
+// A raw stream carries no timing, so FFmpeg's h264/h265 demuxer assumes 25 fps.
+// Returns a video/mp4 Blob, or null if FFmpeg is unavailable or won't copy it.
+async function ffmpegRemuxToMp4(file, signal) {
+  const ff = await loadFFmpeg();
+  if (signal && signal.aborted) return null;
+  const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
+  const inName = 'in.es', outName = 'out.mp4';
+  await ff.writeFile(inName, await fetchFile(file));
+  try {
+    await ff.exec(['-fflags', '+genpts', '-i', inName, '-c', 'copy', '-movflags', '+faststart', outName]);
+  } catch (_) { /* exec may resolve with a non-zero code instead of throwing */ }
+  let data = null;
+  try { data = await ff.readFile(outName); } catch (_) { data = null; }
+  try { await ff.deleteFile(inName); } catch (_) {}
+  try { await ff.deleteFile(outName); } catch (_) {}
+  if (!data || !data.length) return null;
+  return new Blob([data.buffer || data], { type: 'video/mp4' });
 }
 
 // Mean luma (0-255) of a JPEG blob, sampled on a small canvas. Used to tell a
@@ -545,6 +610,25 @@ async function peekVideoContainer(file) {
     return { container: 'OGG (Theora)' };
   if (head[0] === 0x30 && head[1] === 0x26 && head[2] === 0xB2 && head[3] === 0x75)
     return { container: 'WMV / ASF' };
+
+  // Raw H.264 / H.265 elementary stream (Annex B): no container, just NAL units
+  // separated by start codes (00 00 01 or 00 00 00 01). The first NAL header byte
+  // identifies the stream: for H.264 the type is the low 5 bits (7=SPS, 8=PPS,
+  // 5=IDR, 1=non-IDR); for HEVC it's bits 1..6 (32=VPS, 33=SPS, 34=PPS). The
+  // forbidden_zero_bit (high bit) is always 0, which also rules out MPEG-PS
+  // (00 00 01 BA, high bit set), handled above.
+  if (head[0] === 0x00 && head[1] === 0x00 &&
+      (head[2] === 0x01 || (head[2] === 0x00 && head[3] === 0x01))) {
+    const nal = head[head[2] === 0x01 ? 3 : 4];
+    if ((nal & 0x80) === 0) {
+      const t264 = nal & 0x1f;
+      if (t264 === 7 || t264 === 8 || t264 === 5 || t264 === 1)
+        return { container: 'Raw H.264 (Annex B)', raw: 'h264' };
+      const t265 = (nal >> 1) & 0x3f;
+      if (t265 === 32 || t265 === 33 || t265 === 34)
+        return { container: 'Raw H.265 (Annex B)', raw: 'h265' };
+    }
+  }
   return { container: 'unknown' };
 }
 
@@ -1424,9 +1508,9 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
     }
   }
 
-  // Audio extraction (into Sound section)
+  // Audio extraction (into Sound section) - gated behind an "Analyse audio" button.
   const audioResultsEl = document.getElementById('audioResults');
-  if (audioResultsEl) {
+  if (audioResultsEl) mountAudioAnalyseButton(audioResultsEl, async () => {
     audioResultsEl.hidden = false;
     const audioCard = el('div', { class: 'anr-card' });
     audioCard.appendChild(el('h3', {}, 'Audio track'));
@@ -1491,7 +1575,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       audioStatus.remove();
       audioCard.appendChild(el('p', { class: 'anr-hint' }, 'Audio decode failed: ' + (e && e.message || 'unknown error')));
     }
-  }
+  });
 
   // SHA-256
   if (file.size <= 500 * 1024 * 1024) {
@@ -1507,7 +1591,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
 // file is analysed.
 let videoRenderAbort = null;
 
-export async function renderVideo(file, resultsEl) {
+export async function renderVideo(file, resultsEl, opts = {}) {
   if (videoRenderAbort) videoRenderAbort.abort();
   videoRenderAbort = new AbortController();
   const renderSignal = videoRenderAbort.signal;
@@ -1519,6 +1603,32 @@ export async function renderVideo(file, resultsEl) {
 
   let header = {};
   try { header = await peekVideoContainer(file); } catch (_) {}
+
+  // Raw H.264 / H.265 elementary stream: no container, so the browser can't open
+  // it. FFmpeg stream-copies it into an MP4 (no re-encode, a second or two), and
+  // we then render THAT through the normal playable path - real player, frame
+  // tools, codec/profile readout and all. The original .h264 is still shown for
+  // name / size / hash via opts.sourceFile. On failure (FFmpeg offline, or a
+  // stream it won't copy) we fall back to the unplayable-info path.
+  const looksRaw = header.raw === 'h264' || header.raw === 'h265' ||
+    /\.(h?264|avc|h?265|hevc)$/i.test(file.name || '');
+  if (!opts.remuxed && looksRaw) {
+    const kind = header.raw === 'h265' || /\.(h?265|hevc)$/i.test(file.name || '') ? 'H.265' : 'H.264';
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(el('div', { class: 'anr-info' },
+      'Raw ' + kind + ' elementary stream - remuxing to MP4 with FFmpeg so it plays in the browser (no re-encode)…'));
+    let mp4Blob = null;
+    try { mp4Blob = await ffmpegRemuxToMp4(file, renderSignal); } catch (_) {}
+    if (renderSignal.aborted) return;
+    if (mp4Blob) {
+      const base = (file.name || 'video').replace(/\.[^/.]+$/, '');
+      const mp4File = new File([mp4Blob], base + '.mp4', { type: 'video/mp4' });
+      return renderVideo(mp4File, resultsEl, { remuxed: true, sourceFile: file, sourceKind: kind, noAudio: true });
+    }
+    resultsEl.innerHTML = '';
+    await renderUnplayableVideoInfo(file, header, resultsEl, renderSignal);
+    return;
+  }
 
   // Up-front gate for codecs that load their metadata cleanly but can never
   // actually decode in a browser: 4:2:2 / 4:4:4 chroma (e.g. Sony XAVC HS /
@@ -1622,7 +1732,7 @@ export async function renderVideo(file, resultsEl) {
       if (avi.audioFormat)
         tbl.appendChild(row('Audio', `${avi.audioFormat.sampleRate} Hz, ${avi.audioFormat.bitsPerSample}-bit, ${avi.audioFormat.channels}ch`));
       infoCard.appendChild(tbl);
-      resultsEl.appendChild(infoCard);
+      // infoCard is appended AFTER the Frames card below, so frames lead.
 
       let aviData = null;
       try { aviData = await extractAviData(file, avi); } catch (_) {}
@@ -1648,6 +1758,7 @@ export async function renderVideo(file, resultsEl) {
         frameCard.appendChild(frameImg);
 
         let currentFrame = 0;
+        let onFrameShown = null;   // set by the playback controls to sync the scrubber
         const frameLabel = el('span', { class: 'anr-hint' }, `Frame 1 / ${frames.length}`);
         function showFrame(idx) {
           currentFrame = idx;
@@ -1655,14 +1766,48 @@ export async function renderVideo(file, resultsEl) {
           frameImg.src = URL.createObjectURL(new Blob([frames[idx]], { type: 'image/jpeg' }));
           frameImg.alt = `Frame ${idx + 1}`;
           frameLabel.textContent = `Frame ${idx + 1} / ${frames.length}`;
+          if (onFrameShown) onFrameShown(idx);
         }
 
-        const prevBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
-          if (currentFrame > 0) showFrame(currentFrame - 1);
-        }}, '← Prev');
-        const nextBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
-          if (currentFrame < frames.length - 1) showFrame(currentFrame + 1);
-        }}, 'Next →');
+        const lastIdx = frames.length - 1;
+        const fps = (avi.fps && avi.fps > 0 && avi.fps <= 120) ? avi.fps : 15;
+        const frameMs = 1000 / fps;
+        const fmtTc = (sec) => formatDuration(sec);
+
+        // The AVI's own PCM audio (when present) plays in sync with the frames -
+        // it becomes the master clock and the frames follow it. Same decoded PCM
+        // the Sound section offers; encoded to a WAV the <audio> element can play.
+        const hasAudio = !!(aviData && aviData.audioBuffer);
+        let frameAudioEl = null, audioDur = 0;
+        if (hasAudio) {
+          const wavUrl = URL.createObjectURL(encodeWav(aviData.audioBuffer));
+          frameAudioEl = el('audio', { src: wavUrl });
+          frameAudioEl.style.display = 'none';
+          frameAudioEl.loop = true;
+          audioDur = aviData.audioBuffer.duration;
+          frameCard.appendChild(frameAudioEl);
+          renderSignal.addEventListener('abort', () => { try { frameAudioEl.pause(); } catch (_) {} URL.revokeObjectURL(wavUrl); });
+        }
+        const totalTime = hasAudio ? audioDur : frames.length / fps;
+        // Timestamp of a frame. With sound we spread the frames evenly across the
+        // audio's real duration (so they stay synced even if the header frame rate
+        // is missing or wrong); silent clips use the nominal fps.
+        const frameTimeOf = (idx) => hasAudio
+          ? (lastIdx > 0 ? (idx / lastIdx) * audioDur : 0)
+          : idx / fps;
+        const frameAtTime = (t) => hasAudio
+          ? Math.round((audioDur > 0 ? t / audioDur : 0) * lastIdx)
+          : Math.round(t * fps);
+
+        // Seek to a frame, keeping the audio clock aligned to it.
+        const seekToFrame = (idx) => {
+          idx = Math.max(0, Math.min(lastIdx, idx));
+          if (hasAudio) { try { frameAudioEl.currentTime = Math.min(audioDur, frameTimeOf(idx)); } catch (_) {} }
+          showFrame(idx);
+        };
+
+        const prevBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => seekToFrame(currentFrame - 1) }, '← Prev');
+        const nextBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => seekToFrame(currentFrame + 1) }, 'Next →');
         const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
           const blob = new Blob([frames[currentFrame]], { type: 'image/jpeg' });
           const frameFile = new File([blob], `frame_${currentFrame}.jpg`, { type: 'image/jpeg' });
@@ -1672,16 +1817,20 @@ export async function renderVideo(file, resultsEl) {
             scrollToPhoto();
           }
         }}, 'Analyse frame');
+        // Frame grab: download the current JPEG frame as-is.
+        const grabBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([frames[currentFrame]], { type: 'image/jpeg' }));
+          a.download = (file.name || 'video').replace(/\.[^.]+$/, '') + `_frame_${currentFrame}.jpg`;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        }}, 'Frame grab');
 
-        if (frames.length > 1)
-          frameCard.appendChild(el('div', { class: 'anr-frame-grid', style: 'margin-top:10px;' },
-            [frameLabel, analyseBtn, prevBtn, nextBtn]));
-        else
-          frameCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:10px;' }, [analyseBtn]));
-
+        // Contact sheet (>= 8 frames) - built here so it shares the action row.
+        let sheetBtn = null;
+        const sheetOut = el('div');
         if (frames.length >= 8) {
-          const sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
-          const sheetOut = el('div');
+          sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
           sheetBtn.addEventListener('click', async () => {
             sheetBtn.disabled = true;
             sheetBtn.textContent = 'Generating…';
@@ -1709,23 +1858,139 @@ export async function renderVideo(file, resultsEl) {
             sheetBtn.disabled = false;
             sheetBtn.textContent = 'Generate contact sheet';
           });
-          frameCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [sheetBtn]));
-          frameCard.appendChild(sheetOut);
         }
+
+        // Analyse frame · Frame grab · Generate contact sheet - all one row.
+        const actionBtns = [analyseBtn, grabBtn];
+        if (sheetBtn) actionBtns.push(sheetBtn);
+        const actionRow = el('div', { class: 'anr-btn-row', style: 'margin-top:10px;' }, actionBtns);
+
+        // A single still has nothing to play or scrub - just the action row.
+        // Multiple frames get a real transport (play / scrub / time) plus frame
+        // stepping, built below.
+        if (frames.length === 1) {
+          frameCard.appendChild(actionRow);
+        } else {
+          // Frame playback: the browser can't decode MJPEG-in-AVI, so step through
+          // the already-extracted JPEG frames. With sound, the AVI's audio is the
+          // master clock and the frames follow it; silent clips step on an fps
+          // timer and loop. Either way every tick decodes a full JPEG, so a big,
+          // fast, long clip can hit the CPU hard; warn when that's likely.
+          const mpPerSec = ((avi.width * avi.height) / 1_000_000) * fps;
+          const heavy = mpPerSec > 120 || frames.length > 600;
+
+          // Reuse the site's stylised transport (.anr-player) - the same play
+          // button, draggable fill track and time readout the audio/video players
+          // use - driven by the frame index (and the audio clock when present).
+          const playBtn = el('button', { type: 'button', class: 'anr-player-play', 'aria-label': 'Play' }, '▶');
+          const fillEl = el('div', { class: 'anr-player-fill' });
+          const trackEl = el('div', { class: 'anr-player-track' }, [fillEl]);
+          const timeEl = el('span', { class: 'anr-player-time' }, `${fmtTc(0)} / ${fmtTc(totalTime)}`);
+          const playerBar = el('div', { class: 'anr-player', style: 'margin-top:10px;' }, [playBtn, trackEl, timeEl]);
+
+          let playing = false;
+          let rafId = 0;
+          let lastTs = 0;
+          const setFrameFromTime = (t) => {
+            const idx = Math.max(0, Math.min(lastIdx, frameAtTime(t)));
+            if (idx !== currentFrame) showFrame(idx);
+          };
+          const stop = () => {
+            playing = false;
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = 0;
+            if (hasAudio) { try { frameAudioEl.pause(); } catch (_) {} }
+            playBtn.textContent = '▶';
+            playBtn.setAttribute('aria-label', 'Play');
+          };
+          const loop = (ts) => {
+            if (!playing) return;
+            if (hasAudio) {
+              setFrameFromTime(frameAudioEl.currentTime);   // audio drives the frame
+            } else if (ts - lastTs >= frameMs) {
+              lastTs = ts;
+              showFrame(currentFrame >= lastIdx ? 0 : currentFrame + 1);
+            }
+            rafId = requestAnimationFrame(loop);
+          };
+          playBtn.addEventListener('click', () => {
+            if (playing) { stop(); return; }
+            playing = true;
+            lastTs = 0;
+            playBtn.textContent = '❚❚';
+            playBtn.setAttribute('aria-label', 'Pause');
+            if (hasAudio) {
+              if (frameAudioEl.currentTime >= audioDur - 0.05) { try { frameAudioEl.currentTime = 0; } catch (_) {} }
+              frameAudioEl.play().catch(() => {});
+            }
+            rafId = requestAnimationFrame((ts) => { lastTs = ts; loop(ts); });
+          });
+
+          // Click or drag the track to seek frames (and audio) together - the same
+          // gesture as the audio/video scrubber (makePlayer). Window listeners live
+          // only during a drag so they don't pile up across files.
+          const seekFromX = (clientX) => {
+            const rect = trackEl.getBoundingClientRect();
+            const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            seekToFrame(Math.round(frac * lastIdx));
+          };
+          let dragging = false;
+          const onMove = (e) => { if (dragging) seekFromX(e.clientX); };
+          const onUp = () => { dragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+          trackEl.addEventListener('mousedown', (e) => {
+            dragging = true; stop(); seekFromX(e.clientX); e.preventDefault();
+            window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+          });
+          const onTMove = (e) => { if (dragging && e.touches[0]) { e.preventDefault(); seekFromX(e.touches[0].clientX); } };
+          const onTEnd = () => { dragging = false; window.removeEventListener('touchmove', onTMove); window.removeEventListener('touchend', onTEnd); };
+          trackEl.addEventListener('touchstart', (e) => {
+            dragging = true; stop(); seekFromX(e.touches[0].clientX); e.preventDefault();
+            window.addEventListener('touchmove', onTMove, { passive: false }); window.addEventListener('touchend', onTEnd);
+          }, { passive: false });
+
+          // Keep the fill, counter and timecode in step with every frame change
+          // (play, Prev/Next, or a direct seek). Time is the frame's own timestamp.
+          onFrameShown = (idx) => {
+            const t = frameTimeOf(idx);
+            fillEl.style.width = (totalTime > 0 ? Math.min(1, t / totalTime) * 100 : 0) + '%';
+            timeEl.textContent = `${fmtTc(t)} / ${fmtTc(totalTime)}`;
+          };
+          // Tearing down the render (new file / navigation) must kill the loop.
+          renderSignal.addEventListener('abort', stop);
+
+          frameCard.appendChild(playerBar);
+          // Frame counter + rate (and whether sound is along for the ride), centered.
+          frameCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-top:4px; text-align:center;' },
+            [frameLabel, document.createTextNode(` · ${fps} fps${hasAudio ? ' · with sound' : ' · loop'}`)]));
+          // Symmetric frame stepping: Prev | Next.
+          frameCard.appendChild(el('div', { class: 'anr-frame-grid', style: 'margin-top:10px;' }, [prevBtn, nextBtn]));
+          if (heavy) {
+            frameCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-top:8px; color: var(--accent);' },
+              '⚠ Heavy playback: this clip is large enough (' +
+              (avi.width + '×' + avi.height) + ' at ' + fps + ' fps) that looping every frame ' +
+              'decodes a full JPEG each tick and may stutter or spike CPU. Step through with Prev / Next if it struggles.'));
+          }
+          frameCard.appendChild(actionRow);
+        }
+        // Contact-sheet output (if any) lands under the action row.
+        frameCard.appendChild(sheetOut);
         resultsEl.appendChild(frameCard);
 
-        // Auto-analyse first frame
+        // First frame - gated behind an "Analyse photo" button.
         const photoResultsEl = document.getElementById('photoResults');
         if (photoResultsEl) {
           const blob = new Blob([frames[0]], { type: 'image/jpeg' });
           const frameFile = new File([blob], 'frame_0.000s.jpg', { type: 'image/jpeg' });
-          renderPhoto(frameFile, photoResultsEl);
+          mountPhotoAnalyseButton(photoResultsEl, () => renderPhoto(frameFile, photoResultsEl));
         }
       }
 
-      // Audio from direct PCM extraction
+      // File info comes AFTER the Frames section (frames lead).
+      resultsEl.appendChild(infoCard);
+
+      // Audio from direct PCM extraction - gated behind an "Analyse audio" button.
       const audioResultsEl = document.getElementById('audioResults');
-      if (audioResultsEl && aviData && aviData.audioBuffer) {
+      if (audioResultsEl && aviData && aviData.audioBuffer) mountAudioAnalyseButton(audioResultsEl, () => {
         audioResultsEl.hidden = false;
         const audioBuf = aviData.audioBuffer;
         const mono = getMono(audioBuf);
@@ -1788,7 +2053,7 @@ export async function renderVideo(file, resultsEl) {
           audioPlayer.currentTime = frac * audioDuration;
           tickPlayhead();
         });
-      }
+      });
 
       // SHA-256
       if (file.size <= 500 * 1024 * 1024) {
@@ -1840,27 +2105,29 @@ export async function renderVideo(file, resultsEl) {
     previewSlot.appendChild(thumb);
   }
 
-  // Auto-analyse first frame in the photo section
+  // First frame into the photo section - gated behind an "Analyse photo" button.
+  // The frame is grabbed from the probe now (it sits at frame 0 at this point;
+  // later scene detection may seek it away), but only rendered on click.
   const photoResultsEl = document.getElementById('photoResults');
-  if (photoResultsEl) {
-    let lastPhotoHeight = photoResultsEl.offsetHeight;
-    const photoScrollComp = new ResizeObserver(() => {
-      const newHeight = photoResultsEl.offsetHeight;
-      const delta = newHeight - lastPhotoHeight;
-      if (delta > 0) window.scrollBy(0, delta);
-      lastPhotoHeight = newHeight;
-    });
-    photoScrollComp.observe(photoResultsEl);
-    renderSignal.addEventListener('abort', () => photoScrollComp.disconnect());
-  }
-  if (vw && vh) {
+  if (photoResultsEl && vw && vh) {
     const fcv = document.createElement('canvas');
     fcv.width = vw; fcv.height = vh;
     fcv.getContext('2d').drawImage(probe, 0, 0, vw, vh);
     fcv.toBlob(blob => {
       if (!blob) return;
       const frameFile = new File([blob], `frame_0.000s.png`, { type: 'image/png' });
-      if (photoResultsEl) renderPhoto(frameFile, photoResultsEl);
+      mountPhotoAnalyseButton(photoResultsEl, () => {
+        let lastPhotoHeight = photoResultsEl.offsetHeight;
+        const photoScrollComp = new ResizeObserver(() => {
+          const newHeight = photoResultsEl.offsetHeight;
+          const delta = newHeight - lastPhotoHeight;
+          if (delta > 0) window.scrollBy(0, delta);
+          lastPhotoHeight = newHeight;
+        });
+        photoScrollComp.observe(photoResultsEl);
+        renderSignal.addEventListener('abort', () => photoScrollComp.disconnect());
+        renderPhoto(frameFile, photoResultsEl);
+      });
     }, 'image/png');
   }
 
@@ -1894,19 +2161,25 @@ export async function renderVideo(file, resultsEl) {
   resultsEl.appendChild(playerCard);
 
   // ---- File info ----
+  // For a remuxed raw stream, show the ORIGINAL file's name/size/MIME (and base
+  // the bitrate on it) - the .mp4 we built is just a playback wrapper.
+  const infoFile = opts.sourceFile || file;
   const infoCard = el('div', { class: 'anr-card' });
   infoCard.appendChild(el('h3', {}, 'File info'));
   const tbl = el('table', { class: 'anr-readout' });
-  tbl.appendChild(row('Name', file.name));
-  tbl.appendChild(row('Size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`));
-  tbl.appendChild(rowHelp('MIME', file.type || '-', "The MIME type is the standard label for the file's format (for example image/jpeg or audio/mpeg). The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
+  tbl.appendChild(row('Name', infoFile.name));
+  tbl.appendChild(row('Size', `${fmtBytes(infoFile.size)}   (${infoFile.size.toLocaleString()} bytes)`));
+  tbl.appendChild(rowHelp('MIME', infoFile.type || '-', "The MIME type is the standard label for the file's format (for example image/jpeg or audio/mpeg). The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
+  if (opts.sourceFile)
+    tbl.appendChild(rowHelp('Source', 'Raw ' + (opts.sourceKind || 'H.264') + ' (Annex B)',
+      'A raw ' + (opts.sourceKind || 'H.264') + ' elementary stream has no container, so Analyser stream-copied it into an MP4 in-browser (no re-encode) to play it. The stream carries no timing, so the frame rate and duration are assumed at 25 fps.'));
   if (header.container)
-    tbl.appendChild(row('Container', header.container + (header.brand ? '  (' + header.brand + ')' : '')));
+    tbl.appendChild(row('Container', (opts.sourceFile ? 'Raw ' + (opts.sourceKind || 'H.264') + ' → MP4 (remuxed)' : header.container + (header.brand ? '  (' + header.brand + ')' : ''))));
   tbl.appendChild(row('Resolution', vw && vh ? `${vw} × ${vh} px` : '-'));
   tbl.appendChild(row('Aspect ratio', aspectRatio(vw, vh)));
-  tbl.appendChild(row('Duration', isFinite(dur) ? formatDuration(dur) : '-'));
+  tbl.appendChild(row('Duration', isFinite(dur) ? formatDuration(dur) + (opts.sourceFile ? ' (assumed 25 fps)' : '') : '-'));
   const bitrate = isFinite(dur) && dur > 0
-    ? (file.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (file.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)'
+    ? (infoFile.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (infoFile.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)'
     : '-';
   tbl.appendChild(rowHelp('Bitrate (total)', bitrate, 'Average data rate across the whole file - video, audio, and container overhead combined. Computed as file size ÷ duration, so it is an overall average, not the encoder’s target bitrate.'));
   const fpsRow = row('Frame rate', 'detecting…');
@@ -2150,8 +2423,11 @@ export async function renderVideo(file, resultsEl) {
   }
 
   // ---- Audio track extraction (renders into the Sound section) ----
+  // Gated behind an "Analyse audio" button so a full decode + spectrogram only
+  // runs when the user asks for it, not automatically on every video.
+  // (Skipped for raw H.264/H.265, which is a video-only elementary stream.)
   const audioResultsEl = document.getElementById('audioResults');
-  if (audioResultsEl) {
+  if (audioResultsEl && !opts.noAudio) mountAudioAnalyseButton(audioResultsEl, async () => {
     audioResultsEl.hidden = false;
 
     // Scroll compensation: when audio section expands above the video section,
@@ -2317,15 +2593,17 @@ export async function renderVideo(file, resultsEl) {
       audioCard.appendChild(el('p', { class: 'anr-hint' },
         'Audio decode failed: ' + (e && e.message || 'unknown error') + '. Try converting to MP4 (H.264 + AAC).'));
     }
-  }
+  });
 
   // ---- SHA-256 ----
-  if (file.size <= 500 * 1024 * 1024) {
+  // Hash the ORIGINAL bytes (the raw .h264), not the remuxed MP4 wrapper.
+  const hashFile = opts.sourceFile || file;
+  if (hashFile.size <= 500 * 1024 * 1024) {
     const hashCard = el('div', { class: 'anr-card' });
     const [vhH, vhHelp] = h3help('Integrity', '<strong>SHA-256</strong> is a cryptographic hash of the raw file bytes. Any change to the file, even one bit, produces a completely different hash. Useful for verifying a file has not been tampered with.');
     hashCard.appendChild(vhH); hashCard.appendChild(vhHelp);
     const hashTbl = el('table', { class: 'anr-readout' });
-    hashTbl.appendChild(sha256Row(file));
+    hashTbl.appendChild(sha256Row(hashFile));
     hashCard.appendChild(hashTbl);
     resultsEl.appendChild(hashCard);
   }

@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 66;
+const COMMIT_COUNT = 67;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -98,7 +98,7 @@ let _dropLoaderEl = null;
 let _dropLoaderTimer = null;
 let _dropLoaderOnCancel = null;
 
-function showDropLoader(file, onCancel) {
+function showDropLoader(file, onCancel, labelText) {
   clearTimeout(_dropLoaderTimer);
   _dropLoaderOnCancel = onCancel || null;
   const name = (file && file.name) ? file.name : 'file';
@@ -127,7 +127,7 @@ function showDropLoader(file, onCancel) {
       _dropLoaderEl._label = label;
       document.body.appendChild(_dropLoaderEl);
     }
-    _dropLoaderEl._label.textContent = 'Reading ' + name + '…';
+    _dropLoaderEl._label.textContent = labelText || ('Reading ' + name + '…');
     requestAnimationFrame(() => _dropLoaderEl.classList.add('is-open'));
   }, 160);
 }
@@ -141,6 +141,15 @@ function hideDropLoader() {
     _dropLoaderEl.classList.remove('is-open');
   }
 }
+
+// Let renderers outside the main drop flow (e.g. the video module's "Analyse
+// audio" button) drive the same bottom loading popup while they do heavy work.
+// The bar is a CSS animation, so it keeps stepping even under the heavy
+// synchronous decode/FFT work these actions trigger.
+window._anrLoader = {
+  show: (label) => showDropLoader(null, null, label || 'Working…'),
+  hide: hideDropLoader,
+};
 
 // ---------- true file-type sniffing ----------
 // Detect what a file ACTUALLY is from its leading bytes, independent of its name,
@@ -916,11 +925,30 @@ function boot() {
     }
 
     // Autoscroll straight to the media section so the player/analysis is in view
-    // the moment a video or audio file is dropped (the section is already
-    // revealed above). rAF lets the just-unhidden section lay out first.
+    // the moment a video or audio file is dropped. The catch: content that lands
+    // ABOVE it - the Photo/Sound "Analyse" cards - and the section's own player
+    // are appended asynchronously, so a single early scroll lands too high (it
+    // "misses" by whatever appears above afterwards). So we scroll now for
+    // responsiveness and re-assert once the renderer settles (below) - unless the
+    // user has grabbed the scroll themselves in the meantime.
     const autoScrollSec = kind === 'video' ? sectionVideo : kind === 'audio' ? sectionAudio : null;
+    let userTookScroll = false;
+    let stopScrollWatch = () => {};
     if (autoScrollSec) {
-      requestAnimationFrame(() => autoScrollSec.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      const onUserScroll = () => { userTookScroll = true; };
+      // A programmatic smooth scroll fires 'scroll' but NOT these, so they cleanly
+      // detect the user taking over (wheel / touch-drag / arrow & page keys).
+      window.addEventListener('wheel', onUserScroll, { passive: true });
+      window.addEventListener('touchmove', onUserScroll, { passive: true });
+      window.addEventListener('keydown', onUserScroll);
+      stopScrollWatch = () => {
+        window.removeEventListener('wheel', onUserScroll);
+        window.removeEventListener('touchmove', onUserScroll);
+        window.removeEventListener('keydown', onUserScroll);
+      };
+      requestAnimationFrame(() => {
+        if (!userTookScroll) autoScrollSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
 
     // Windows executables/DLLs carry their app icon in the PE resource section.
@@ -945,11 +973,24 @@ function boot() {
         // A cancelled renderer may have appended output after cancelLoad cleared
         // the UI. Scrub it - but only if no newer load has since taken over
         // (cancelLoad nulls _currentToken; a fresh load sets it non-null).
+        stopScrollWatch();
         if (_currentToken === null) clearResultsUI();
         return;
       }
-      if (_currentToken !== token) return;   // superseded by a newer load
+      if (_currentToken !== token) { stopScrollWatch(); return; }   // superseded
       hideDropLoader();
+      // Everything above the media section (the Photo/Sound "Analyse" cards) and
+      // its player are in place now, so re-assert the scroll - the early one
+      // landed too high before they pushed it down. Two rAFs let the final layout
+      // settle first; keep watching for a user takeover until that last scroll.
+      if (autoScrollSec && !userTookScroll) {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (!userTookScroll) autoScrollSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          stopScrollWatch();
+        }));
+      } else {
+        stopScrollWatch();
+      }
       if (suggestion) {
         showTypeSuggestion(suggestion, () => handleFile(file, { kind: suggestion.kind, ext: suggestion.ext }));
       }

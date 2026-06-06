@@ -77,7 +77,8 @@ export const AUDIO_EXTS = new Set([
 
 export const VIDEO_EXTS = new Set([
   'mp4','m4v','mov','avi','mkv','webm','wmv','flv',
-  '3gp','3g2','mpg','mpeg','mts','m2ts','ts','vob','ogv'
+  '3gp','3g2','mpg','mpeg','mts','m2ts','ts','vob','ogv',
+  'h264','264','avc','h265','265','hevc'
 ]);
 
 export const CSV_EXTS = new Set(['csv', 'tsv']);
@@ -112,7 +113,7 @@ export const ARCHIVE_EXTS = new Set([
 export const FULL_ANALYSIS = [
   { label: 'Photo',     exts: 'JPG JPEG JIF JFIF PNG GIF WebP HEIC HEIF BMP TIFF AVIF JXL ICO RAW ARW CR2 CR3 NEF DNG RAF RW2 ORF PEF SR2 SRW X3F 3FR IIQ MRW NRW RWL CRW GPR FFF MEF MOS KDC DCR DCS ERF SRF THM', tags: 'image picture camera photograph sony nikon canon fuji olympus pentax sigma samsung apple google pixel hasselblad phase one minolta leica kodak gopro epson mamiya leaf shutter count actuations actuation live photo motion photo proraw ultra hdr gain map computational thm thumbnail movie video clip preview ixus powershot', desc: 'View EXIF, GPS, camera settings, the shutter actuation count, histograms, OCR text, and AI-generation markers in JPG, PNG, HEIC, WebP, TIFF and RAW photos from Sony, Nikon, Canon, Fujifilm, Hasselblad, Phase One, Leica, Kodak and more. Detects computational-photo wrappers (Apple ProRAW and Live Photo, Google/Samsung Motion Photo, Ultra HDR gain maps), and opens THM movie-thumbnail files.' },
   { label: 'Sound',     exts: 'MP3 WAV M4A M4B AAC FLAC OGG OPUS AIFF WMA AMR AC3 DTS MKA', tags: 'audio music podcast recording microphone audiobook', desc: 'Inspect the waveform, spectrogram, codec, bitrate, channels, and tags of MP3, WAV, FLAC, M4A, AAC, OGG, and Opus audio.' },
-  { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP 3G2 MPG MPEG MTS M2TS TS VOB OGV', tags: 'movie film clip recording screen', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track.' },
+  { label: 'Video',     exts: 'MP4 MOV AVI MKV WebM WMV FLV 3GP 3G2 MPG MPEG MTS M2TS TS VOB OGV H264 264 AVC H265 265 HEVC', tags: 'movie film clip recording screen raw elementary stream annex b h.264 h.265 hevc bitstream', desc: 'Read the container, codec, resolution, and frame rate of MP4, MOV, MKV, AVI, and WebM video, step through frames, and extract the audio track. Raw H.264/H.265 elementary streams (.h264/.265) are remuxed to MP4 in-browser so they play too.' },
   { label: 'PDF',       exts: 'PDF', tags: 'adobe acrobat document', desc: 'View pages, extract text and embedded images, run OCR, and read the metadata of PDF documents.' },
   { label: 'Office docs', exts: 'DOCX XLSX PPTX EPUB', tags: 'microsoft word excel powerpoint slides spreadsheet ebook epub viewer reader', desc: 'Open and read Microsoft Word (DOCX), Excel (XLSX), and PowerPoint (PPTX), plus EPUB e-books - text, tables, slides, and chapters.' },
   { label: '3D model',  exts: 'STL OBJ PLY OFF STEP STP IGES IGS BREP 3MF AMF', tags: 'stl obj wavefront ply stanford off step stp iges igs brep 3mf amf 3d model mesh print cad solidworks fusion catia inventor freecad opencascade tessellation assembly bambu prusa orcaslicer slicer scan point triangle viewer webgl', desc: 'View STL, OBJ, PLY, OFF, STEP, IGES, BREP, 3MF and AMF models in an interactive WebGL viewer with triangle count, bounding box, surface area and volume. STEP/IGES/BREP are tessellated with OpenCASCADE and STEP shows its originating CAD system, version and AP203/214/242 protocol; 3MF and AMF let you inspect each model and assembly on the build plate individually.' },
