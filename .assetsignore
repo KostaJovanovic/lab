@@ -4,7 +4,8 @@
 #   1. Size: Workers rejects any single asset over 25 MiB; the .git pack is ~32 MiB,
 #      which is exactly what failed the deploy.
 #   2. Privacy: serving .git would expose the full source history publicly.
-# Syntax is .gitignore-style.
+# Syntax is .gitignore-style. NOTE: this file MUST stay LF-only (see .gitattributes) -
+# CRLF appends a stray \r to each pattern and stops the rules below from matching.
 
 .git/
 .gitignore

@@ -1,0 +1,5 @@
+# Wrangler parses .assetsignore one line at a time; a CRLF would leave a stray
+# \r on every pattern (so ".git/" never matches) and silently break the asset
+# exclusions, letting the 32 MiB .git pack get uploaded and fail the deploy.
+# Force LF so a Windows checkout can't reintroduce the carriage returns.
+.assetsignore text eol=lf
