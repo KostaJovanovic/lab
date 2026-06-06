@@ -225,7 +225,7 @@ const CAT_OF = {
   'Music production': 'audio', 'MIDI': 'audio', 'Lyrics': 'audio',
   // Video
   'Video': 'video', 'Video / streaming (more)': 'video', 'Video editing': 'video',
-  'Subtitles': 'video', 'Subtitles (other)': 'video',
+  'Editing timeline': 'video', 'Subtitles': 'video', 'Subtitles (other)': 'video',
   // Documents & ebooks
   'PDF': 'documents', 'Office docs': 'documents', 'Documents': 'documents',
   'Documents / ebooks (more)': 'documents', 'eBooks': 'documents', 'Fonts': 'documents',
