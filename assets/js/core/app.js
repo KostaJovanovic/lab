@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 65;
+const COMMIT_COUNT = 66;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -32,7 +32,7 @@ import { renderArchive } from '../renderers/archive.js';
 import { renderSvg } from '../renderers/svg.js';
 import { renderCsv } from '../renderers/csv.js';
 import { renderUnknown } from '../renderers/unknown.js';
-import { renderProprietary, isProprietaryExt } from '../renderers/proprietary.js';
+import { renderProprietary, isProprietaryExt, extractPeIcon } from '../renderers/proprietary.js';
 import { renderDocx } from '../renderers/docx.js';
 import { renderXlsx } from '../renderers/xlsx.js';
 import { renderEpub } from '../renderers/epub.js';
@@ -921,6 +921,19 @@ function boot() {
     const autoScrollSec = kind === 'video' ? sectionVideo : kind === 'audio' ? sectionAudio : null;
     if (autoScrollSec) {
       requestAnimationFrame(() => autoScrollSec.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+
+    // Windows executables/DLLs carry their app icon in the PE resource section.
+    // Pull it out and analyse it as a photo (the Photo section is kept visible
+    // above for exe/dll). Best-effort and fully async - never blocks the render.
+    if (kind === 'proprietary' && /\.(exe|dll)$/i.test(file.name) && photoResults) {
+      extractPeIcon(file).then((iconFile) => {
+        if (!iconFile || token.cancelled || _currentToken !== token) return;
+        photoResults.hidden = false;
+        markAnalysed('photo');
+        renderPhoto(iconFile, photoResults,
+          { sourceNote: 'Application icon extracted from ' + (file.name || 'the executable') + '.' });
+      }).catch(() => {});
     }
 
     // Hide the bottom loader once the renderer settles (or immediately if it

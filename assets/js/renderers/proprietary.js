@@ -1514,7 +1514,10 @@ function parsePe(buf) {
           const secVSize = view.getUint32(secTableOff + s * 40 + 8, true);
           const secRaw = view.getUint32(secTableOff + s * 40 + 20, true);
           if (rsrcRva >= secVa && rsrcRva < secVa + secVSize) {
-            result._rsrc = { off: secRaw + (rsrcRva - secVa), size: rsrcSize };
+            // `rva` is the resource section's virtual address; resource data
+            // entries store their payload as an RVA, so file-offset-within-rsrc =
+            // dataRVA - rva. Kept so the icon extractor can resolve RT_ICON bytes.
+            result._rsrc = { off: secRaw + (rsrcRva - secVa), size: rsrcSize, rva: rsrcRva };
             break;
           }
         }
@@ -1621,6 +1624,134 @@ async function parseExe(c) {
     } catch (_) {}
   }
   return result;
+}
+
+// ---------- PE icon extraction ----------
+// Pull the application icon out of a Windows PE (.exe/.dll) and hand it back as a
+// PNG File so it can be analysed in the photo section. Walks the resource tree to
+// the first RT_GROUP_ICON (type 14), picks that group's largest/deepest member,
+// wraps the referenced RT_ICON (type 3) image - a DIB or PNG - in a one-image
+// .ico, and rasterises it through the browser's own ICO decoder (which handles
+// the DIB AND-mask transparency we'd otherwise hand-roll). Returns null when
+// there's no icon or anything is malformed - it never throws.
+export async function extractPeIcon(file) {
+  if (!file) return null;
+  try {
+    const head = new Uint8Array(await file.slice(0, 64 * 1024).arrayBuffer());
+    const pe = parsePe(head);
+    const rsrc = pe && pe._rsrc;
+    if (!rsrc || !rsrc.size || !rsrc.rva) return null;
+
+    const size = Math.min(rsrc.size, 8 * 1024 * 1024);
+    const buf = new Uint8Array(await file.slice(rsrc.off, rsrc.off + size).arrayBuffer());
+    if (buf.length < 16) return null;
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
+    // One IMAGE_RESOURCE_DIRECTORY at rsrc-relative `dirOff` → its entries.
+    // Sub-offsets are rsrc-relative; the high bit marks a subdirectory.
+    const readDir = (dirOff) => {
+      if (dirOff < 0 || dirOff + 16 > buf.length) return [];
+      const total = dv.getUint16(dirOff + 12, true) + dv.getUint16(dirOff + 14, true);
+      const entries = [];
+      let p = dirOff + 16;
+      for (let i = 0; i < total && p + 8 <= buf.length; i++, p += 8) {
+        const nameField = dv.getUint32(p, true);
+        const offField = dv.getUint32(p + 4, true);
+        entries.push({
+          id: (nameField & 0x80000000) ? -1 : nameField,   // -1 = named entry
+          isDir: !!(offField & 0x80000000),
+          off: offField & 0x7FFFFFFF,
+        });
+      }
+      return entries;
+    };
+    // IMAGE_RESOURCE_DATA_ENTRY at rsrc-relative `leafOff` → bytes in `buf`.
+    // OffsetToData is an image RVA, so subtract the section's own RVA.
+    const leafData = (leafOff) => {
+      if (leafOff < 0 || leafOff + 16 > buf.length) return null;
+      const start = dv.getUint32(leafOff, true) - rsrc.rva;
+      const dataSize = dv.getUint32(leafOff + 4, true);
+      if (start < 0 || dataSize <= 0 || start + dataSize > buf.length) return null;
+      return { start, size: dataSize };
+    };
+    // Descend a name entry's language directory to its first real leaf.
+    const firstLeaf = (dirOff) => {
+      for (const e of readDir(dirOff)) {
+        const d = e.isDir ? firstLeaf(e.off) : leafData(e.off);
+        if (d) return d;
+      }
+      return null;
+    };
+
+    const root = readDir(0);
+    const typeOff = (t) => { const e = root.find((x) => x.id === t && x.isDir); return e ? e.off : -1; };
+    const groupTypeOff = typeOff(14), iconTypeOff = typeOff(3);
+    if (groupTypeOff < 0 || iconTypeOff < 0) return null;
+
+    const iconById = {};
+    for (const e of readDir(iconTypeOff)) {
+      if (!e.isDir) continue;
+      const d = firstLeaf(e.off);
+      if (d) iconById[e.id] = d;
+    }
+    const groups = readDir(groupTypeOff).filter((e) => e.isDir);
+    if (!groups.length) return null;
+    const grp = firstLeaf(groups[0].off);
+    if (!grp || grp.start + 6 > buf.length) return null;
+
+    // GRPICONDIR: reserved(2) type(2) count(2), then count GRPICONDIRENTRY(14):
+    // width(1) height(1) colorCount(1) reserved(1) planes(2) bitCount(2)
+    // bytesInRes(4) id(2). Pick the largest, then deepest-colour, member.
+    const count = dv.getUint16(grp.start + 4, true);
+    let best = null;
+    for (let i = 0; i < count; i++) {
+      const e = grp.start + 6 + i * 14;
+      if (e + 14 > buf.length) break;
+      const w = buf[e] || 256, h = buf[e + 1] || 256;
+      const bitCount = dv.getUint16(e + 6, true);
+      const score = w * h * 4096 + bitCount;
+      if (!best || score > best.score) best = { w, h, planes: dv.getUint16(e + 4, true), bitCount, id: dv.getUint16(e + 12, true), score };
+    }
+    if (!best || !iconById[best.id]) return null;
+    const icon = iconById[best.id];
+
+    // Wrap the chosen image in a one-image .ico for the browser to decode.
+    const imgBytes = buf.subarray(icon.start, icon.start + icon.size);
+    const ico = new Uint8Array(22 + imgBytes.length);
+    const idv = new DataView(ico.buffer);
+    idv.setUint16(2, 1, true);                       // type: icon
+    idv.setUint16(4, 1, true);                       // image count
+    ico[6] = best.w >= 256 ? 0 : best.w;
+    ico[7] = best.h >= 256 ? 0 : best.h;
+    idv.setUint16(10, best.planes || 1, true);
+    idv.setUint16(12, best.bitCount || 32, true);
+    idv.setUint32(14, imgBytes.length, true);
+    idv.setUint32(18, 22, true);                     // offset to image data
+    ico.set(imgBytes, 22);
+
+    const url = URL.createObjectURL(new Blob([ico], { type: 'image/x-icon' }));
+    try {
+      const png = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const cv = document.createElement('canvas');
+          cv.width = img.naturalWidth || best.w;
+          cv.height = img.naturalHeight || best.h;
+          cv.getContext('2d').drawImage(img, 0, 0);
+          cv.toBlob(resolve, 'image/png');
+        };
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+      if (!png) return null;
+      const base = (file.name || 'icon').replace(/\.[^.]+$/, '');
+      return new File([png], base + '-icon.png', { type: 'image/png' });
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+  } catch (_) {
+    return null;
+  }
 }
 
 // ---------- OLE compound doc (SolidWorks, old Office) ----------
