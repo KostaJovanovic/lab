@@ -8,7 +8,8 @@
       "Bash(rtk grep *)",
       "Bash(unzip -l \"vratilo v1.3mf\")",
       "Bash(unzip -p \"vratilo v1.3mf\" \"3D/3dmodel.model\")",
-      "Bash(unzip -p \"vratilo v1.3mf\" \"3D/_rels/3dmodel.model.rels\")"
+      "Bash(unzip -p \"vratilo v1.3mf\" \"3D/_rels/3dmodel.model.rels\")",
+      "PowerShell(git diff 6b4bfca..HEAD -- patch.html about.html | Select-Object -First 5; \\(Get-Content patch.html | Measure-Object -Line\\).Lines)"
     ]
   },
   "spinnerTipsEnabled": false

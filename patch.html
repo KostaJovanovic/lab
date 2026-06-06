@@ -180,6 +180,20 @@
                - let the newest version here disagree with app.js.
              ===================================================================== -->
 
+        <div class="patch-entry">
+          <p class="patch-version">2.03</p>
+          <p class="patch-name">Solid State</p>
+          <p class="patch-date">6 June 2026, 17:05</p>
+          <ul class="patch-list">
+            <li><strong>Two new viewers</strong> - a real 3D model viewer and an editing-timeline viewer - plus frame-accurate tools for video.</li>
+            <li><span class="patch-tag">New</span>The STL viewer is now a full <strong>3D model viewer</strong>. It opens <strong><a href="about.html#ext-obj">OBJ</a></strong>, <strong><a href="about.html#ext-ply">PLY</a></strong>, <strong>OFF</strong>, <strong><a href="about.html#ext-3mf">3MF</a></strong> and <strong>AMF</strong> as well, and tessellates <strong><a href="about.html#ext-step">STEP</a></strong>, <strong>IGES</strong> and <strong>BREP</strong> CAD solids with <strong>OpenCASCADE</strong> so you can orbit them in the browser. STEP files also name the <strong>CAD system, version and AP203/214/242 protocol</strong> they came from, and 3MF/AMF let you inspect each model and assembly on the build plate one at a time.</li>
+            <li><span class="patch-tag">New</span>A new <strong>editing-timeline viewer</strong> draws the sequences exported from <strong>Premiere Pro</strong>, <strong>Final Cut Pro</strong>, <strong>DaVinci Resolve</strong> and <strong>Avid</strong> - <strong><a href="about.html#ext-edl">EDL</a></strong> (CMX3600), <strong>FCPXML</strong> and <strong>OpenTimelineIO</strong> (OTIO) - as visual tracks of clip blocks placed by timecode, with durations, clip names and frame rate.</li>
+            <li><span class="patch-tag">New</span>The video player gains <strong>frame-accurate controls</strong>: an <strong>editable timecode</strong> you click to jump to an exact hour&nbsp;:&nbsp;minute&nbsp;:&nbsp;second&nbsp;:&nbsp;frame, <strong>step a single frame</strong> back or forward, send the current frame to the <strong>photo analysis</strong>, or grab it as a PNG - plus a <strong>contact sheet</strong> of thumbnails you can open full-size.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>RAW photo previews</strong> come out more reliably. On some cameras - the <strong>Sony FX30</strong> among them - the embedded-preview scan could lock onto a chunk of raw sensor noise instead of the real JPEG; it now insists on a genuine image marker, so the correct preview shows.</li>
+            <li><span class="patch-tag is-fix">Fix</span>The photo <strong>aspect-ratio</strong> readout now shows the nearest standard ratio with its own decimal beside the exact one, so the two read side by side - e.g. <code>258:145 (1.7793) &asymp; 16:9 (1.7778)</code>.</li>
+          </ul>
+        </div>
+
         <div class="patch-entry patch-milestone">
           <p class="patch-version">2.0</p>
           <p class="patch-name">Wide Angle</p>
@@ -208,6 +222,9 @@
           </ul>
         </div>
 
+        <details class="about-formats">
+          <summary>Older updates</summary>
+
         <div class="patch-entry">
           <p class="patch-version">1.28</p>
           <p class="patch-name">In Brief</p>
@@ -220,9 +237,6 @@
             <li><span class="patch-tag">New</span>The Changelog gains a <strong>tl;dr</strong> button - one tap condenses every release, top to bottom, into a sentence or two apiece, so you can skim the whole history at a glance. Tap it again for the full notes.</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">1.27</p>
