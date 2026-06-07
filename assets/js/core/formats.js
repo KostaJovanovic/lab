@@ -324,8 +324,10 @@ function fmtItem(r, opts = {}) {
     title: isFull ? 'Opens in a viewer with deep metadata' : 'Identified + header metadata',
   }, isFull ? 'Full' : 'ID');
   const summary = el('summary', { class: 'fmt-item-summary' }, [
-    el('span', { class: 'fmt-item-label' }, r.label),
-    el('span', { class: 'fmt-item-exts' }, extNodes),
+    el('div', { class: 'fmt-item-head' }, [
+      el('span', { class: 'fmt-item-label' }, r.label),
+      el('span', { class: 'fmt-item-exts' }, extNodes),
+    ]),
     badge,
   ]);
   const detailsAttrs = { class: 'fmt-item', 'data-tags': r.tags || '', 'data-cat': r.cat || '' };

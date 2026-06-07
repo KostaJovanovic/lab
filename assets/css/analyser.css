@@ -1560,6 +1560,21 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
 .anr-toggle button:hover:not(.is-active) { color: var(--accent); }
 .anr-toggle button.is-active { background: var(--fg); color: var(--bg); }
 
+/* Part picker for a large raw stream split into keyframe-aligned MP4 segments. */
+.anr-seg-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.anr-seg-btn {
+  min-width: 30px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.anr-seg-btn:hover { color: var(--fg); border-color: var(--fg); }
+.anr-seg-btn.is-active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
 .anr-spec-hint {
   font-family: var(--font-mono);
   font-size: var(--t-tiny);
@@ -3004,6 +3019,18 @@ details[open] summary::after { content: "\2212"; }
 .fmt-item[open] > .fmt-item-summary::after { content: '\2212'; }
 .fmt-item-summary:hover { color: var(--accent); }
 .fmt-item-summary:hover .fmt-item-ext { color: var(--accent); }
+.fmt-item-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+/* About page: stack the extension list under the group name instead of beside it. */
+#aboutFormats .fmt-item-head {
+  flex-direction: column;
+  gap: 3px;
+}
 .fmt-item-label {
   flex: none;
   min-width: 100px;

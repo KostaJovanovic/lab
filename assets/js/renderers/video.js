@@ -245,26 +245,40 @@ function makeBlobURL(data, type) {
 // from a CDN on first use. The service worker caches it afterwards, so offline
 // use survives once it's been fetched once. A bottom-of-window loader (same
 // style as the drop loader) shows real download progress while it pulls.
-const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+// ESM build (not UMD): @ffmpeg/ffmpeg spawns its worker as `type:"module"`, where
+// importScripts() doesn't exist, so the worker loads the core via `import(coreURL)`
+// and reads its `default` export. The UMD build has no default export (it only
+// assigns module.exports/AMD), so a module worker gets `undefined` and throws
+// "failed to import ffmpeg-core.js". The ESM build has `export default`, so it works.
+const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
 let ffmpegInstance = null;
 let _ffLoaderEl = null;
 
-function showFfmpegLoader() {
+// The bottom-of-window loader. Default label/determinate bar for the FFmpeg core
+// download; pass a custom label + indeterminate:true to reuse it for any other
+// FFmpeg-backed wait (e.g. preparing a segment of a large raw stream).
+function showFfmpegLoader(label, indeterminate) {
   if (!_ffLoaderEl || !_ffLoaderEl.isConnected) {
     const bar = asciiBar({ fit: true });
-    const label = el('div', { class: 'anr-drop-loader-label' }, 'Loading FFmpeg… (≈31 MB, first time only)');
-    _ffLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [label, bar]);
+    const labelEl = el('div', { class: 'anr-drop-loader-label' }, '');
+    _ffLoaderEl = el('div', { class: 'anr-drop-loader', role: 'status', 'aria-live': 'polite' }, [labelEl, bar]);
     _ffLoaderEl._bar = bar;
+    _ffLoaderEl._label = labelEl;
     document.body.appendChild(_ffLoaderEl);
   }
-  _ffLoaderEl._bar.set(0);
+  _ffLoaderEl._label.textContent = label || 'Loading FFmpeg… (≈31 MB, first time only)';
+  if (indeterminate) _ffLoaderEl._bar.indeterminate();
+  else _ffLoaderEl._bar.set(0);
   requestAnimationFrame(() => _ffLoaderEl.classList.add('is-open'));
 }
 function setFfmpegLoaderProgress(frac) {
   if (_ffLoaderEl && _ffLoaderEl._bar) _ffLoaderEl._bar.set(frac);
 }
 function hideFfmpegLoader() {
-  if (_ffLoaderEl) _ffLoaderEl.classList.remove('is-open');
+  if (_ffLoaderEl) {
+    _ffLoaderEl.classList.remove('is-open');
+    if (_ffLoaderEl._bar && _ffLoaderEl._bar.stop) _ffLoaderEl._bar.stop();
+  }
 }
 
 async function loadFFmpeg(onProgress) {
@@ -319,22 +333,408 @@ async function ffmpegExtractAudio(file, container) {
 // it's fast and lossless; it just gains an MP4 container the browser can play.
 // faststart moves the moov atom to the front so it plays without a full read.
 // A raw stream carries no timing, so FFmpeg's h264/h265 demuxer assumes 25 fps.
-// Returns a video/mp4 Blob, or null if FFmpeg is unavailable or won't copy it.
-async function ffmpegRemuxToMp4(file, signal) {
+//
+// rawKind ('h264' | 'h265') forces the input demuxer with -f. A bare elementary
+// stream has no container and no useful extension for FFmpeg to probe, so without
+// an explicit -f the demuxer is often never selected, -c copy finds no input,
+// and we'd silently produce nothing - which is exactly the "doesn't open at all"
+// case. We know the kind from detection, so we always pass it.
+//
+// Returns { blob, log }: blob is a video/mp4 Blob (or null on failure) and log is
+// the captured FFmpeg output so the caller can show WHY a remux didn't produce a
+// file instead of silently dropping to the unplayable card. Large inputs are
+// mounted via WORKERFS (read by seeking) rather than copied whole into WASM heap.
+async function ffmpegRemuxToMp4(file, signal, rawKind) {
+  const ff = await loadFFmpeg();
+  if (signal && signal.aborted) return { blob: null, log: '' };
+  const demuxer = rawKind === 'h265' ? 'hevc' : 'h264';
+  const outName = 'out.mp4';
+
+  let log = '';
+  const onLog = ({ message }) => { log += message + '\n'; };
+  ff.on('log', onLog);
+
+  const MOUNT = '/anrrx';
+  let inName = null;
+  let cleanup = async () => {};
+  try {
+    // Prefer a WORKERFS mount so a multi-GB stream is read by seeking, not copied
+    // into WASM memory (fetchFile of a huge file blows the heap). Fall back to an
+    // in-memory copy for smaller files / browsers without WORKERFS.
+    let mounted = false;
+    try { await ff.createDir(MOUNT); mounted = await ff.mount('WORKERFS', { files: [file] }, MOUNT); } catch (_) { mounted = false; }
+    if (mounted) {
+      inName = MOUNT + '/' + file.name;
+      cleanup = async () => { try { await ff.unmount(MOUNT); } catch (_) {} try { await ff.deleteDir(MOUNT); } catch (_) {} };
+    } else {
+      try { await ff.deleteDir(MOUNT); } catch (_) {}
+      const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
+      inName = 'in.' + (demuxer === 'hevc' ? 'h265' : 'h264');
+      await ff.writeFile(inName, await fetchFile(file));
+      cleanup = async () => { try { await ff.deleteFile(inName); } catch (_) {} };
+    }
+
+    try {
+      await ff.exec(['-fflags', '+genpts', '-f', demuxer, '-i', inName, '-c', 'copy', '-movflags', '+faststart', outName]);
+    } catch (_) { /* exec may resolve with a non-zero code instead of throwing */ }
+    let data = null;
+    try { data = await ff.readFile(outName); } catch (_) { data = null; }
+    if (!data || !data.length) {
+      // Stream-copy can fail on streams whose in-band SPS/PPS FFmpeg won't lift into
+      // an MP4 sample-description as-is. Re-encode as a last resort so the clip still
+      // opens; lossy, but better than a stream that won't play at all.
+      try { await ff.deleteFile(outName); } catch (_) {}
+      try {
+        await ff.exec(['-fflags', '+genpts', '-f', demuxer, '-i', inName,
+          '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart', outName]);
+      } catch (_) {}
+      try { data = await ff.readFile(outName); } catch (_) { data = null; }
+    }
+    try { await ff.deleteFile(outName); } catch (_) {}
+    if (!data || !data.length) return { blob: null, log };
+    return { blob: new Blob([data.buffer || data], { type: 'video/mp4' }), log };
+  } finally {
+    try { if (ff.off) ff.off('log', onLog); } catch (_) {}
+    await cleanup();
+  }
+}
+
+// ---------- segmented playback for very large raw H.264/H.265 streams ----------
+// A multi-GB elementary stream can't be remuxed in one piece (FFmpeg keeps the
+// whole input AND output MP4 in WASM memory). Instead we split it at keyframes
+// into part-sized chunks, remux each to MP4 on demand, and play them back-to-back.
+// The split MUST land on an IDR and each chunk MUST carry the SPS/PPS (and VPS for
+// HEVC), or the piece won't decode - so we capture the parameter sets from the
+// head and only cut at IDR start codes.
+
+// NAL type for a header byte. H.264 = low 5 bits; H.265 = bits 1..6.
+function nalTypeOf(headerByte, h265) {
+  return h265 ? ((headerByte >> 1) & 0x3f) : (headerByte & 0x1f);
+}
+// IDR / random-access NAL: H.264 type 5; HEVC IDR_W_RADL 19, IDR_N_LP 20, CRA 21.
+function isIdrNal(t, h265) { return h265 ? (t === 19 || t === 20 || t === 21) : (t === 5); }
+// Parameter-set NAL: H.264 SPS 7 / PPS 8; HEVC VPS 32 / SPS 33 / PPS 34.
+function isParamNal(t, h265) { return h265 ? (t === 32 || t === 33 || t === 34) : (t === 7 || t === 8); }
+
+// Pull the parameter sets (SPS/PPS, plus HEVC VPS) out of the stream head and
+// return them as one Annex B blob with 4-byte start codes, ready to prepend to a
+// chunk. Returns null if the essential sets aren't found.
+async function extractRawParamSets(file, h265, signal) {
+  const HEAD = Math.min(file.size, 1024 * 1024);
+  const buf = new Uint8Array(await file.slice(0, HEAD).arrayBuffer());
+  if (signal && signal.aborted) return null;
+  const sets = [];
+  const seen = new Set();
+  let i = 0;
+  while (i + 4 <= buf.length) {
+    if (buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 1) {
+      const nalStart = i + 3;
+      let j = nalStart;
+      while (j + 3 <= buf.length && !(buf[j] === 0 && buf[j + 1] === 0 && buf[j + 2] === 1)) j++;
+      const nalEnd = (j + 3 <= buf.length) ? j : buf.length;
+      let end = nalEnd;
+      while (end > nalStart && buf[end - 1] === 0) end--;   // drop the next SC's leading zeros
+      const t = nalTypeOf(buf[nalStart], h265);
+      if (isParamNal(t, h265) && !seen.has(t)) { seen.add(t); sets.push({ t, payload: buf.slice(nalStart, end) }); }
+      i = nalEnd;
+    } else i++;
+  }
+  const needed = h265 ? [33, 34] : [7, 8];   // VPS is optional; SPS+PPS are not
+  if (!needed.every((t) => seen.has(t))) return null;
+  const order = h265 ? [32, 33, 34] : [7, 8];
+  sets.sort((a, b) => order.indexOf(a.t) - order.indexOf(b.t));
+  let total = 0;
+  for (const s of sets) total += 4 + s.payload.length;
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const s of sets) { out[p + 3] = 1; p += 4; out.set(s.payload, p); p += s.payload.length; }
+  return out;
+}
+
+// Human-readable codec / profile from the captured parameter sets. An H.264 SPS
+// carries profile_idc and level_idc right after the NAL header byte; HEVC profile
+// parsing is far more involved, so it's reported generically.
+function describeRawCodec(paramSets, h265) {
+  let i = 0;
+  while (i + 5 <= paramSets.length) {
+    if (paramSets[i] === 0 && paramSets[i + 1] === 0 && paramSets[i + 2] === 1) {
+      const s = i + 3;
+      const t = nalTypeOf(paramSets[s], h265);
+      if (!h265 && t === 7) {
+        const profile = paramSets[s + 1], level = paramSets[s + 3];
+        const names = { 66: 'Baseline', 77: 'Main', 88: 'Extended', 100: 'High', 110: 'High 10', 122: 'High 4:2:2', 244: 'High 4:4:4' };
+        return 'H.264 / AVC (' + (names[profile] || ('profile ' + profile)) + ', level ' + (level / 10).toFixed(1) + ')';
+      }
+      if (h265 && t === 33) return 'H.265 / HEVC';
+      i = s;
+    } else i++;
+  }
+  return h265 ? 'H.265 / HEVC' : 'H.264 / AVC';
+}
+
+// Byte offset of the next IDR start code at or after `from`, scanning the file in
+// windows (so a multi-GB file is read by seeking, never copied whole). Windows
+// overlap by 4 bytes so a start code straddling a boundary isn't missed. Returns
+// null if none within maxSpan.
+async function findNextIdrOffset(file, from, h265, signal, maxSpan = 128 * 1024 * 1024) {
+  const WIN = 8 * 1024 * 1024;
+  const limit = Math.min(file.size, from + maxSpan);
+  let pos = Math.max(0, from);
+  while (pos < limit) {
+    if (signal && signal.aborted) return null;
+    const end = Math.min(file.size, pos + WIN);
+    const buf = new Uint8Array(await file.slice(pos, end).arrayBuffer());
+    for (let i = 0; i + 4 <= buf.length; i++) {
+      if (buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 1 && isIdrNal(nalTypeOf(buf[i + 3], h265), h265)) {
+        return pos + i;
+      }
+    }
+    if (end >= file.size) break;
+    pos = end - 4;
+  }
+  return null;
+}
+
+// Work out where to cut a large stream: parameter sets + a list of byte
+// boundaries, each on an IDR, sized ~TARGET so every produced MP4 fits in memory.
+// Returns null if the stream can't be split (no param sets, or no keyframes found).
+async function planRawSegments(file, h265, signal) {
+  const paramSets = await extractRawParamSets(file, h265, signal);
+  if (!paramSets) return null;
+  const TARGET = 256 * 1024 * 1024;
+  const boundaries = [0];
+  const count = Math.ceil(file.size / TARGET);
+  for (let k = 1; k < count; k++) {
+    const approx = k * TARGET;
+    if (approx >= file.size) break;
+    const idr = await findNextIdrOffset(file, approx, h265, signal);
+    if (signal && signal.aborted) return null;
+    if (idr != null && idr > boundaries[boundaries.length - 1] + 4096) boundaries.push(idr);
+  }
+  boundaries.push(file.size);
+  if (boundaries.length < 3) return null;   // couldn't actually split it
+  return { paramSets, boundaries };
+}
+
+// Remux one [start,end) byte range into a self-contained MP4: parameter sets
+// prepended (so the chunk decodes even though it starts mid-file), stream-copied.
+// loaderLabel (optional): when set, the bottom loader bar shows that text while
+// this part is being read + remuxed (foreground parts only - not prefetches).
+async function remuxRawSegment(file, start, end, paramSets, h265, signal, loaderLabel) {
   const ff = await loadFFmpeg();
   if (signal && signal.aborted) return null;
-  const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
-  const inName = 'in.es', outName = 'out.mp4';
-  await ff.writeFile(inName, await fetchFile(file));
+  if (loaderLabel) showFfmpegLoader(loaderLabel, true);
+  const demuxer = h265 ? 'hevc' : 'h264';
+  const inName = 'seg.' + (h265 ? 'h265' : 'h264'), outName = 'seg.mp4';
+  let blob = null;
   try {
-    await ff.exec(['-fflags', '+genpts', '-i', inName, '-c', 'copy', '-movflags', '+faststart', outName]);
-  } catch (_) { /* exec may resolve with a non-zero code instead of throwing */ }
-  let data = null;
-  try { data = await ff.readFile(outName); } catch (_) { data = null; }
-  try { await ff.deleteFile(inName); } catch (_) {}
-  try { await ff.deleteFile(outName); } catch (_) {}
-  if (!data || !data.length) return null;
-  return new Blob([data.buffer || data], { type: 'video/mp4' });
+    const body = new Uint8Array(await file.slice(start, end).arrayBuffer());
+    if (signal && signal.aborted) return null;
+    const chunk = new Uint8Array(paramSets.length + body.length);
+    chunk.set(paramSets, 0);
+    chunk.set(body, paramSets.length);
+    await ff.writeFile(inName, chunk);
+    try { await ff.exec(['-fflags', '+genpts', '-f', demuxer, '-i', inName, '-c', 'copy', '-movflags', '+faststart', outName]); } catch (_) {}
+    let data = null;
+    try { data = await ff.readFile(outName); } catch (_) { data = null; }
+    if (data && data.length) blob = new Blob([data.buffer || data], { type: 'video/mp4' });
+  } finally {
+    try { await ff.deleteFile(inName); } catch (_) {}
+    try { await ff.deleteFile(outName); } catch (_) {}
+    if (loaderLabel) hideFfmpegLoader();
+  }
+  return blob;
+}
+
+// Opt-in scene-change detection scoped to the part currently loaded in the player
+// (it scrubs the <video>, so it can only see the segment that's loaded). Mirrors
+// the main player's scene card. Rebuildable so it can be run on each part.
+function buildRawSceneCard(playerEl, signal) {
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Scene changes'));
+  const out = el('div');
+  out.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:8px;' }, 'Scans the part currently loaded in the player.'));
+  const runBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Detect scene changes');
+  out.appendChild(runBtn);
+  card.appendChild(out);
+
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    runBtn.textContent = 'Detecting…';
+    const dur = playerEl.duration;
+    let changes = [];
+    try { changes = await detectSceneChanges(playerEl, 55, signal); } catch (_) {}
+    try { playerEl.currentTime = 0; playerEl.pause(); } catch (_) {}
+    if (signal && signal.aborted) return;
+    out.innerHTML = '';
+    out.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:10px;' },
+      changes.length ? changes.length + ' scene change' + (changes.length > 1 ? 's' : '') + ' detected in this part' : 'No scene changes detected in this part'));
+    if (changes.length && isFinite(dur) && dur > 0) {
+      const timeline = el('div', { class: 'anr-scene-timeline' });
+      for (const sc of changes) {
+        const marker = el('div', { class: 'anr-scene-marker', style: 'left:' + (sc.time / dur) * 100 + '%;', title: formatDuration(sc.time) + '  ·  ' + sc.confidence + '%' });
+        marker.addEventListener('click', () => { playerEl.currentTime = sc.time; playerEl.pause(); });
+        timeline.appendChild(marker);
+      }
+      out.appendChild(timeline);
+      const details = el('details', { class: 'anr-scene-details' });
+      details.appendChild(el('summary', {}, 'Thumbnails (' + changes.length + ')'));
+      const grid = el('div', { class: 'anr-scene-grid' });
+      for (const sc of changes) {
+        const w = el('div', { class: 'anr-scene-thumb', onclick: () => { playerEl.currentTime = sc.time; playerEl.pause(); } });
+        w.appendChild(el('img', { src: sc.thumbnail, alt: 'Scene at ' + formatDuration(sc.time) }));
+        w.appendChild(el('span', { class: 'anr-scene-meta' }, formatDuration(sc.time) + ' · ' + sc.confidence + '%'));
+        grid.appendChild(w);
+      }
+      details.appendChild(grid);
+      out.appendChild(details);
+    }
+    const again = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:10px;' }, 'Run again (current part)');
+    again.addEventListener('click', () => card.replaceWith(buildRawSceneCard(playerEl, signal)));
+    out.appendChild(again);
+  });
+  return card;
+}
+
+// Player for an over-size raw stream: scan -> split at keyframes -> lazily remux
+// each part and play them back-to-back. Throws if FFmpeg/scan fails so the caller
+// can fall back to the "open in VLC" note.
+async function renderSegmentedRawVideo(file, header, resultsEl, kind, signal) {
+  const h265 = kind === 'H.265';
+  resultsEl.innerHTML = '';
+  resultsEl.appendChild(el('div', { class: 'anr-info' },
+    'Large raw ' + kind + ' stream (' + fmtBytes(file.size) + ') - scanning for keyframes to split it into playable parts…'));
+
+  const plan = await planRawSegments(file, h265, signal);
+  if (signal.aborted) return;
+  if (!plan) {
+    resultsEl.innerHTML = '';
+    await renderUnplayableVideoInfo(file, header, resultsEl, signal);
+    if (!signal.aborted) {
+      resultsEl.appendChild(el('div', { class: 'anr-card' }, [
+        el('p', {}, 'This raw ' + kind + ' stream is ' + fmtBytes(file.size) + ' - too large to remux in one piece, and it '
+          + 'couldn’t be split (no keyframe index found). Open it in VLC, or wrap it with desktop ffmpeg: '
+          + 'ffmpeg -i "' + (file.name || 'input.h264') + '" -c copy out.mp4.')
+      ]));
+    }
+    return;
+  }
+
+  const { paramSets, boundaries } = plan;
+  const N = boundaries.length - 1;
+  resultsEl.innerHTML = '';
+
+  const playerCard = el('div', { class: 'anr-card', style: 'position:relative;' });
+  playerCard.appendChild(el('h3', {}, 'Player'));
+  const playerEl = el('video', { playsinline: '' });
+  playerEl.setAttribute('webkit-playsinline', '');
+  playerEl.style.cssText = 'width:100%; max-height:480px; background:#0a0a0a; display:block; border:1px solid var(--hairline);';
+  applyVideoControls(playerEl);
+  playerCard.appendChild(playerEl);
+  playerCard.appendChild(makePlayer(playerEl));
+
+  // Frame-by-frame nav, editable timecode, capture-to-photo and frame-grab - the
+  // same tools the normal player gets. Raw streams carry no timing, so 25 fps.
+  const frameTools = buildFrameControls(playerEl, () => 25, file);
+  playerCard.appendChild(frameTools.wrap);
+
+  const status = el('span', { class: 'anr-hint', style: 'align-self:center;' }, '');
+  const prevBtn = el('button', { type: 'button', class: 'anr-btn' }, '‹ Prev');
+  const nextBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Next ›');
+  playerCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px; gap:8px; flex-wrap:wrap; align-items:center;' }, [prevBtn, nextBtn, status]));
+
+  const strip = el('div', { class: 'anr-seg-strip' });
+  const segBtns = [];
+  for (let i = 0; i < N; i++) {
+    const b = el('button', { type: 'button', class: 'anr-seg-btn' }, String(i + 1));
+    b.addEventListener('click', () => goTo(i, true));
+    segBtns.push(b);
+    strip.appendChild(b);
+  }
+  playerCard.appendChild(strip);
+  resultsEl.appendChild(playerCard);
+
+  const infoCard = el('div', { class: 'anr-card' });
+  infoCard.appendChild(el('h3', {}, 'File info'));
+  const tbl = el('table', { class: 'anr-readout' });
+  tbl.appendChild(row('Name', file.name));
+  tbl.appendChild(row('Size', fmtBytes(file.size) + '   (' + file.size.toLocaleString() + ' bytes)'));
+  if (header && header.container) tbl.appendChild(row('Container', header.container));
+  tbl.appendChild(row('Codec', describeRawCodec(paramSets, h265)));
+  const resRow = row('Resolution', '—');
+  tbl.appendChild(resRow);
+  const arRow = row('Aspect ratio', '—');
+  tbl.appendChild(arRow);
+  tbl.appendChild(row('Frame rate', '25 fps (assumed — a raw stream carries no timing)'));
+  tbl.appendChild(row('Parts', N + ' × ~' + fmtBytes(Math.round(file.size / N)) + ', split at keyframes'));
+  infoCard.appendChild(tbl);
+  infoCard.appendChild(el('p', { class: 'anr-hint' },
+    'Too big to convert in one piece, so it’s split at keyframes into ' + N + ' parts, each remuxed to MP4 on demand and '
+    + 'played back-to-back. A raw stream carries no timing, so playback speed assumes 25 fps and there’s no audio track.'));
+  resultsEl.appendChild(infoCard);
+
+  // Integrity: hashing a multi-GB file reads the whole thing, so keep it on-demand.
+  const hashCard = el('div', { class: 'anr-card' });
+  hashCard.appendChild(el('h3', {}, 'Integrity'));
+  hashCard.appendChild(el('p', { class: 'anr-hint' }, 'SHA-256 reads the whole file (' + fmtBytes(file.size) + '), so it isn’t computed automatically.'));
+  const hashBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Compute SHA-256');
+  hashBtn.addEventListener('click', () => { hashCard.replaceWith(integrityCard(file)); });
+  hashCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [hashBtn]));
+  resultsEl.appendChild(hashCard);
+
+  resultsEl.appendChild(buildRawSceneCard(playerEl, signal));
+
+  const cache = new Map();   // i -> { url }
+  let cur = -1;
+  let gen = 0;
+
+  async function ensureSegment(i, loaderLabel) {
+    if (i < 0 || i >= N) return null;
+    if (cache.has(i)) return cache.get(i);
+    const blob = await remuxRawSegment(file, boundaries[i], boundaries[i + 1], paramSets, h265, signal, loaderLabel);
+    if (!blob) return null;
+    const entry = { url: URL.createObjectURL(blob) };
+    cache.set(i, entry);
+    // Keep only the neighbours of the current part so memory stays bounded.
+    for (const key of [...cache.keys()]) {
+      if (Math.abs(key - i) > 1) { try { URL.revokeObjectURL(cache.get(key).url); } catch (_) {} cache.delete(key); }
+    }
+    return entry;
+  }
+
+  async function goTo(i, autoplay) {
+    if (i < 0 || i >= N || signal.aborted) return;
+    const myGen = ++gen;
+    cur = i;
+    segBtns.forEach((b, j) => b.classList.toggle('is-active', j === i));
+    prevBtn.disabled = i === 0;
+    nextBtn.disabled = i === N - 1;
+    status.textContent = 'Preparing part ' + (i + 1) + ' / ' + N + '…';
+    let entry = null;
+    try { entry = await ensureSegment(i, 'Preparing part ' + (i + 1) + ' / ' + N + '…'); } catch (_) { entry = null; }
+    if (myGen !== gen || signal.aborted) return;
+    if (!entry) { status.textContent = 'Part ' + (i + 1) + ' couldn’t be prepared.'; return; }
+    playerEl.onloadedmetadata = () => {
+      if (playerEl.videoWidth) {
+        resRow.lastChild.textContent = playerEl.videoWidth + ' × ' + playerEl.videoHeight + ' px';
+        arRow.lastChild.textContent = aspectRatio(playerEl.videoWidth, playerEl.videoHeight);
+      }
+      frameTools.refresh();
+    };
+    playerEl.src = entry.url;
+    status.textContent = 'Part ' + (i + 1) + ' / ' + N;
+    if (autoplay) playerEl.play().catch(() => {});
+    if (i + 1 < N) ensureSegment(i + 1).catch(() => {});   // prefetch the next part
+  }
+
+  playerEl.addEventListener('ended', () => { if (cur + 1 < N) goTo(cur + 1, true); });
+  signal.addEventListener('abort', () => {
+    for (const v of cache.values()) { try { URL.revokeObjectURL(v.url); } catch (_) {} }
+    cache.clear();
+  });
+
+  await goTo(0, false);
 }
 
 // Mean luma (0-255) of a JPEG blob, sampled on a small canvas. Used to tell a
@@ -1614,11 +2014,37 @@ export async function renderVideo(file, resultsEl, opts = {}) {
     /\.(h?264|avc|h?265|hevc)$/i.test(file.name || '');
   if (!opts.remuxed && looksRaw) {
     const kind = header.raw === 'h265' || /\.(h?265|hevc)$/i.test(file.name || '') ? 'H.265' : 'H.264';
+    // The remux holds the whole input AND the whole output MP4 in WASM memory, so
+    // very large streams can't fit (the 32-bit core caps out near ~2 GB). Above the
+    // limit, split the stream at keyframes and play it part-by-part instead.
+    const REMUX_MAX = 1_400 * 1024 * 1024;
+    if (file.size > REMUX_MAX) {
+      try {
+        await renderSegmentedRawVideo(file, header, resultsEl, kind, renderSignal);
+      } catch (e) {
+        if (renderSignal.aborted) return;
+        resultsEl.innerHTML = '';
+        await renderUnplayableVideoInfo(file, header, resultsEl, renderSignal);
+        resultsEl.appendChild(el('div', { class: 'anr-card' }, [
+          el('p', {}, 'This raw ' + kind + ' stream is ' + fmtBytes(file.size) + ' - too large to remux in one piece, and '
+            + 'splitting it into parts failed (' + ((e && e.message) || e) + '). Open it in VLC, or wrap it with desktop ffmpeg: '
+            + 'ffmpeg -i "' + (file.name || 'input.h264') + '" -c copy out.mp4.')
+        ]));
+      }
+      return;
+    }
     resultsEl.innerHTML = '';
     resultsEl.appendChild(el('div', { class: 'anr-info' },
-      'Raw ' + kind + ' elementary stream - remuxing to MP4 with FFmpeg so it plays in the browser (no re-encode)…'));
-    let mp4Blob = null;
-    try { mp4Blob = await ffmpegRemuxToMp4(file, renderSignal); } catch (_) {}
+      'Raw ' + kind + ' elementary stream - remuxing to MP4 with FFmpeg so it plays in the browser…'));
+    let mp4Blob = null, remuxLog = '';
+    const rawKind = kind === 'H.265' ? 'h265' : 'h264';
+    try {
+      const r = await ffmpegRemuxToMp4(file, renderSignal, rawKind);
+      mp4Blob = r && r.blob;
+      remuxLog = (r && r.log) || '';
+    } catch (e) {
+      remuxLog = (e && e.message) ? ('FFmpeg could not load: ' + e.message) : String(e);
+    }
     if (renderSignal.aborted) return;
     if (mp4Blob) {
       const base = (file.name || 'video').replace(/\.[^/.]+$/, '');
@@ -1627,6 +2053,16 @@ export async function renderVideo(file, resultsEl, opts = {}) {
     }
     resultsEl.innerHTML = '';
     await renderUnplayableVideoInfo(file, header, resultsEl, renderSignal);
+    // Surface WHY the remux produced nothing instead of failing silently - the
+    // FFmpeg log (or load error) makes a genuine failure diagnosable.
+    if (!renderSignal.aborted) {
+      const tail = remuxLog.split('\n').map((s) => s.trim()).filter(Boolean).slice(-14).join('\n');
+      const diag = el('details', { class: 'anr-card' });
+      diag.appendChild(el('summary', { style: 'cursor:pointer;' }, 'In-browser remux to MP4 didn’t produce a file - details'));
+      diag.appendChild(el('pre', { style: 'white-space:pre-wrap; word-break:break-word; font-size:12px; margin:8px 0 0; overflow:auto;' },
+        tail || 'FFmpeg produced no output and emitted no log (it may be offline or blocked).'));
+      resultsEl.appendChild(diag);
+    }
     return;
   }
 
