@@ -71,8 +71,12 @@
     if (href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
 
-    var url = new URL(href, location.href).href;
-    url = url.replace(/\/index\.html(?=[\?#]|$)/, '/');
+    // Canonical URLs are clean (no .html): /about, /patch, / . Normalise any
+    // stray .html link to that form so the address bar and history stay clean
+    // and a reload hits the same URL the server serves.
+    var u = new URL(href, location.href);
+    u.pathname = u.pathname.replace(/\/index\.html(?=$)/, '/').replace(/\.html(?=$)/, '');
+    var url = u.href;
     if (url === location.href) return;
 
     e.preventDefault();

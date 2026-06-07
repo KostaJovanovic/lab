@@ -30,5 +30,7 @@ echo ============================================
 echo.
 
 start "" "http://localhost:%PORT%"
-python -m http.server %PORT% --bind 0.0.0.0
+rem serve.py mirrors the production Cloudflare routing (clean URLs + .html
+rem redirects + SPA fallback), so local dev matches lab.valjdakosta.com exactly.
+python serve.py %PORT%
 pause

@@ -18,7 +18,9 @@ CLAUDE.md
 
 # Dev-only scripts and deploy config (not needed at runtime)
 *.bat
+serve.py
 wrangler.jsonc
+.wrangler/
 
 # Repo docs (not part of the app)
 README.md

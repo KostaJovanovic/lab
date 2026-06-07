@@ -10,17 +10,12 @@
   "observability": { "enabled": true },
   "assets": {
     "directory": ".",
-    // Serve .html files literally. The default ("auto-trailing-slash") 307-
-    // redirects /about.html -> /about, but every link, canonical URL, the
-    // sitemap, the service-worker precache (sw.js SHELL) and navigate.js's
-    // pushState all use the .html form. That mismatch meant a page reached by
-    // in-app navigation (e.g. /about.html) 307-redirected on reload, and the
-    // SW's cache.addAll() choked on precaching redirecting URLs. "none" makes
-    // /about.html, /patch.html and /index.html all serve 200 directly. "/" and
-    // any clean/unknown path fall through to not_found_handling below, which
-    // returns index.html (200) - so the root and SPA fallback still work, and
-    // local `python -m http.server` (which also serves .html literally) matches.
-    "html_handling": "none",
+    // Default html_handling ("auto-trailing-slash"): clean URLs are canonical.
+    // /about serves about.html, and /about.html 307-redirects to /about (same
+    // for /patch and /index.html -> /). Every link, canonical URL, the sitemap
+    // and the service-worker precache use the clean form to match, and the local
+    // dev server (serve.py) mirrors this exact routing. not_found_handling sends
+    // any unknown path to index.html (200) so deep links and the SPA still work.
     "not_found_handling": "single-page-application"
   },
   "compatibility_flags": ["nodejs_compat"]

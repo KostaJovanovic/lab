@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 70;
+const COMMIT_COUNT = 71;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -413,6 +413,7 @@ function splitText(container, baseWeight) {
 // each entry's full bullet list for the matching line here. When you add a new
 // patch entry to patch.html, add its one-liner here too (newest at the top).
 const PATCH_TLDR = {
+  '2.11': 'Pages now have clean web addresses - /about and /patch instead of /about.html - and the old .html links redirect to them, so bookmarked and shared links always resolve.',
   '2.10': 'Reloading or directly opening an inner page such as About or Changelog works again, instead of occasionally landing on a broken page. The site also ships an llms.txt summary and a complete sitemap so search engines and AI assistants describe it accurately.',
   '2.09': 'Raw H.264/H.265 camera and dash-cam clips now open reliably - the in-browser remux that wraps them into a playable MP4 was failing to start and now works, which also restored their audio and frame capture. Streams too large to convert in one piece are split at their keyframes into parts you step through one at a time, and each part gets the full toolset: frame-by-frame navigation, frame-to-photo, codec readout, SHA-256 and opt-in scene detection.',
   '2.0': 'The second milestone. Over 120 new file types are identified across developer, archive, 3D/CAD, disk, gaming, document, email, security, science and GIS formats. Video-editing projects (After Effects, Premiere, Vegas, Resolve, Filmora, CapCut) read in more detail, 10-bit video reports its bit depth and chroma (so XAVC HS 4:2:2 is flagged correctly), undisplayable photos and videos get a clear banner that recommends VLC, offline tiers show a persistent Cached tag, large videos load faster, and the spectrogram defaults to a logarithmic axis.',
@@ -1118,10 +1119,10 @@ function boot() {
       if (folderFiles) {
         if (!$('photoResults')) {
           window._anrPendingFolder = folderFiles;
-          const home = new URL('index.html', location.href).href;
+          const home = new URL('/', location.href).href;
           if (location.href !== home) {
             const link = document.createElement('a');
-            link.href = 'index.html';
+            link.href = '/';
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -1334,7 +1335,8 @@ function boot() {
       e.stopPropagation();
       const href = a.getAttribute('href') || '';
       let dest = 'another page';
-      if (href.indexOf('about.html') === 0) dest = 'the About page';
+      if (href.indexOf('/about') === 0 || href.indexOf('about.html') === 0) dest = 'the About page';
+      else if (href.indexOf('/patch') === 0 || href.indexOf('patch.html') === 0) dest = 'the Changelog';
       else if (href === '/' || href.indexOf('index') === 0) dest = 'the analyser';
       showLinkConfirm(a, {
         message: 'This link leads to ' + dest + ', proceed?',
@@ -1405,7 +1407,7 @@ function boot() {
 
   const TIERS = {
     essentials: [
-      './', './index.html', './about.html', './patch.html', './manifest.json', './assets/css/analyser.css', './assets/css/fonts.css',
+      './', './about', './patch', './manifest.json', './assets/css/analyser.css', './assets/css/fonts.css',
       './assets/js/core/app.js', './assets/js/core/formats.js', './assets/js/core/util.js', './assets/js/core/search.js',
       './assets/js/renderers/photo.js', './assets/js/renderers/audio.js', './assets/js/renderers/audio-analysis.js',
       './assets/js/renderers/audio-codec.js', './assets/js/renderers/video.js', './assets/js/renderers/spectrogram.js',
@@ -1796,7 +1798,7 @@ function boot() {
   });
 
   // Deep-links into the (collapsed) supported-formats list: landing on
-  // /about.html#ext-sldprt or #fmt-cad from a search result should expand the
+  // /about#ext-sldprt or #fmt-cad from a search result should expand the
   // dropdown and scroll to the target.
   function revealHashTarget() {
     const id = decodeURIComponent((location.hash || '').slice(1));

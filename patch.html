@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Changelog - Analyser</title>
   <meta name="description" content="Every update to Analyser, newest first - new file formats, viewers, bug fixes and offline improvements. Free, in-browser, nothing uploaded.">
-  <link rel="canonical" href="https://lab.valjdakosta.com/patch.html">
+  <link rel="canonical" href="https://lab.valjdakosta.com/patch">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:title" content="Changelog - Analyser">
   <meta property="og:description" content="Every update to Analyser, newest first - new file formats, viewers, bug fixes and offline improvements. Free, in-browser, nothing uploaded.">
-  <meta property="og:url" content="https://lab.valjdakosta.com/patch.html">
+  <meta property="og:url" content="https://lab.valjdakosta.com/patch">
   <meta property="og:image" content="https://lab.valjdakosta.com/assets/img/banner.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -33,7 +33,7 @@
     "@type": "BreadcrumbList",
     "itemListElement": [
       { "@type": "ListItem", "position": 1, "name": "Analyser", "item": "https://lab.valjdakosta.com/" },
-      { "@type": "ListItem", "position": 2, "name": "Changelog", "item": "https://lab.valjdakosta.com/patch.html" }
+      { "@type": "ListItem", "position": 2, "name": "Changelog", "item": "https://lab.valjdakosta.com/patch" }
     ]
   }
   </script>
@@ -56,11 +56,11 @@
     <div class="site-mark site-mark--changelog">
       <span class="site-kicker">Z 21 - 47</span>
       <h1 class="site-title">Changelog</h1>
-      <p class="site-byline"><a href="index.html" style="color:inherit;text-decoration:none">Analyser</a> by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
+      <p class="site-byline"><a href="/" style="color:inherit;text-decoration:none">Analyser</a> by <a href="https://link.valjdakosta.com/" class="site-byline-link" target="_blank" rel="noopener">valjdakosta</a></p>
       <p class="site-sub">Photos, sound, video - and almost any other file. Fully local; nothing you drop ever leaves your browser.</p>
       <nav class="site-mark-nav" aria-label="Pages">
-        <a href="index.html" class="header-btn">Home</a>
-        <a href="about.html" class="header-btn">About</a>
+        <a href="/" class="header-btn">Home</a>
+        <a href="/about" class="header-btn">About</a>
       </nav>
     </div>
     <div class="site-meta">
@@ -148,7 +148,7 @@
 
              HYPERLINKS
                Deep-links target the ABOUT page, not this one:
-                 href="about.html#what" / "about.html#where" / "about.html#ext-<ext>"
+                 href="/about#what" / "about.html#where" / "about.html#ext-<ext>"
                (the #ext-/#fmt- anchors are generated on about.html from formats.js).
                Use "/" to link the home app. Every <a> inside .patch-list is
                intercepted in app.js boot() to show a tap-confirm popup
@@ -181,11 +181,20 @@
              ===================================================================== -->
 
         <div class="patch-entry">
+          <p class="patch-version">2.11</p>
+          <p class="patch-name">Short Hand</p>
+          <p class="patch-date">7 June 2026, 17:35</p>
+          <ul class="patch-list">
+            <li><span class="patch-tag is-fix">Fix</span><strong>Clean web addresses.</strong> Pages now live at tidy addresses - <code>/about</code> and <code>/patch</code> rather than <code>/about.html</code> - and the old <code>.html</code> links redirect to them, so a bookmarked or shared link always lands on the right page. This refines the reload fix from the previous update.</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
           <p class="patch-version">2.10</p>
           <p class="patch-name">Round Trip</p>
           <p class="patch-date">7 June 2026, 17:15</p>
           <ul class="patch-list">
-            <li><span class="patch-tag is-fix">Fix</span><strong>Reloading or sharing an inner page works again.</strong> Opening the <a href="about.html#what">About</a> or Changelog page from inside the app and then <strong>refreshing</strong> it - or opening that link directly, or sharing it with someone - could land on a broken page. Those addresses now load correctly on a direct hit or a reload.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>Reloading or sharing an inner page works again.</strong> Opening the <a href="/about#what">About</a> or Changelog page from inside the app and then <strong>refreshing</strong> it - or opening that link directly, or sharing it with someone - could land on a broken page. Those addresses now load correctly on a direct hit or a reload.</li>
             <li><span class="patch-tag">New</span>The site now ships a <strong>machine-readable summary</strong> (<code>llms.txt</code>) and a complete sitemap, so search engines and AI assistants can describe Analyser accurately.</li>
           </ul>
         </div>
@@ -196,23 +205,23 @@
           <p class="patch-date">7 June 2026, 16:15</p>
           <ul class="patch-list">
             <li><strong>Raw camera and dash-cam video opens properly now</strong> - even multi-gigabyte files.</li>
-            <li><span class="patch-tag is-fix">Fix</span><strong>Raw H.264 / H.265 clips actually play.</strong> The in-browser step that wraps a bare <a href="about.html#ext-h264">.h264</a> / .265 stream into a playable MP4 was failing to start, so these clips wouldn&rsquo;t open at all. It now loads reliably and they play in the normal player - which also restored the audio extraction and frame capture that rely on it.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>Raw H.264 / H.265 clips actually play.</strong> The in-browser step that wraps a bare <a href="/about#ext-h264">.h264</a> / .265 stream into a playable MP4 was failing to start, so these clips wouldn&rsquo;t open at all. It now loads reliably and they play in the normal player - which also restored the audio extraction and frame capture that rely on it.</li>
             <li><span class="patch-tag">New</span><strong>Very large raw streams play in parts.</strong> A stream too big to convert in one piece - the multi-GB recordings dash-cams and capture cards write - is now <strong>split at its keyframes into parts</strong> you step through one at a time, with a loading bar while each part prepares.</li>
             <li><span class="patch-tag">New</span><strong>Each part gets the full treatment</strong> - frame-by-frame navigation with editable timecode, send a frame to <strong>photo analysis</strong>, grab it as a PNG, the codec and profile readout, resolution and aspect ratio, on-demand <strong>SHA-256</strong>, and opt-in <strong>scene detection</strong> for the part you&rsquo;re watching.</li>
           </ul>
         </div>
+
+        <details class="about-formats">
+          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">2.08</p>
           <p class="patch-name">Sound Check</p>
           <p class="patch-date">7 June 2026, 00:15</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span><strong>Mute the sound on AVI playback.</strong> The frame player for <a href="about.html#ext-avi">.avi</a> clips (and similar) now carries a <strong>SOUND / MUTED</strong> toggle, so you can run the frames with or without the clip&rsquo;s audio. Either way the picture stays perfectly in sync.</li>
+            <li><span class="patch-tag">New</span><strong>Mute the sound on AVI playback.</strong> The frame player for <a href="/about#ext-avi">.avi</a> clips (and similar) now carries a <strong>SOUND / MUTED</strong> toggle, so you can run the frames with or without the clip&rsquo;s audio. Either way the picture stays perfectly in sync.</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">2.07</p>
@@ -222,7 +231,7 @@
             <li><strong>Videos the browser can&rsquo;t open get a real player</strong> - frame by frame, in sync with their sound - plus raw H.264 support.</li>
             <li><span class="patch-tag">New</span><strong>Motion-JPEG AVI</strong> clips (the kind older cameras record) now get a proper <strong>frame-by-frame player</strong> with the site&rsquo;s stylised scrubber: press play and the extracted frames run at the clip&rsquo;s frame rate on a loop, or scrub and step through them with <strong>Prev / Next</strong>.</li>
             <li><span class="patch-tag">New</span>Those <strong>AVI frames now play in sync with the clip&rsquo;s own sound</strong>, with the audio keeping the frames on time.</li>
-            <li><span class="patch-tag">New</span><strong>Raw H.264 / H.265 streams</strong> (<a href="about.html#ext-h264">.h264</a>, .265 and the like - the bare elementary streams dash-cams and capture cards write) are now <strong>remuxed to MP4 in the browser</strong>, so they open in the normal player.</li>
+            <li><span class="patch-tag">New</span><strong>Raw H.264 / H.265 streams</strong> (<a href="/about#ext-h264">.h264</a>, .265 and the like - the bare elementary streams dash-cams and capture cards write) are now <strong>remuxed to MP4 in the browser</strong>, so they open in the normal player.</li>
             <li><span class="patch-tag">New</span>Dropping a video no longer analyses its <strong>sound and first frame</strong> on its own - there are now <strong>Analyse audio</strong> and <strong>Analyse photo</strong> buttons so you decide when to run them, with a loading popup while the audio works.</li>
             <li><span class="patch-tag">New</span>The frame tools - <strong>Analyse frame</strong>, <strong>Frame grab</strong> and <strong>Generate contact sheet</strong> - now sit together in one row, with the <strong>frames shown above the file details</strong>.</li>
             <li><span class="patch-tag is-fix">Fix</span><strong>Auto-scroll to a dropped video</strong> no longer overshoots when the audio and photo buttons load in above its section.</li>
@@ -234,7 +243,7 @@
           <p class="patch-name">Calling Card</p>
           <p class="patch-date">6 June 2026, 17:55</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span><strong>Windows programs show their icon.</strong> Drop an <a href="about.html#ext-exe">.exe</a> or <a href="about.html#ext-dll">.dll</a> and Analyser now digs the <strong>application icon</strong> out of the file&rsquo;s resources and runs it through the full <strong>photo analysis</strong> - preview, colours, dimensions and the rest - alongside the usual version and publisher details.</li>
+            <li><span class="patch-tag">New</span><strong>Windows programs show their icon.</strong> Drop an <a href="/about#ext-exe">.exe</a> or <a href="/about#ext-dll">.dll</a> and Analyser now digs the <strong>application icon</strong> out of the file&rsquo;s resources and runs it through the full <strong>photo analysis</strong> - preview, colours, dimensions and the rest - alongside the usual version and publisher details.</li>
           </ul>
         </div>
 
@@ -255,7 +264,7 @@
           <p class="patch-name">Cross Reference</p>
           <p class="patch-date">6 June 2026, 17:15</p>
           <ul class="patch-list">
-            <li><span class="patch-tag is-fix">Fix</span>The new <strong>editing-timeline</strong> formats (EDL, FCPXML, OTIO) now sit under <strong>Video</strong> in the supported-formats list, so the changelog and <a href="about.html#what">About-page</a> deep-links to them land in the right section instead of under &ldquo;System &amp; disk&rdquo;.</li>
+            <li><span class="patch-tag is-fix">Fix</span>The new <strong>editing-timeline</strong> formats (EDL, FCPXML, OTIO) now sit under <strong>Video</strong> in the supported-formats list, so the changelog and <a href="/about#what">About-page</a> deep-links to them land in the right section instead of under &ldquo;System &amp; disk&rdquo;.</li>
           </ul>
         </div>
 
@@ -265,8 +274,8 @@
           <p class="patch-date">6 June 2026, 17:05</p>
           <ul class="patch-list">
             <li><strong>Two new viewers</strong> - a real 3D model viewer and an editing-timeline viewer - plus frame-accurate tools for video.</li>
-            <li><span class="patch-tag">New</span>The STL viewer is now a full <strong>3D model viewer</strong>. It opens <strong><a href="about.html#ext-obj">OBJ</a></strong>, <strong><a href="about.html#ext-ply">PLY</a></strong>, <strong>OFF</strong>, <strong><a href="about.html#ext-3mf">3MF</a></strong> and <strong>AMF</strong> as well, and tessellates <strong><a href="about.html#ext-step">STEP</a></strong>, <strong>IGES</strong> and <strong>BREP</strong> CAD solids with <strong>OpenCASCADE</strong> so you can orbit them in the browser. STEP files also name the <strong>CAD system, version and AP203/214/242 protocol</strong> they came from, and 3MF/AMF let you inspect each model and assembly on the build plate one at a time.</li>
-            <li><span class="patch-tag">New</span>A new <strong>editing-timeline viewer</strong> draws the sequences exported from <strong>Premiere Pro</strong>, <strong>Final Cut Pro</strong>, <strong>DaVinci Resolve</strong> and <strong>Avid</strong> - <strong><a href="about.html#ext-edl">EDL</a></strong> (CMX3600), <strong>FCPXML</strong> and <strong>OpenTimelineIO</strong> (OTIO) - as visual tracks of clip blocks placed by timecode, with durations, clip names and frame rate.</li>
+            <li><span class="patch-tag">New</span>The STL viewer is now a full <strong>3D model viewer</strong>. It opens <strong><a href="/about#ext-obj">OBJ</a></strong>, <strong><a href="/about#ext-ply">PLY</a></strong>, <strong>OFF</strong>, <strong><a href="/about#ext-3mf">3MF</a></strong> and <strong>AMF</strong> as well, and tessellates <strong><a href="/about#ext-step">STEP</a></strong>, <strong>IGES</strong> and <strong>BREP</strong> CAD solids with <strong>OpenCASCADE</strong> so you can orbit them in the browser. STEP files also name the <strong>CAD system, version and AP203/214/242 protocol</strong> they came from, and 3MF/AMF let you inspect each model and assembly on the build plate one at a time.</li>
+            <li><span class="patch-tag">New</span>A new <strong>editing-timeline viewer</strong> draws the sequences exported from <strong>Premiere Pro</strong>, <strong>Final Cut Pro</strong>, <strong>DaVinci Resolve</strong> and <strong>Avid</strong> - <strong><a href="/about#ext-edl">EDL</a></strong> (CMX3600), <strong>FCPXML</strong> and <strong>OpenTimelineIO</strong> (OTIO) - as visual tracks of clip blocks placed by timecode, with durations, clip names and frame rate.</li>
             <li><span class="patch-tag">New</span>The video player gains <strong>frame-accurate controls</strong>: an <strong>editable timecode</strong> you click to jump to an exact hour&nbsp;:&nbsp;minute&nbsp;:&nbsp;second&nbsp;:&nbsp;frame, <strong>step a single frame</strong> back or forward, send the current frame to the <strong>photo analysis</strong>, or grab it as a PNG - plus a <strong>contact sheet</strong> of thumbnails you can open full-size.</li>
             <li><span class="patch-tag is-fix">Fix</span><strong>RAW photo previews</strong> come out more reliably. On some cameras - the <strong>Sony FX30</strong> among them - the embedded-preview scan could lock onto a chunk of raw sensor noise instead of the real JPEG; it now insists on a genuine image marker, so the correct preview shows.</li>
             <li><span class="patch-tag is-fix">Fix</span>The photo <strong>aspect-ratio</strong> readout now shows the nearest standard ratio with its own decimal beside the exact one, so the two read side by side - e.g. <code>258:145 (1.7793) &asymp; 16:9 (1.7778)</code>.</li>
@@ -296,7 +305,7 @@
             <li><span class="patch-tag">New</span>The <strong>supported-formats list</strong> has been rebuilt - formats are now <strong>grouped by category</strong> (images, audio, video, documents, 3D &amp; CAD, archives, maps, games&hellip;) with <strong>filter chips</strong> to narrow it at a tap, a <strong>FULL</strong> or <strong>ID</strong> badge on each row showing whether it opens in a viewer or is identified from its header, <strong>highlighted search matches</strong>, a running count, and an <strong>expand-all</strong> toggle. On a phone it slides up as a bottom sheet.</li>
             <li><span class="patch-tag">New</span>The photo <strong>brightness histogram</strong> now spans the <strong>full width</strong> above the image and can be <strong>clicked to zoom</strong>.</li>
             <li><span class="patch-tag is-fix">Fix</span><strong>Reading text from images and PDFs</strong> now uses <strong>one language picker</strong>, with a built-in <code>[?]</code> note on what it can and can&rsquo;t do and a clearer per-language download hint; the button now reads <strong>Extract text</strong>.</li>
-            <li><span class="patch-tag is-fix">Fix</span>If an <a href="about.html#where">offline download</a> can&rsquo;t fetch every file - you&rsquo;re offline, or a server is unreachable - it now says <strong>how many failed and lets you retry</strong>, instead of stopping quietly. The recommended <strong>Everything</strong> tier is marked with a small crown.</li>
+            <li><span class="patch-tag is-fix">Fix</span>If an <a href="/about#where">offline download</a> can&rsquo;t fetch every file - you&rsquo;re offline, or a server is unreachable - it now says <strong>how many failed and lets you retry</strong>, instead of stopping quietly. The recommended <strong>Everything</strong> tier is marked with a small crown.</li>
             <li><span class="patch-tag is-fix">Fix</span>The <strong>lightbox</strong> re-fits the image when you rotate or resize the window, the <strong>heading hover</strong> effect thins in faster and no longer reflows after a resize, and the photo <strong>colour palette</strong> keeps its single row on large phones.</li>
           </ul>
         </div>
@@ -358,9 +367,9 @@
           <p class="patch-name">Developed</p>
           <p class="patch-date">5 June 2026, 16:10</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span><strong>Many more camera RAW formats</strong> now open with the full photo analysis - Hasselblad (<a href="about.html#ext-3fr">3FR</a>), Phase One (<a href="about.html#ext-iiq">IIQ</a>), Leica, Kodak, Minolta, GoPro and others - while rare cinema RAW (RED, Blackmagic, ARRIRAW) is identified.</li>
+            <li><span class="patch-tag">New</span><strong>Many more camera RAW formats</strong> now open with the full photo analysis - Hasselblad (<a href="/about#ext-3fr">3FR</a>), Phase One (<a href="/about#ext-iiq">IIQ</a>), Leica, Kodak, Minolta, GoPro and others - while rare cinema RAW (RED, Blackmagic, ARRIRAW) is identified.</li>
             <li><span class="patch-tag">New</span>The camera <strong>shutter actuation count</strong> is now read from RAW files and JPEGs that record it - useful for gauging how much a used camera body has been worn.</li>
-            <li><span class="patch-tag">New</span><strong>RAW develop settings</strong> - drop a RAW together with its <a href="about.html#ext-xmp">.xmp</a> sidecar (the kind Photoshop, Lightroom and Camera Raw save), or use the new <strong>Import XMP settings</strong> button under the thumbnail, and the applied edits (exposure, contrast, white balance, crop, rating&hellip;) are listed. Capture One and DxO sidecars are read too.</li>
+            <li><span class="patch-tag">New</span><strong>RAW develop settings</strong> - drop a RAW together with its <a href="/about#ext-xmp">.xmp</a> sidecar (the kind Photoshop, Lightroom and Camera Raw save), or use the new <strong>Import XMP settings</strong> button under the thumbnail, and the applied edits (exposure, contrast, white balance, crop, rating&hellip;) are listed. Capture One and DxO sidecars are read too.</li>
             <li><span class="patch-tag">New</span><strong>Computational-photo</strong> wrappers are flagged - Apple ProRAW and Live Photo, Google and Samsung Motion Photo, and Ultra HDR gain maps.</li>
             <li><span class="patch-tag is-fix">Fix</span>The greyed-out Photo, Sound and Video tabs are no longer highlighted as you scroll a non-media file&rsquo;s results.</li>
           </ul>
@@ -371,11 +380,11 @@
           <p class="patch-name">Omnivore</p>
           <p class="patch-date">5 June 2026, 16:10</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span><strong>Hundreds more file formats</strong> are now recognised - across images, audio, video, documents, archives, 3D, maps, email, security, gaming and science - so far fewer files come back as &ldquo;unknown&rdquo;. <a href="about.html">Browse the full list</a>.</li>
-            <li><span class="patch-tag">New</span>New full viewers: <strong>comic books</strong> (<a href="about.html#ext-cbz">CBZ</a>, <a href="about.html#ext-cbr">CBR</a>) open as a page-by-page reader like the PDF one; <strong><a href="about.html#ext-sqlite">SQLite</a> databases</strong> and <a href="about.html#ext-sql">.sql</a> dumps show their full schema - tables, columns, row counts and a data sample; and <strong><a href="about.html#ext-jp2">JPEG&nbsp;2000</a></strong> images decode and display.</li>
-            <li><span class="patch-tag">New</span>Much <strong>deeper analysis</strong> of files you could already open: the AI-generation prompt hidden in a <a href="about.html#ext-png">PNG</a>, an <a href="about.html#ext-mp3">MP3</a>&rsquo;s <strong>bitrate</strong>, video codec / rotation / HDR, <a href="about.html#ext-pdf">PDF</a> bookmarks, forms and permissions, Word tracked-changes and <a href="about.html#ext-xlsx">Excel</a> formulas, <a href="about.html#ext-zip">ZIP</a> safety warnings, and <a href="about.html#ext-gpx">GPX</a> elevation profiles.</li>
+            <li><span class="patch-tag">New</span><strong>Hundreds more file formats</strong> are now recognised - across images, audio, video, documents, archives, 3D, maps, email, security, gaming and science - so far fewer files come back as &ldquo;unknown&rdquo;. <a href="/about">Browse the full list</a>.</li>
+            <li><span class="patch-tag">New</span>New full viewers: <strong>comic books</strong> (<a href="/about#ext-cbz">CBZ</a>, <a href="/about#ext-cbr">CBR</a>) open as a page-by-page reader like the PDF one; <strong><a href="/about#ext-sqlite">SQLite</a> databases</strong> and <a href="/about#ext-sql">.sql</a> dumps show their full schema - tables, columns, row counts and a data sample; and <strong><a href="/about#ext-jp2">JPEG&nbsp;2000</a></strong> images decode and display.</li>
+            <li><span class="patch-tag">New</span>Much <strong>deeper analysis</strong> of files you could already open: the AI-generation prompt hidden in a <a href="/about#ext-png">PNG</a>, an <a href="/about#ext-mp3">MP3</a>&rsquo;s <strong>bitrate</strong>, video codec / rotation / HDR, <a href="/about#ext-pdf">PDF</a> bookmarks, forms and permissions, Word tracked-changes and <a href="/about#ext-xlsx">Excel</a> formulas, <a href="/about#ext-zip">ZIP</a> safety warnings, and <a href="/about#ext-gpx">GPX</a> elevation profiles.</li>
             <li><span class="patch-tag">New</span><strong>Smart type detection</strong> - drop a file with no extension, or the wrong one, and Analyser works out what it really is and offers to open it that way.</li>
-            <li><span class="patch-tag is-fix">Fix</span><a href="about.html#ext-csv">CSV</a> files with quoted line breaks now parse correctly, <a href="about.html#ext-svg">SVG</a> previews are sanitised for safety, and the in-page <strong>search</strong> reveals matches tucked inside collapsed sections.</li>
+            <li><span class="patch-tag is-fix">Fix</span><a href="/about#ext-csv">CSV</a> files with quoted line breaks now parse correctly, <a href="/about#ext-svg">SVG</a> previews are sanitised for safety, and the in-page <strong>search</strong> reveals matches tucked inside collapsed sections.</li>
             <li>The navbar now greys out the Photo, Sound and Video tabs for a non-media file, so they can&rsquo;t mislead.</li>
           </ul>
         </div>
@@ -385,7 +394,7 @@
           <p class="patch-name">Magnetic Type</p>
           <p class="patch-date">5 June 2026, 02:04</p>
           <ul class="patch-list">
-            <li>The playful <strong>title effect</strong> - where letters thin out as your cursor passes over them - now reaches the <strong>section headings</strong> on the <a href="about.html#why">About</a> and Changelog pages too, so hovering a heading gives the same gentle pull.</li>
+            <li>The playful <strong>title effect</strong> - where letters thin out as your cursor passes over them - now reaches the <strong>section headings</strong> on the <a href="/about#why">About</a> and Changelog pages too, so hovering a heading gives the same gentle pull.</li>
             <li><span class="patch-tag is-fix">Fix</span>The letter spacing in headings now holds steady when you <strong>zoom the page</strong> in your browser, instead of the gaps drifting apart.</li>
           </ul>
         </div>
@@ -406,12 +415,12 @@
           <p class="patch-name">Sign Posts</p>
           <p class="patch-date">5 June 2026, 00:53</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span><strong>Shortcut files</strong> are now decoded - Windows shortcuts (<a href="about.html#ext-lnk">LNK</a>) reveal the <strong>target path</strong>, arguments, working directory, icon, hotkey, and window state, while internet (<a href="about.html#ext-url">URL</a>) and macOS web shortcuts (<a href="about.html#ext-webloc">WEBLOC</a>) show the address they point to.</li>
-            <li><span class="patch-tag">New</span><strong><a href="about.html#ext-thm">THM</a></strong> files - the small JPEG thumbnail a camera saves next to each video clip - now open with the full photo analysis.</li>
-            <li><span class="patch-tag">New</span><strong>Canon camera catalogs</strong> (<a href="about.html#ext-ctg">CTG</a>) - the hidden DCIM index a Canon camera keeps - are read for the folder they track and its photo, movie, and voice-memo counts.</li>
-            <li><span class="patch-tag">New</span><strong>Raw disk images</strong> (<a href="about.html#ext-img">IMG</a>) now have their <strong>partition table</strong> (MBR/GPT) and first filesystem decoded - FAT, NTFS, or exFAT, with the volume label and size.</li>
-            <li><span class="patch-tag">New</span><strong><a href="about.html#ext-rec">REC</a></strong> files are identified, telling apart PVR/DVR video recordings from data-recovery session files.</li>
-            <li><span class="patch-tag is-fix">Fix</span><a href="about.html#ext-md">Markdown</a> files now open in the Markdown viewer reliably, and the &ldquo;view source&rdquo; popup behaves.</li>
+            <li><span class="patch-tag">New</span><strong>Shortcut files</strong> are now decoded - Windows shortcuts (<a href="/about#ext-lnk">LNK</a>) reveal the <strong>target path</strong>, arguments, working directory, icon, hotkey, and window state, while internet (<a href="/about#ext-url">URL</a>) and macOS web shortcuts (<a href="/about#ext-webloc">WEBLOC</a>) show the address they point to.</li>
+            <li><span class="patch-tag">New</span><strong><a href="/about#ext-thm">THM</a></strong> files - the small JPEG thumbnail a camera saves next to each video clip - now open with the full photo analysis.</li>
+            <li><span class="patch-tag">New</span><strong>Canon camera catalogs</strong> (<a href="/about#ext-ctg">CTG</a>) - the hidden DCIM index a Canon camera keeps - are read for the folder they track and its photo, movie, and voice-memo counts.</li>
+            <li><span class="patch-tag">New</span><strong>Raw disk images</strong> (<a href="/about#ext-img">IMG</a>) now have their <strong>partition table</strong> (MBR/GPT) and first filesystem decoded - FAT, NTFS, or exFAT, with the volume label and size.</li>
+            <li><span class="patch-tag">New</span><strong><a href="/about#ext-rec">REC</a></strong> files are identified, telling apart PVR/DVR video recordings from data-recovery session files.</li>
+            <li><span class="patch-tag is-fix">Fix</span><a href="/about#ext-md">Markdown</a> files now open in the Markdown viewer reliably, and the &ldquo;view source&rdquo; popup behaves.</li>
           </ul>
         </div>
 
@@ -420,8 +429,8 @@
             <p class="patch-name">Marked Up</p>
             <p class="patch-date">4 June 2026, 23:27</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span><strong><a href="about.html#ext-md">Markdown</a></strong> files now open as a fully <strong>formatted, readable page</strong> - headings, lists, tables, code blocks, and links - instead of raw text.</li>
-              <li><span class="patch-tag">New</span>The <a href="about.html#what">spectrogram</a> gains a <strong>Reassigned</strong> view alongside the standard one, sharpening blurry tones into crisp lines, with the analysis settings tucked into a tidy <strong>Advanced</strong> dropdown.</li>
+              <li><span class="patch-tag">New</span><strong><a href="/about#ext-md">Markdown</a></strong> files now open as a fully <strong>formatted, readable page</strong> - headings, lists, tables, code blocks, and links - instead of raw text.</li>
+              <li><span class="patch-tag">New</span>The <a href="/about#what">spectrogram</a> gains a <strong>Reassigned</strong> view alongside the standard one, sharpening blurry tones into crisp lines, with the analysis settings tucked into a tidy <strong>Advanced</strong> dropdown.</li>
               <li><span class="patch-tag">New</span>You can now <strong>zoom the spectrogram</strong> in much further (up to 48x) with a scrollbar to pan along, and the <strong>Peak</strong> stat now points to the <strong>loudest moment</strong> - its timestamp and level - rather than the loudest frequency.</li>
               <li>The photo <strong>aspect ratio</strong> now also names the nearest standard ratio (like 16:9 or 4:3) next to the exact figure.</li>
               <li><span class="patch-tag is-fix">Fix</span>The file-loading animation no longer stutters under heavy load - it now runs smoothly while a big file is being read.</li>
@@ -433,7 +442,7 @@
             <p class="patch-name">In the Picture</p>
             <p class="patch-date">4 June 2026, 13:18</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span><strong>Cover art</strong> in music files and <a href="about.html#ext-epub">EPUB</a> books is now <strong>fully analysed as a photo right where it appears</strong> - dimensions, colours, EXIF, and the rest show inline, with no extra click.</li>
+              <li><span class="patch-tag">New</span><strong>Cover art</strong> in music files and <a href="/about#ext-epub">EPUB</a> books is now <strong>fully analysed as a photo right where it appears</strong> - dimensions, colours, EXIF, and the rest show inline, with no extra click.</li>
               <li><span class="patch-tag">New</span>More readouts now carry a plain-language <strong>&ldquo;?&rdquo; note</strong> - the <strong>MIME type</strong> line across photos, audio, video and documents, and the <strong>ISRC</strong> recording code in music tags - explaining what each one means.</li>
               <li><span class="patch-tag is-fix">Fix</span>Dropping a file onto the About or Changelog page now reliably hands it to the analyser instead of occasionally doing nothing.</li>
             </ul>
@@ -444,12 +453,12 @@
             <p class="patch-name">Inside Out</p>
             <p class="patch-date">4 June 2026, 12:33</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span>Pictures buried inside documents can now be <strong>analysed in place</strong> - click an image in a <a href="about.html#ext-docx">Word</a>, <a href="about.html#ext-pptx">PowerPoint</a>, or <a href="about.html#ext-epub">EPUB</a> file, or in a <a href="about.html#ext-pdf">PDF</a>, and the full photo analysis (EXIF, histogram, colours, OCR&hellip;) runs on it.</li>
+              <li><span class="patch-tag">New</span>Pictures buried inside documents can now be <strong>analysed in place</strong> - click an image in a <a href="/about#ext-docx">Word</a>, <a href="/about#ext-pptx">PowerPoint</a>, or <a href="/about#ext-epub">EPUB</a> file, or in a <a href="/about#ext-pdf">PDF</a>, and the full photo analysis (EXIF, histogram, colours, OCR&hellip;) runs on it.</li>
               <li><span class="patch-tag">New</span>Audio your browser can&rsquo;t play - <strong>WMA</strong>, <strong>AC3</strong>, <strong>DTS</strong>, <strong>AMR</strong> - no longer just errors out: the container details, <strong>tags</strong>, <strong>lyrics</strong>, and <strong>cover art</strong> are read straight from the file.</li>
-              <li><span class="patch-tag">New</span><a href="about.html#ext-zip">ZIP</a> archives now report the <strong>compression method</strong> each file uses (Deflate, Stored&hellip;) and show a <strong>CRC checksum</strong> per entry.</li>
+              <li><span class="patch-tag">New</span><a href="/about#ext-zip">ZIP</a> archives now report the <strong>compression method</strong> each file uses (Deflate, Stored&hellip;) and show a <strong>CRC checksum</strong> per entry.</li>
               <li><span class="patch-tag">New</span><strong>Lightroom catalogs</strong> (LRCAT) are now read as the SQLite databases they are.</li>
-              <li>A <strong>SHA-256 fingerprint</strong> now appears for ZIP, <a href="about.html#ext-csv">CSV</a>, <a href="about.html#ext-svg">SVG</a>, PDF, and undecodable audio too - it was missing for these.</li>
-              <li><span class="patch-tag is-fix">Fix</span>The <a href="about.html#what">spectrogram</a> now truly fills the screen in fullscreen with no gap, and the bottom (0&nbsp;Hz) and top frequency labels are no longer clipped.</li>
+              <li>A <strong>SHA-256 fingerprint</strong> now appears for ZIP, <a href="/about#ext-csv">CSV</a>, <a href="/about#ext-svg">SVG</a>, PDF, and undecodable audio too - it was missing for these.</li>
+              <li><span class="patch-tag is-fix">Fix</span>The <a href="/about#what">spectrogram</a> now truly fills the screen in fullscreen with no gap, and the bottom (0&nbsp;Hz) and top frequency labels are no longer clipped.</li>
               <li><span class="patch-tag is-fix">Fix</span>Clearer, more accurate explanations for the photo brightness histogram and the dominant-colour picker.</li>
             </ul>
           </div>
@@ -459,9 +468,9 @@
             <p class="patch-name">On the Map</p>
             <p class="patch-date">4 June 2026, 07:19</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span><strong><a href="about.html#ext-srt">Subtitle</a></strong> files (SRT, WebVTT, ASS/SSA) now open as a full <strong>timed cue list</strong> - cue count, total on-screen time, and every line with its timecode.</li>
-              <li><span class="patch-tag">New</span><strong><a href="about.html#ext-mid">MIDI</a></strong> files are parsed into a readable score - <strong>tempo</strong> (BPM), time signature, track names, the General MIDI instruments used, note counts, and length. (MIDI is a score, not recorded sound, so there&rsquo;s no playback.)</li>
-              <li><span class="patch-tag">New</span><strong>Map data</strong> - drop a <a href="about.html#ext-gpx">GPX</a> track, <a href="about.html#ext-kml">KML</a>, or <a href="about.html#ext-geojson">GeoJSON</a> file and the route is <strong>plotted on a map</strong>, with distance, elevation range, time span, and bounds.</li>
+              <li><span class="patch-tag">New</span><strong><a href="/about#ext-srt">Subtitle</a></strong> files (SRT, WebVTT, ASS/SSA) now open as a full <strong>timed cue list</strong> - cue count, total on-screen time, and every line with its timecode.</li>
+              <li><span class="patch-tag">New</span><strong><a href="/about#ext-mid">MIDI</a></strong> files are parsed into a readable score - <strong>tempo</strong> (BPM), time signature, track names, the General MIDI instruments used, note counts, and length. (MIDI is a score, not recorded sound, so there&rsquo;s no playback.)</li>
+              <li><span class="patch-tag">New</span><strong>Map data</strong> - drop a <a href="/about#ext-gpx">GPX</a> track, <a href="/about#ext-kml">KML</a>, or <a href="/about#ext-geojson">GeoJSON</a> file and the route is <strong>plotted on a map</strong>, with distance, elevation range, time span, and bounds.</li>
             </ul>
           </div>
 
@@ -470,7 +479,7 @@
             <p class="patch-name">Full Frame</p>
             <p class="patch-date">4 June 2026, 06:47</p>
             <ul class="patch-list">
-              <li>The audio <strong>amplitude histogram</strong> now sits directly under the <a href="about.html#what">spectrogram</a>, lined up with what you&rsquo;re looking at.</li>
+              <li>The audio <strong>amplitude histogram</strong> now sits directly under the <a href="/about#what">spectrogram</a>, lined up with what you&rsquo;re looking at.</li>
               <li><span class="patch-tag">New</span>A floating <strong>exit-fullscreen button</strong> appears in fullscreen, and the now-meaningless <strong>Height</strong> control is hidden there - the view fills the screen on its own.</li>
             </ul>
           </div>
@@ -481,8 +490,8 @@
             <p class="patch-date">4 June 2026, 06:31</p>
             <ul class="patch-list">
               <li><span class="patch-tag">New</span>Music files now surface their <strong>tags and lyrics</strong> - artist, album, year and the rest from ID3, Vorbis, MP4 and Opus - plus embedded or <strong>.lrc</strong> timed lyrics, each in its own card.</li>
-              <li><span class="patch-tag">New</span><strong><a href="about.html#ext-flac">FLAC</a></strong> files now report their true <strong>sample rate, bit depth, and channel count</strong> from the stream header.</li>
-              <li><span class="patch-tag">New</span>The <a href="about.html#what">spectrogram</a> controls are reorganised into tidy <strong>View / Resolution / Actions</strong> groups, and the <strong>Live</strong> microphone view keeps a rolling buffer so you can <strong>analyse the last 15 seconds</strong> at any moment.</li>
+              <li><span class="patch-tag">New</span><strong><a href="/about#ext-flac">FLAC</a></strong> files now report their true <strong>sample rate, bit depth, and channel count</strong> from the stream header.</li>
+              <li><span class="patch-tag">New</span>The <a href="/about#what">spectrogram</a> controls are reorganised into tidy <strong>View / Resolution / Actions</strong> groups, and the <strong>Live</strong> microphone view keeps a rolling buffer so you can <strong>analyse the last 15 seconds</strong> at any moment.</li>
               <li><span class="patch-tag is-fix">Fix</span>Analysing a video&rsquo;s scenes no longer hijacks the player - detection runs off-screen while you keep scrubbing, and very large videos skip automatic detection (start it by hand).</li>
               <li><span class="patch-tag is-fix">Fix</span>Recorded-audio scrubbing and seeking now behave; the mobile navbar stays pinned and the footer links stack cleanly.</li>
             </ul>
@@ -493,13 +502,13 @@
           <p class="patch-name">Fine Tuning</p>
           <p class="patch-date">4 June 2026, 04:43</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span>The <a href="about.html#what">spectrogram</a> gains a <strong>Sensitivity</strong> slider that pulls faint detail out of the noise floor - it is render-only, so it redraws instantly without recomputing the FFT.</li>
+            <li><span class="patch-tag">New</span>The <a href="/about#what">spectrogram</a> gains a <strong>Sensitivity</strong> slider that pulls faint detail out of the noise floor - it is render-only, so it redraws instantly without recomputing the FFT.</li>
             <li><span class="patch-tag">New</span>Every spectrogram now carries an at-a-glance <strong>stats</strong> line: the <strong>peak frequency</strong>, the <strong>detected frequency range</strong>, the <strong>dynamic range</strong> in dB, and the analysis <strong>resolution</strong> (Hz per bin and milliseconds per frame).</li>
             <li><span class="patch-tag">New</span>The old <strong>Patch notes</strong> page is now the <strong>Changelog</strong> - same page, plainer name, with the header link renamed on every page.</li>
             <li>Clicking <strong>valjdakosta</strong> in the byline (and other <em>link.valjdakosta.com</em> links) now opens in the <strong>same tab</strong> instead of a new one; the <strong>Links</strong> button keeps its tap-to-confirm and still opens separately.</li>
             <li><span class="patch-tag is-fix">Fix</span>Moving the mouse over the title during its intro animation now <strong>blends</strong> with the sweep instead of cutting it short.</li>
             <li><span class="patch-tag is-fix">Fix</span>Header tidy-ups: the <strong>Changelog</strong> heading holds to a single line, and <em>valjdakosta</em> drops just clear of the tail of the title instead of clipping it.</li>
-            <li><span class="patch-tag is-fix">Fix</span>The <a href="about.html#why">About</a> page&rsquo;s section tabs were stretched across the wrong columns - they now sit evenly across the row.</li>
+            <li><span class="patch-tag is-fix">Fix</span>The <a href="/about#why">About</a> page&rsquo;s section tabs were stretched across the wrong columns - they now sit evenly across the row.</li>
           </ul>
         </div>
 
@@ -508,7 +517,7 @@
           <p class="patch-name">Plain Language</p>
           <p class="patch-date">3 June 2026, 21:57</p>
           <ul class="patch-list">
-            <li><span class="patch-tag">New</span>Hover or tap the new <strong>&ldquo;?&rdquo; help buttons</strong> beside almost every readout - across <a href="about.html#what">photos, sound and video</a>, PDF, 3D <a href="about.html#ext-stl">STL</a> models, and unknown files - for a plain-language note on what each value means (aspect ratio, megapixels, GPS altitude, sample rate, bit depth, bitrate, PDF Creator vs Producer, STL triangles and volume, and more).</li>
+            <li><span class="patch-tag">New</span>Hover or tap the new <strong>&ldquo;?&rdquo; help buttons</strong> beside almost every readout - across <a href="/about#what">photos, sound and video</a>, PDF, 3D <a href="/about#ext-stl">STL</a> models, and unknown files - for a plain-language note on what each value means (aspect ratio, megapixels, GPS altitude, sample rate, bit depth, bitrate, PDF Creator vs Producer, STL triangles and volume, and more).</li>
             <li>The photo <strong>LSB analysis</strong> explanation is now a tidy <code>[?]</code> toggle instead of always-on text.</li>
           </ul>
         </div>
@@ -532,7 +541,7 @@
               <li><span class="patch-tag">New</span>Audio files with embedded <strong>cover art</strong> now show the artwork - and you can open and analyse it as a photo.</li>
               <li><span class="patch-tag">New</span><strong>Cloud-only files</strong> (OneDrive, iCloud, Google Drive, Dropbox) that aren&rsquo;t downloaded to this device yet are now detected and explained clearly, instead of failing with a generic error.</li>
               <li><span class="patch-tag">New</span><strong>Programs &amp; libraries</strong> (EXE, DLL) reveal far more - file and product version, company, copyright, description, linker and subsystem versions, and security mitigations.</li>
-              <li><span class="patch-tag">New</span><strong>Steam &amp; Valve</strong> files (<a href="about.html#ext-vdf">VDF</a>, <a href="about.html#ext-acf">ACF</a>) are now parsed - App ID, name, install directory, size, and the full key tree.</li>
+              <li><span class="patch-tag">New</span><strong>Steam &amp; Valve</strong> files (<a href="/about#ext-vdf">VDF</a>, <a href="/about#ext-acf">ACF</a>) are now parsed - App ID, name, install directory, size, and the full key tree.</li>
               <li><span class="patch-tag is-fix">Fix</span>Videos no longer briefly play while being analysed on desktop.</li>
               <li>New formats: <strong>M4B</strong> audiobooks, <strong>3G2</strong> video, <strong>Grasshopper</strong> (GH/GHX), <strong>KiCad PCB</strong>, and <strong>CRDOWNLOAD</strong>; dropzones now mention folders are accepted, every loading bar shares one <code>[////////]</code> style, and the dark-mode button reads DAY&nbsp;/&nbsp;NIGHT.</li>
             </ul>
@@ -553,7 +562,7 @@
             <p class="patch-date">3 June 2026, 03:34</p>
             <ul class="patch-list">
               <li><span class="patch-tag is-faster">Faster</span>OCR now bundles only <strong>English</strong> for offline use; every other language (including the Serbian variants) streams from a CDN on demand and is cached after first use - keeping the base download small.</li>
-              <li>All 32 languages still appear in the picker, and the <a href="about.html#where">Complete</a> download still grabs every one for full offline OCR.</li>
+              <li>All 32 languages still appear in the picker, and the <a href="/about#where">Complete</a> download still grabs every one for full offline OCR.</li>
             </ul>
           </div>
 
@@ -582,7 +591,7 @@
             <p class="patch-date">3 June 2026, 02:44</p>
             <ul class="patch-list">
               <li><span class="patch-tag">New</span>A loading bar now slides up from the bottom of the window while a large file is being read, so big files no longer feel frozen.</li>
-              <li>The <a href="about.html#what">About page</a> now gives a plain-language description for every supported format, with <strong>deep-links</strong> straight to any format or file extension.</li>
+              <li>The <a href="/about#what">About page</a> now gives a plain-language description for every supported format, with <strong>deep-links</strong> straight to any format or file extension.</li>
               <li><span class="patch-tag is-fix">Fix</span>A proper <strong>404</strong> page that points back home; refreshed titles, descriptions, and a correctly-sized social-share banner.</li>
             </ul>
           </div>
@@ -611,7 +620,7 @@
             <p class="patch-date">3 June 2026, 01:41</p>
             <ul class="patch-list">
               <li><span class="patch-tag">New</span><strong>OCR now reads 32 languages</strong> - Arabic, Chinese, Japanese, Korean, Russian, German, French, and more.</li>
-              <li><span class="patch-tag">New</span>The <a href="about.html#ext-docx">DOCX</a> viewer now renders <strong>embedded images inline</strong>, alongside the text and tables.</li>
+              <li><span class="patch-tag">New</span>The <a href="/about#ext-docx">DOCX</a> viewer now renders <strong>embedded images inline</strong>, alongside the text and tables.</li>
               <li><span class="patch-tag">New</span>A <strong>&ldquo;Clear all site data&rdquo;</strong> button wipes every cache and stored value - only your dark-mode choice is kept.</li>
               <li>Fully offline including FFmpeg and Tesseract OCR; the native video player is hidden everywhere except iPhone; added a share banner and search-engine previews.</li>
             </ul>
@@ -622,10 +631,10 @@
             <p class="patch-name">Big Bang</p>
             <p class="patch-date">3 June 2026, 00:51</p>
             <ul class="patch-list">
-              <li><strong>The big one</strong> - Analyser grows into a full document and 3D model <a href="about.html#what">workstation</a>.</li>
-              <li><span class="patch-tag">New</span>Four new viewers: <strong><a href="about.html#ext-xlsx">Excel</a></strong> workbooks (a tab per sheet), <strong><a href="about.html#ext-epub">EPUB</a></strong> e-books (chapter navigation), <strong><a href="about.html#ext-pptx">PowerPoint</a></strong> slides, and an interactive <strong>3D <a href="about.html#ext-stl">STL</a></strong> model viewer (orbit, zoom, spin, dimensions) in WebGL.</li>
+              <li><strong>The big one</strong> - Analyser grows into a full document and 3D model <a href="/about#what">workstation</a>.</li>
+              <li><span class="patch-tag">New</span>Four new viewers: <strong><a href="/about#ext-xlsx">Excel</a></strong> workbooks (a tab per sheet), <strong><a href="/about#ext-epub">EPUB</a></strong> e-books (chapter navigation), <strong><a href="/about#ext-pptx">PowerPoint</a></strong> slides, and an interactive <strong>3D <a href="/about#ext-stl">STL</a></strong> model viewer (orbit, zoom, spin, dimensions) in WebGL.</li>
               <li>Folders and ZIP archives now show as a collapsible, expandable tree.</li>
-              <li>Many new identifications and metadata: X.509 certificates, MSI installers, After Effects projects, RTF, torrents, Dolby surround codecs (E-AC-3, TrueHD), live font previews, and full <a href="about.html#ext-flp">FL Studio</a> project reading (version, tempo, channels, plugins).</li>
+              <li>Many new identifications and metadata: X.509 certificates, MSI installers, After Effects projects, RTF, torrents, Dolby surround codecs (E-AC-3, TrueHD), live font previews, and full <a href="/about#ext-flp">FL Studio</a> project reading (version, tempo, channels, plugins).</li>
               <li>PDF gains embedded-image extraction, export-any-page-as-PNG, and hover-to-Analyse-or-OCR.</li>
               <li><span class="patch-tag is-fix">Fixes</span>SHA-256 progress bar, spectrogram playhead when zoomed, media sections hidden for non-media files, and a cleaner address bar after navigating.</li>
             </ul>
@@ -655,7 +664,7 @@
             <p class="patch-name">Paper &amp; Robots</p>
             <p class="patch-date">2 June 2026, 20:53</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span>New <strong><a href="about.html#ext-docx">DOCX</a></strong> viewer - Word documents with formatted text, tables, headings, and metadata.</li>
+              <li><span class="patch-tag">New</span>New <strong><a href="/about#ext-docx">DOCX</a></strong> viewer - Word documents with formatted text, tables, headings, and metadata.</li>
               <li><span class="patch-tag">New</span><strong>AI-image detection</strong> - photos are checked for generation markers from 30+ tools (Stable Diffusion, DALL&middot;E, Midjourney, Firefly&hellip;).</li>
               <li><span class="patch-tag">New</span><strong>G-code</strong> analysis (slicer, printer, filament, temperatures, dimensions) and <strong>log-file</strong> origin ID (Apache, Nginx, syslog&hellip;).</li>
               <li>Full iPhone-video analysis; the mobile file picker no longer pops up the camera on iOS.</li>
@@ -676,7 +685,7 @@
             <p class="patch-name">Reading the Tags</p>
             <p class="patch-date">2 June 2026, 20:24</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span>Real metadata pulled from many proprietary files - fonts (TTF/OTF), <a href="about.html#ext-flp">FL Studio</a>, RAR, 7-Zip, SQLite, and GIMP XCF.</li>
+              <li><span class="patch-tag">New</span>Real metadata pulled from many proprietary files - fonts (TTF/OTF), <a href="/about#ext-flp">FL Studio</a>, RAR, 7-Zip, SQLite, and GIMP XCF.</li>
               <li>BPM read from ID3/MP4 tags when present (estimates marked &ldquo;est&rdquo;); transparent images show a checkerboard with a lightbox toggle.</li>
               <li>LSB viewer cycles R/G/B with arrows and a Save&nbsp;PNG; PDF page previews are clickable; HTML files get a sandboxed rendered preview.</li>
             </ul>
@@ -745,7 +754,7 @@
             <p class="patch-name">Going Public</p>
             <p class="patch-date">2 June 2026, 16:25</p>
             <ul class="patch-list">
-              <li><span class="patch-tag">New</span>A new <strong><a href="about.html#what">About page</a></strong> listing every supported format, plus <strong>offline download tiers</strong> with install and clear-cache buttons.</li>
+              <li><span class="patch-tag">New</span>A new <strong><a href="/about#what">About page</a></strong> listing every supported format, plus <strong>offline download tiers</strong> with install and clear-cache buttons.</li>
               <li><span class="patch-tag">New</span>Over <strong>100 proprietary formats</strong> identified by extension and magic bytes (Adobe, CAD, 3D, Office, executables).</li>
               <li>PDF: all-pages text extraction plus OCR of image-only pages; more reliable video frame-rate detection; no dark-mode flash on load.</li>
             </ul>
@@ -971,7 +980,7 @@
     </div>
   </div>
   <div class="footer-row footer-bottom">
-    <a href="index.html" class="footer-nav-btn">&larr; Main page</a>
+    <a href="/" class="footer-nav-btn">&larr; Main page</a>
     <p class="footer-meta">2026 &middot; <a href="https://valjdakosta.com/">valjdakosta.com</a></p>
     <p class="footer-meta"><a href="https://github.com/KostaJovanovic/lab" target="_blank" rel="noopener">Source on GitHub ↗</a></p>
     <!-- Email shown obfuscated to deter scrapers; display-only, no mailto link. -->

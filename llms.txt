@@ -7,8 +7,8 @@ Analyser is a static, offline-capable web app (PWA) hosted at https://lab.valjda
 ## Pages
 
 - [Analyser (app)](https://lab.valjdakosta.com/): The main tool. Drop or pick a file to analyse photos, audio, video, documents, archives and more, fully in-browser.
-- [About](https://lab.valjdakosta.com/about.html): Why Analyser exists, how the local-only processing works, and the full table of supported file types.
-- [Changelog](https://lab.valjdakosta.com/patch.html): Every release, newest first - new formats, viewers, and fixes.
+- [About](https://lab.valjdakosta.com/about): Why Analyser exists, how the local-only processing works, and the full table of supported file types.
+- [Changelog](https://lab.valjdakosta.com/patch): Every release, newest first - new formats, viewers, and fixes.
 
 ## What it analyses
 
