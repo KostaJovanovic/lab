@@ -181,6 +181,20 @@
              ===================================================================== -->
 
         <div class="patch-entry">
+          <p class="patch-version">2.13</p>
+          <p class="patch-name">Negative</p>
+          <p class="patch-date">9 June 2026, 06:38</p>
+          <ul class="patch-list">
+            <li><span class="patch-tag">New</span><strong>The menu bar flips to an inverted look.</strong> Once you open a photo, sound or video and scroll down, the pinned menu bar switches to a bold inverted colour scheme so it stands out from the page. The change is animated and follows light or dark mode.</li>
+            <li><span class="patch-tag">New</span><strong>&ldquo;Suggest this format&rdquo;.</strong> When a file can&rsquo;t be opened, or only shows a basic readout, a small prompt now offers to email the format in - just the extension, or a sample file - so it can be added.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>Spectrogram playback line.</strong> The white position line stays accurate at any zoom level and glides smoothly to new positions, and the view scrolls to keep it in sight while playing. You can also <strong>drag the spectrogram sideways</strong> to pan when zoomed in.</li>
+            <li><span class="patch-tag">New</span><strong>Full-screen spectrogram height.</strong> In full-screen, a new <code>Fill</code> height stretches the spectrogram to the whole screen, alongside the fixed pixel heights.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>Clearer offline downloads.</strong> Once a download tier is saved, the smaller tiers read <code>Included</code> and larger ones show only the <strong>extra space</strong> needed to upgrade. A failed download now names the files that didn&rsquo;t make it.</li>
+            <li><span class="patch-tag is-fix">Fix</span><strong>Loading bar.</strong> The bouncing marker in the loading popup now travels the full width instead of stopping just short on the right.</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
           <p class="patch-version">2.12</p>
           <p class="patch-name">Stack Up</p>
           <p class="patch-date">7 June 2026, 18:00</p>
@@ -198,6 +212,9 @@
           </ul>
         </div>
 
+        <details class="about-formats">
+          <summary>Older updates</summary>
+
         <div class="patch-entry">
           <p class="patch-version">2.10</p>
           <p class="patch-name">Round Trip</p>
@@ -207,9 +224,6 @@
             <li><span class="patch-tag">New</span>The site now ships a <strong>machine-readable summary</strong> (<code>llms.txt</code>) and a complete sitemap, so search engines and AI assistants can describe Analyser accurately.</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">2.09</p>
@@ -940,15 +954,15 @@
       </details>
     </div>
     <div class="offline-help-panel">
-      <div><strong>Essentials</strong> <span>~46 MB</span><br>The whole app - open and inspect any file, fully offline</div>
+      <div><strong>Essentials</strong> <span>~48 MB</span><br>The whole app - open and inspect any file, fully offline</div>
       <div><strong>Everything</strong> <span>~72 MB</span><br>Adds reading text in images, PDFs, photo-location maps, QR scanning, iPhone (HEIC) photos and archives</div>
-      <div><strong>Complete</strong> <span>~290 MB</span><br>Adds reading text in 30+ languages, plus EPS/PostScript graphics</div>
+      <div><strong>Complete</strong> <span>~310 MB</span><br>Adds reading text in 30+ languages, plus EPS/PostScript graphics</div>
     </div>
     <div class="offline-options">
       <button type="button" class="offline-btn" data-tier="essentials">
         <span class="offline-tier">Essentials</span>
         <span class="offline-desc">The whole app - open and inspect any file, fully offline</span>
-        <span class="offline-size">~46 MB</span>
+        <span class="offline-size">~48 MB</span>
         <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
       </button>
       <button type="button" class="offline-btn" data-tier="everything">
@@ -961,7 +975,7 @@
       <button type="button" class="offline-btn" data-tier="complete">
         <span class="offline-tier">Complete</span>
         <span class="offline-desc">Adds reading text in 30+ languages, plus EPS/PostScript graphics</span>
-        <span class="offline-size">~290 MB</span>
+        <span class="offline-size">~310 MB</span>
         <div class="offline-bar" hidden><div class="offline-bar-fill"></div></div>
       </button>
     </div>

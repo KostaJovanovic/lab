@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 72;
+const COMMIT_COUNT = 73;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -150,6 +150,51 @@ window._anrLoader = {
   show: (label) => showDropLoader(null, null, label || 'Working…'),
   hide: hideDropLoader,
 };
+
+// ---------- "suggest this format" popup (bottom, dismissible) ----------
+// Shown when a file can't be read, or its analysis comes back very thin (an
+// unrecognised binary that only yields a hex dump). Nudges the visitor to email
+// the extension - or a sample file - so the format can be supported. The address
+// is assembled at click time and never lives in static HTML, so scrapers don't
+// get a live target. Renderers reach this via window._anrSuggest.
+let _suggestPopEl = null;
+function hideSuggestPopup() {
+  if (_suggestPopEl) _suggestPopEl.classList.remove('is-open');
+}
+function showSuggestPopup(ext) {
+  const clean = (ext || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const label = clean ? ('.' + clean.toUpperCase()) : 'this file type';
+  if (!_suggestPopEl || !_suggestPopEl.isConnected) {
+    const closeBtn = el('button', { type: 'button', class: 'anr-suggest-close', 'aria-label': 'Dismiss' }, '×');
+    closeBtn.addEventListener('click', hideSuggestPopup);
+    const kicker = el('span', { class: 'anr-suggest-kicker' }, 'Limited readout');
+    const head = el('div', { class: 'anr-suggest-head' }, [kicker, closeBtn]);
+    const text = el('p', { class: 'anr-suggest-text' }, '');
+    const cta = el('button', { type: 'button', class: 'anr-suggest-cta' }, 'Email a suggestion →');
+    cta.addEventListener('click', () => {
+      // Build the mailto here (not in the DOM) so the address stays out of the
+      // page source. ['valjdakosta','gmail.com'].join('@') === the real address.
+      const addr = ['valjdakosta', 'gmail.com'].join('@');
+      const subject = 'Format suggestion: ' + (_suggestPopEl._label || 'a file type');
+      const body = 'Hi! Analyser couldn’t get much out of ' + (_suggestPopEl._label || 'this file type') + '.\n'
+        + 'Could you add (or improve) support for it?\n\n'
+        + 'I can attach a sample file to this email if that helps.\n';
+      window.location.href = 'mailto:' + addr
+        + '?subject=' + encodeURIComponent(subject)
+        + '&body=' + encodeURIComponent(body);
+    });
+    _suggestPopEl = el('div', { class: 'anr-suggest-pop', role: 'status', 'aria-live': 'polite' }, [head, text, cta]);
+    _suggestPopEl._text = text;
+    document.body.appendChild(_suggestPopEl);
+  }
+  _suggestPopEl._label = label;
+  _suggestPopEl._text.textContent = (clean
+    ? ('Analyser couldn’t read much from ' + label + ' files.')
+    : 'Analyser couldn’t read much from this file.')
+    + ' If you’d like it supported, email me — just the extension, or attach a sample.';
+  requestAnimationFrame(() => _suggestPopEl.classList.add('is-open'));
+}
+window._anrSuggest = { show: showSuggestPopup, hide: hideSuggestPopup };
 
 // ---------- true file-type sniffing ----------
 // Detect what a file ACTUALLY is from its leading bytes, independent of its name,
@@ -345,6 +390,7 @@ function hasFiles(e) {
 
 let _handleFile = null;
 let _scrollHandler = null;
+let _stuckObserver = null;
 
 // Splits an element's text into per-letter inline-block <span>s, each carrying a
 // base font-weight, so a proximity effect can vary letters independently. Bakes
@@ -413,6 +459,7 @@ function splitText(container, baseWeight) {
 // each entry's full bullet list for the matching line here. When you add a new
 // patch entry to patch.html, add its one-liner here too (newest at the top).
 const PATCH_TLDR = {
+  '2.13': 'The pinned menu bar flips to an animated inverted colour scheme once you open a photo, sound or video and scroll. Files that can’t be opened or only show a basic readout now offer a one-tap email to suggest the format, the spectrogram’s playback line is accurate at every zoom and you can drag to pan, full-screen gains a Fill height, and the offline-download tiers show what’s already Included and the extra space to upgrade.',
   '2.12': 'In the supported-formats popup, each group’s file extensions now sit under the group name instead of beside it, matching the About page, so long lists are easier to scan.',
   '2.11': 'Pages now have clean web addresses - /about and /patch instead of /about.html - and the old .html links redirect to them, so bookmarked and shared links always resolve.',
   '2.10': 'Reloading or directly opening an inner page such as About or Changelog works again, instead of occasionally landing on a broken page. The site also ships an llms.txt summary and a complete sitemap so search engines and AI assistants describe it accurately.',
@@ -756,6 +803,7 @@ function boot() {
     if (grid) grid.hidden = false;
     if (btn) btn.hidden = true;
     if (jump) jump.hidden = true;
+    document.body.classList.remove('anr-has-file');   // un-invert the nav back to normal
   }
 
   // Jump to the first analysed section. Results elements are hidden+emptied until
@@ -788,6 +836,7 @@ function boot() {
     const force = (opts && opts.kind) ? opts : null;
     const sidecarXmp = (opts && opts.sidecarXmp) || null;
     hideTypeSuggestion();
+    hideSuggestPopup();   // clear any "suggest this format" nudge from a prior file
     // If the "Supported formats" overlay is open, drop/paste/pick dismisses it.
     const fmtOv = $('fmtOverlay');
     if (fmtOv && !fmtOv.hidden) { fmtOv.hidden = true; document.body.style.overflow = ''; }
@@ -798,6 +847,7 @@ function boot() {
     clearResultsUI();
 
     firstFileLoaded = true;
+    document.body.classList.add('anr-has-file');   // flips the primary nav to its inverted colours
     if (pageDropEl) pageDropEl.hidden = true;
     showAnalyseNext();
 
@@ -815,6 +865,7 @@ function boot() {
       card.appendChild(el('h3', {}, 'File unavailable'));
       card.appendChild(cloudFileWarning(file));
       unknownResults.appendChild(card);
+      showSuggestPopup(fileExt(file.name));   // couldn't load - nudge to suggest the format
       return;
     }
 
@@ -911,6 +962,16 @@ function boot() {
       const link = document.querySelector('.site-nav a[href="' + href + '"]');
       if (link) link.classList.toggle('is-disabled', !sec || sec.hidden);
     });
+
+    // Only flip the nav to its inverted palette when at least one section link is
+    // still live. If every link is greyed out (a non-media file with no section on
+    // the page) the inverted bar would just be a wall of dimmed text, so leave it
+    // in its normal colours - the invert is gated on body.anr-nav-live in CSS.
+    const anyNavLive = ['#photo', '#audio', '#video'].some((href) => {
+      const link = document.querySelector('.site-nav a[href="' + href + '"]');
+      return link && !link.classList.contains('is-disabled');
+    });
+    document.body.classList.toggle('anr-nav-live', anyNavLive);
 
     const route = ROUTES[kind] || ROUTES.unknown;
     const resultsByName = {
@@ -1368,6 +1429,29 @@ function boot() {
   window.addEventListener('scroll', _scrollHandler, { passive: true });
   _scrollHandler();
 
+  // ----- Stuck-nav detection (drives the inverted-nav colours) -----
+  // The primary nav is position:sticky; it flips to its inverted palette only
+  // once a file is loaded AND it's actually pinned to the top of the viewport
+  // (CSS: body.anr-has-file.anr-nav-stuck). A zero-height sentinel sits in the
+  // nav's natural flow position right above it: while the sentinel is on screen
+  // the nav sits in place; when the sentinel scrolls off the top the nav is
+  // stuck. An IntersectionObserver is cheaper and jank-free vs. a scroll handler.
+  const stickyNav = document.querySelector('.site-nav');
+  if (stickyNav && 'IntersectionObserver' in window) {
+    let sentinel = document.querySelector('.site-nav-sentinel');
+    if (!sentinel) {
+      sentinel = document.createElement('div');
+      sentinel.className = 'site-nav-sentinel';
+      sentinel.setAttribute('aria-hidden', 'true');
+      stickyNav.parentNode.insertBefore(sentinel, stickyNav);
+    }
+    if (_stuckObserver) _stuckObserver.disconnect();
+    _stuckObserver = new IntersectionObserver(([entry]) => {
+      document.body.classList.toggle('anr-nav-stuck', !entry.isIntersecting);
+    }, { threshold: [0] });
+    _stuckObserver.observe(sentinel);
+  }
+
   // ----- Collapsible analysis cards -----
   // One delegated listener (added once) toggles a card open/closed when its title
   // (a direct-child <h3>) is clicked. Cards render open; .is-collapsed hides the
@@ -1405,6 +1489,16 @@ function boot() {
   // ----- Offline download buttons -----
   const TESS_DATA = 'assets/vendor/tesseract';
   const TESS_WORKER = 'assets/vendor/tesseract/worker.min.js';
+
+  // Canonical per-tier download sizes - the SINGLE source of truth. Tiers are
+  // cumulative (each includes every lower tier's files), so TIER_MB are totals in MB.
+  // TIER_SIZES (the labels stamped onto the buttons + help-panel legend on every page,
+  // and used by the post-clear reset) derive from it, and the "+N MB more" upgrade
+  // deltas in refreshTierButtons() use the numbers directly. One place to edit.
+  const TIER_ORDER = ['essentials', 'everything', 'complete'];
+  const TIER_MB = { essentials: 48, everything: 72, complete: 310 };
+  const TIER_SIZES = {};
+  TIER_ORDER.forEach((t) => { TIER_SIZES[t] = '~' + TIER_MB[t] + ' MB'; });
 
   const TIERS = {
     essentials: [
@@ -1578,6 +1672,46 @@ function boot() {
     return urls;
   }
 
+  // Reflect the current offline state across all three tier buttons at once:
+  //  - the highest cached tier keeps its "Cached" badge,
+  //  - every LOWER tier it already covers is greyed out and marked "Included"
+  //    (downloading a tier caches all lower tiers' files too, so you already have them),
+  //  - every HIGHER tier shows how much MORE storage upgrading to it costs ("+~N MB"),
+  //    relative to what's cached, instead of its full size.
+  // Buttons mid-download (is-active) are left to their own live progress UI.
+  function refreshTierButtons() {
+    const state = readOfflineState();
+    let cachedIdx = -1;
+    TIER_ORDER.forEach((t, i) => { if (state[t] != null) cachedIdx = Math.max(cachedIdx, i); });
+    const cachedMb = cachedIdx >= 0 ? TIER_MB[TIER_ORDER[cachedIdx]] : 0;
+
+    document.querySelectorAll('.offline-btn').forEach((btn) => {
+      if (btn.classList.contains('is-active')) return;
+      const tier = btn.dataset.tier;
+      const idx = TIER_ORDER.indexOf(tier);
+      const sizeEl = btn.querySelector('.offline-size');
+      if (idx < 0) return;
+
+      if (idx === cachedIdx) {
+        // The highest cached tier: full "Cached" badge, shown normally (not greyed).
+        btn.classList.remove('is-included');
+        if (sizeEl) sizeEl.textContent = 'Cached';
+        markCached(btn, state[tier] != null ? state[tier] : COMMIT_COUNT);
+      } else if (idx < cachedIdx) {
+        // Already covered by a higher cached tier: grey it out, not clickable.
+        cachedBadge(btn).hidden = true;
+        btn.classList.add('is-done', 'is-included');
+        btn.classList.remove('is-fading');
+        if (sizeEl) sizeEl.textContent = 'Included';
+      } else {
+        // Not cached yet: clickable, and show the incremental upgrade cost only.
+        cachedBadge(btn).hidden = true;
+        btn.classList.remove('is-done', 'is-fading', 'is-included');
+        if (sizeEl) sizeEl.textContent = cachedIdx >= 0 ? '+~' + (TIER_MB[tier] - cachedMb) + ' MB' : TIER_SIZES[tier];
+      }
+    });
+  }
+
   // Download (or, with force, re-download) every file in a tier into the
   // 'analyser-offline' cache, driving the button's progress bar. Records the
   // current app version on full success; clears the record on partial failure.
@@ -1610,6 +1744,7 @@ function boot() {
     const cache = await caches.open('analyser-offline');
     setOfflineStatus('');   // a fresh attempt clears any previous failure note
     let done = 0, failed = 0;
+    const failedUrls = [];
     for (const url of urls) {
       let ok = false;
       try {
@@ -1629,7 +1764,7 @@ function boot() {
           }
         }
       } catch (_) {}
-      if (!ok) failed++;
+      if (!ok) { failed++; failedUrls.push(url); }
       done++;
       setBar(done / urls.length);
       sizeEl.textContent = done + ' / ' + urls.length;
@@ -1642,8 +1777,14 @@ function boot() {
       // Leave the button enabled (no is-done) so the user can retry the rest,
       // and drop any stale "cached" record for this tier.
       sizeEl.textContent = 'Try again';
+      // Name the files that failed so a single bad URL (offline asset, blocked CDN)
+      // is identifiable rather than just a count. Show basenames, capped so a mass
+      // failure doesn't flood the status line.
+      const shortName = (u) => { try { return decodeURIComponent(u.split('?')[0].split('/').pop()) || u; } catch (_) { return u; } };
+      const names = failedUrls.map(shortName);
+      const shown = names.slice(0, 8).join(', ') + (names.length > 8 ? ', +' + (names.length - 8) + ' more' : '');
       setOfflineStatus(failed + ' of ' + urls.length + ' file' + (urls.length === 1 ? '' : 's') +
-        ' failed to download. You may be offline or a server was unreachable - try again to finish.');
+        ' failed to download (' + shown + '). You may be offline or a server was unreachable - try again to finish.');
       delete state[tier];
       writeOfflineState(state);
       return false;
@@ -1651,9 +1792,23 @@ function boot() {
     sizeEl.textContent = 'Cached';
     state[tier] = COMMIT_COUNT;
     writeOfflineState(state);
-    markCached(btn, COMMIT_COUNT);
+    // Refresh ALL buttons: this one gets its badge, lower tiers grey out as "Included",
+    // higher tiers switch to the "+N MB more" upgrade delta.
+    refreshTierButtons();
     return true;
   }
+
+  // The help-panel legend always shows the absolute per-tier totals (it describes the
+  // tiers, not the live upgrade state). Stamped from the canonical map so every page
+  // agrees and any stale figure baked into the markup is overridden.
+  document.querySelectorAll('.offline-help-panel > div').forEach(d => {
+    const tier = (d.querySelector('strong')?.textContent || '').trim().toLowerCase();
+    const s = d.querySelector('span');
+    if (s && TIER_SIZES[tier]) s.textContent = TIER_SIZES[tier];
+  });
+  // Button labels are dynamic (greyed "Included" for covered tiers, "+N MB more" deltas
+  // for upgrades), so let refreshTierButtons own them - it reads the saved state.
+  refreshTierButtons();
 
   document.querySelectorAll('.offline-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1679,14 +1834,14 @@ function boot() {
       if (detected) { state[detected] = COMMIT_COUNT; writeOfflineState(state); }
     }
 
-    for (const tier of Object.keys(state)) {
-      if (buttons[tier]) markCached(buttons[tier], state[tier]);
-    }
+    // Paint the restored / self-healed state (badges, greying, upgrade deltas).
+    refreshTierButtons();
     for (const tier of Object.keys(state)) {
       if (state[tier] !== COMMIT_COUNT && buttons[tier]) {
         await downloadTier(buttons[tier], { force: true });
       }
     }
+    refreshTierButtons();
   })();
 
   // ----- PWA install prompt -----
@@ -1765,15 +1920,15 @@ function boot() {
       // Reset the offline-tier buttons to their default state (localStorage.clear
       // above already dropped the 'anr-offline' record).
       document.querySelectorAll('.offline-btn').forEach(b => {
-        b.classList.remove('is-done', 'is-active', 'is-fading');
+        b.classList.remove('is-done', 'is-active', 'is-fading', 'is-included');
         const bar = b.querySelector('.offline-bar');
         if (bar) bar.hidden = true;
         const badge = b.querySelector('.offline-cached');
         if (badge) badge.hidden = true;
-        const tier = b.dataset.tier;
-        const sizes = { essentials: '~46 MB', everything: '~72 MB', complete: '~290 MB' };
-        b.querySelector('.offline-size').textContent = sizes[tier];
       });
+      // With the record gone, this repaints every button to its un-cached state:
+      // no greying, full per-tier sizes.
+      refreshTierButtons();
       clearBtn.textContent = 'All data cleared ✓';
       setTimeout(() => { clearBtn.textContent = 'Clear storage'; }, 3000);
     });

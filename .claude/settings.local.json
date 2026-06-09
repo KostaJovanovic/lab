@@ -11,7 +11,8 @@
       "Bash(unzip -p \"vratilo v1.3mf\" \"3D/_rels/3dmodel.model.rels\")",
       "PowerShell(git diff 6b4bfca..HEAD -- patch.html about.html | Select-Object -First 5; \\(Get-Content patch.html | Measure-Object -Line\\).Lines)",
       "Bash(node --check assets/js/renderers/video.js)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(xargs wc -l)"
     ]
   },
   "spinnerTipsEnabled": false

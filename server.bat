@@ -4,10 +4,22 @@ cd /d "%~dp0"
 
 set PORT=3000
 
-rem If something is already listening on the port, just open it
-netstat -ano | findstr "LISTENING" | findstr ":%PORT% " >nul
-if %errorlevel%==0 (
+rem Reuse the port ONLY if our clean-URL server is already there: it answers
+rem GET /about with 200. A foreign server (VS Code Live Server, python -m http.server)
+rem returns 404 for /about - opening it is exactly why /about and /patch "don't work".
+set CODE=000
+for /f %%c in ('curl -s -o nul -w "%%{http_code}" "http://localhost:%PORT%/about" 2^>nul') do set CODE=%%c
+if "%CODE%"=="200" (
   start "" "http://localhost:%PORT%"
+  exit /b
+)
+if not "%CODE%"=="000" (
+  echo.
+  echo   Port %PORT% is in use by a server that does NOT do clean URLs
+  echo   ^(GET /about returned %CODE%, expected 200^) - it 404s /about and /patch.
+  echo   Close that server ^(its terminal, or VS Code Live Server^), then run this again.
+  echo.
+  pause
   exit /b
 )
 

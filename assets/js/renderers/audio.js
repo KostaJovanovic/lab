@@ -395,6 +395,8 @@ function makeSpecScrollbar(scrollEl) {
   }
   function update() {
     const { sw, cw, maxScroll } = metrics();
+    // Hint grab-to-pan only when there's actually room to scroll (drives the cursor).
+    scrollEl.classList.toggle('is-pannable', maxScroll > 1);
     if (maxScroll <= 1) { root.classList.add('is-hidden'); return; }
     root.classList.remove('is-hidden');
     const tw = track.clientWidth;
@@ -488,7 +490,7 @@ function attachFullscreen(card, fsBtn, allowFs, sig, onChange) {
 // --- Custom player (replaces native <audio>/<video> controls) ---
 // --- Spectrogram UI panel (shared for file + recording) ---
 export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
-  const card = el('div', { class: 'anr-card anr-spec-card' });
+  const card = el('div', { class: 'anr-card anr-spec-card anr-spec-fillable' });
 
   const [specH, specHelp] = h3help('Spectrogram',
     '<strong>Axis</strong> Log maps frequencies logarithmically (closer to human hearing). Linear spaces them evenly.<br>' +
@@ -497,7 +499,7 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     '<strong>Window</strong> Windowing function applied before the FFT. Hann is a good default; Blackman reduces spectral leakage; Rect (rectangular) applies no smoothing.<br>' +
     '<strong>Colour</strong> Colour mapping for intensity values. Magma, viridis, and inferno are perceptually uniform.<br>' +
     '<strong>Zoom</strong> Horizontal zoom. Stretches the time axis so you can see finer detail.<br>' +
-    '<strong>Height</strong> Vertical size of the spectrogram canvas in pixels.');
+    '<strong>Height</strong> Vertical size of the spectrogram canvas in pixels. In fullscreen, “Fill” stretches it to the whole screen; pick a pixel value for a fixed size instead.');
   card.appendChild(specH);
   card.appendChild(specHelp);
 
@@ -588,50 +590,110 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   const corner   = el('div', { class: 'anr-spec-corner' });
   yWrap.appendChild(axisY); yWrap.appendChild(corner);
 
-  const scrollEl = el('div', { class: 'anr-spec-scroll' });
+  const scrollEl = el('div', { class: 'anr-spec-scroll anr-spec-pan' });
   const canvasWrap = el('div', { class: 'anr-spec-canvas-wrap' });
   const canvas   = el('canvas', { class: 'anr-spec-canvas' });
   const axisX    = el('div', { class: 'anr-spec-xaxis' });
   canvasWrap.appendChild(canvas);
 
+  // Shared between the drag-to-pan handler (added after the audio block) and the
+  // click-to-seek handler: once a drag pans the view, the trailing click is a pan,
+  // not a seek.
+  let panMoved = false;
+
   if (opts.audioEl) {
     const specLine = el('div', { class: 'anr-playhead' });
     canvasWrap.appendChild(specLine);
     const audioDur = () => opts.audioEl.duration || (samples.length / sampleRate);
-    function scrollToLine() {
+    function scrollToLine(park) {
       if (canvas.clientWidth <= scrollEl.clientWidth) return;
       const linePos = canvas.clientWidth * parseFloat(specLine.style.left || '0') / 100;
-      const viewLeft = scrollEl.scrollLeft;
-      const viewRight = viewLeft + scrollEl.clientWidth;
-      if (linePos < viewLeft + 20 || linePos > viewRight - 20)
-        scrollEl.scrollLeft = linePos - scrollEl.clientWidth / 3;
+      const maxScroll = scrollEl.scrollWidth - scrollEl.clientWidth;
+      const parked = Math.max(0, Math.min(maxScroll, linePos - scrollEl.clientWidth / 5));
+      if (park) {
+        // Playing: lock the playhead at the left fifth of the viewport and slide the
+        // spectrogram under it. Clamping lets the line drift in from the left edge at
+        // the very start, sit fixed at clientWidth/5 through the middle, then slide out
+        // to the right edge once the scroll bottoms out.
+        scrollEl.scrollLeft = parked;
+        return;
+      }
+      // Paused seek: leave the view put unless the line lands off-screen, then bring it
+      // back to the left fifth.
+      const viewLeft = scrollEl.scrollLeft, viewRight = viewLeft + scrollEl.clientWidth;
+      if (linePos < viewLeft + 20 || linePos > viewRight - 20) scrollEl.scrollLeft = parked;
     }
-    function tickSpec() {
+    // Move the playhead to the current playback position. `animate` lets the line ease
+    // into place for discrete seeks while paused; during live playback it tracks
+    // frame-by-frame with no transition so it can't lag behind the audio.
+    function updateLine(animate) {
       const d = audioDur();
       const pct = d > 0 ? (opts.audioEl.currentTime / d) * 100 : 0;
+      specLine.style.transition = animate ? '' : 'none';
       specLine.style.left = pct + '%';
-      scrollToLine();
+      scrollToLine(!opts.audioEl.paused);
+    }
+    function tickSpec() {
+      updateLine(false);
       if (!opts.audioEl.paused) requestAnimationFrame(tickSpec);
     }
     opts.audioEl.addEventListener('play', () => requestAnimationFrame(tickSpec));
-    opts.audioEl.addEventListener('pause', tickSpec);
-    opts.audioEl.addEventListener('seeked', tickSpec);
-    canvas.style.cursor = 'pointer';
+    opts.audioEl.addEventListener('pause', () => updateLine(true));
+    opts.audioEl.addEventListener('seeked', () => updateLine(opts.audioEl.paused));
     canvas.addEventListener('click', (e) => {
+      if (panMoved) { panMoved = false; return; }   // a drag-pan ended here, not a seek
       const rect = canvas.getBoundingClientRect();
       const frac = (e.clientX - rect.left) / rect.width;
       opts.audioEl.currentTime = frac * audioDur();
     });
-    // Grab the playhead line and drag to scrub.
+    // Grab the playhead line and drag to scrub (snappy - no easing while dragging).
     attachScrub(specLine, (clientX) => {
       const rect = canvas.getBoundingClientRect();
       const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       opts.audioEl.currentTime = frac * audioDur();
+      specLine.style.transition = 'none';
       specLine.style.left = (frac * 100) + '%';
     });
   }
 
   scrollEl.appendChild(canvasWrap); scrollEl.appendChild(axisX);
+
+  // Grab-and-pan: drag horizontally anywhere on the spectrogram body to scroll it
+  // (mouse/pen), as an alternative to the scrollbar. A small movement threshold keeps a
+  // plain click seeking. Pointer-down on the playhead is left to its own scrub handler,
+  // and touch keeps the browser's native horizontal scroll.
+  {
+    let pid = null, startX = 0, startScroll = 0;
+    const THRESH = 4;
+    scrollEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.pointerType === 'touch') return;
+      if (e.target.closest && e.target.closest('.anr-playhead')) return;
+      pid = e.pointerId; startX = e.clientX; startScroll = scrollEl.scrollLeft;
+      panMoved = false;
+    });
+    scrollEl.addEventListener('pointermove', (e) => {
+      if (pid === null || e.pointerId !== pid) return;
+      const maxScroll = scrollEl.scrollWidth - scrollEl.clientWidth;
+      if (maxScroll <= 0) return;                  // nothing to pan when not zoomed in
+      const dx = e.clientX - startX;
+      if (!panMoved && Math.abs(dx) < THRESH) return;
+      if (!panMoved) {
+        panMoved = true;
+        scrollEl.classList.add('is-panning');
+        try { scrollEl.setPointerCapture(pid); } catch (_) {}
+      }
+      scrollEl.scrollLeft = Math.max(0, Math.min(maxScroll, startScroll - dx));
+      e.preventDefault();
+    });
+    const endPan = (e) => {
+      if (pid === null || (e && e.pointerId !== pid)) return;
+      try { scrollEl.releasePointerCapture(pid); } catch (_) {}
+      pid = null;
+      scrollEl.classList.remove('is-panning');
+    };
+    scrollEl.addEventListener('pointerup', endPan);
+    scrollEl.addEventListener('pointercancel', endPan);
+  }
 
   wrap.appendChild(yWrap); wrap.appendChild(scrollEl);
   card.appendChild(wrap);
@@ -687,16 +749,33 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
     canvas.width = w;
     canvas.style.width = w + 'px';
     axisX.style.width = w + 'px';
+    // Pin the wrapper to the canvas width. It's the containing block for the
+    // absolutely-positioned playhead, whose `left` is a percentage. Left as a
+    // stretched column-flex item, its width (the cross axis) collapses to the
+    // viewport - cross-axis stretch ignores the min-content clamp - so the canvas
+    // overflows it and the playhead's % mapped against the viewport, not the zoomed
+    // canvas. That parked the line at ~1/zoom of its true position once zoomed in.
+    canvasWrap.style.width = w + 'px';
     if (isFs()) {
-      // Fullscreen: CSS fills the canvas (canvas-wrap is flex:1, canvas height:100%),
-      // so the DISPLAY always fills with no gap. We only read the resolved height to
-      // size the bitmap - reading clientHeight can't feed back into layout, so there's
-      // no shrink loop (the earlier flex-basis/measurement approaches had).
+      // In fullscreen the canvas always fills its box via CSS (height:100%). The Height
+      // control changes the BOX (the .anr-spec-wrap) height, not the canvas directly -
+      // via a class + CSS var - so the canvas AND the y-axis resize together and stay
+      // aligned. 'fill' drops the fixed height and lets the box grow to the whole screen.
+      if (state.height === 'fill') {
+        card.classList.remove('is-spec-fixed-h');
+      } else {
+        card.style.setProperty('--spec-fixed-h', state.height + 'px');
+        card.classList.add('is-spec-fixed-h');
+      }
+      // Read the resolved height (set by the class/var above) to size the bitmap.
       canvas.style.height = '100%';
       canvas.height = Math.max(160, canvas.clientHeight || 160);
     } else {
-      canvas.style.height = state.height + 'px';
-      canvas.height = state.height;
+      // Windowed: the canvas height is the chosen pixel value directly.
+      card.classList.remove('is-spec-fixed-h');
+      const h = state.height === 'fill' ? 320 : state.height;
+      canvas.style.height = h + 'px';
+      canvas.height = h;
     }
   }
 
@@ -748,7 +827,10 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   winSel.addEventListener('change',    () => { state.winName = winSel.value; recompute(); });
   cmapSel.addEventListener('change',   () => { state.cmap    = cmapSel.value; renderOnly(); });
   zoomSel.addEventListener('change',   () => { state.zoom    = parseFloat(zoomSel.value); recompute(); });
-  heightSel.addEventListener('change', () => { state.height  = parseInt(heightSel.value, 10); recompute(); });
+  heightSel.addEventListener('change', () => {
+    state.height = heightSel.value === 'fill' ? 'fill' : parseInt(heightSel.value, 10);
+    recompute();
+  });
   // The repaint is heavy (a full-canvas redraw), so doing it synchronously on
   // every input event stalls the drag. Update the cheap bits (state + readout)
   // immediately so the thumb tracks the pointer, and coalesce the redraw to at
@@ -772,9 +854,28 @@ export function makeSpectrogramPanel(samples, sampleRate, opts = {}) {
   // listeners down when a new file is analysed, instead of leaking the cached
   // spectrogram data they close over.
   const sig = opts.signal;
+  // The Height dropdown is px-only out of fullscreen. Entering fullscreen adds a
+  // 'Fill' option (stretch to the whole screen) and selects it by default; the user
+  // can still pick a pixel height, which applies in fullscreen too. Exiting removes
+  // 'Fill' and restores the previous pixel choice.
+  function syncHeightForFs() {
+    const fs = isFs();
+    const hasFill = heightSel.options.length && heightSel.options[0].value === 'fill';
+    if (fs && !hasFill) {
+      heightSel._prevHeight = heightSel.value;
+      heightSel.insertBefore(el('option', { value: 'fill' }, 'Fill'), heightSel.firstChild);
+      heightSel.value = 'fill';
+      state.height = 'fill';
+    } else if (!fs && hasFill) {
+      heightSel.remove(0);
+      heightSel.value = heightSel._prevHeight || '320';
+      state.height = parseInt(heightSel.value, 10);
+    }
+  }
   attachFullscreen(card, fsBtn, allowFs, sig, () => {
+    syncHeightForFs();
     // Recompute on the next frame and again once the fullscreen layout settles, so
-    // the bitmap height catches up to the CSS-filled display.
+    // the bitmap height catches up to the (filled or fixed) display.
     requestAnimationFrame(recompute);
     setTimeout(recompute, 120);
   });

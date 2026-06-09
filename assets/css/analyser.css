@@ -360,6 +360,9 @@ body:has(.patch-page) .site-header::after { margin-top: clamp(28px, 4vw, 48px); 
 }
 
 /* ---------- NAV ---------- */
+/* Zero-height marker in the nav's natural flow position; the IntersectionObserver
+   watches it to tell when the sticky nav has pinned to the top (see app.js). */
+.site-nav-sentinel { height: 0; margin: 0; padding: 0; pointer-events: none; }
 .site-nav {
   position: -webkit-sticky;   /* older iOS Safari needs the prefix to pin */
   position: sticky;
@@ -372,6 +375,44 @@ body:has(.patch-page) .site-header::after { margin-top: clamp(28px, 4vw, 48px); 
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--pad-x);
+}
+/* Inverted primary nav - ONLY once a file is loaded (body.anr-has-file), the bar
+   is stuck to the top of the viewport (body.anr-nav-stuck, toggled by an
+   IntersectionObserver sentinel), AND at least one section link is still live
+   rather than greyed out (body.anr-nav-live - a non-media file disables all three
+   links, and a bar of dimmed text shouldn't invert). Swapping the tokens flips the
+   whole bar - text, dividers, hover, the active pill, the search box - to the
+   opposite of the page. It tracks the theme (a near-black bar in light mode, a
+   near-white bar in dark mode). Custom props can't cross-reference --fg/--bg on
+   the same element (that's a resolution cycle), so the inverted values are spelled
+   out per theme; they mirror the opposite theme's surface palette. --hairline is
+   left alone so the bottom seam stays crisp. */
+/* Animate the invert <-> normal swap: every nav surface that reads a swapped
+   token (background, text, dividers) eases between the two states over 0.3s, so
+   the whole bar flips together instead of the background sliding while the text
+   snaps. Applied to the bar and its descendants. */
+.site-nav,
+.site-nav .nav-link,
+.site-nav .nav-num,
+.site-nav .nav-search,
+.site-nav .nav-search-btn,
+.site-nav .nav-search-input,
+.site-nav .nav-search-arrow {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+body.anr-has-file.anr-nav-stuck.anr-nav-live .site-nav {
+  --bg:      #0a0a0a;
+  --fg:      #f4f4f4;
+  --surface: #1f1f1f;
+  --rule:    #383838;
+  --muted:   #9a9a9a;
+}
+:root[data-theme="dark"] body.anr-has-file.anr-nav-stuck.anr-nav-live .site-nav {
+  --bg:      #e8e8e8;
+  --fg:      #0a0a0a;
+  --surface: #d2d2d2;
+  --rule:    #c2c2c2;
+  --muted:   #5a5a5a;
 }
 /* About page nav is just the 3 section links (Why / Where / What) - no home or
    search chrome - so size it to 3 equal columns instead of the home+links+search
@@ -1098,6 +1139,9 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   pointer-events: none;
   z-index: 3;
   will-change: left;
+  /* Eases to the position on discrete seeks. JS sets transition:none during live
+     playback and scrubbing so the line tracks without lag. */
+  transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ---------- PALETTE ---------- */
@@ -1288,9 +1332,11 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
 .anr-spec-card:-webkit-full-screen .anr-spec-canvas-wrap { flex: 1 1 0; min-height: 0; }
 .anr-spec-card:fullscreen .anr-spec-canvas-wrap > .anr-spec-canvas,
 .anr-spec-card:-webkit-full-screen .anr-spec-canvas-wrap > .anr-spec-canvas { height: 100%; }
-/* Height is meaningless in fullscreen (the canvas auto-fills), so hide it. */
-.anr-spec-card:fullscreen .anr-ctl-height,
-.anr-spec-card:-webkit-full-screen .anr-ctl-height { display: none; }
+/* Height stays usable in fullscreen on the file spectrogram (it gains a "Fill"
+   option there). Elsewhere - e.g. the live spectrogram, whose fullscreen always
+   auto-fills - the control is inert in fullscreen, so keep hiding it. */
+.anr-spec-card:not(.anr-spec-fillable):fullscreen .anr-ctl-height,
+.anr-spec-card:not(.anr-spec-fillable):-webkit-full-screen .anr-ctl-height { display: none; }
 
 /* Floating exit-fullscreen button (top-right), only shown while fullscreen. */
 .anr-spec-fs-close { display: none; }
@@ -1319,6 +1365,15 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
   flex: 1 1 auto;
   min-height: 0;
   border-color: var(--hairline-on-dark);
+}
+/* Fullscreen Height set to a fixed pixel value (not "Fill"): size the whole
+   spectrogram box to it instead of filling the screen. The canvas-wrap still grows
+   inside this fixed box, so the canvas and y-axis resize together and stay aligned;
+   the empty space lands below. Higher specificity than the rule above, so it wins. */
+.anr-spec-card.is-spec-fixed-h:fullscreen .anr-spec-wrap,
+.anr-spec-card.is-spec-fixed-h:-webkit-full-screen .anr-spec-wrap {
+  flex: 0 0 auto;
+  height: var(--spec-fixed-h, 320px);
 }
 .anr-spec-card:fullscreen .anr-spec-hint,
 .anr-spec-card:-webkit-full-screen .anr-spec-hint { color: var(--muted-on-dark); }
@@ -1806,6 +1861,71 @@ audio { width: 100%; }
   transition: color 0.15s ease;
 }
 .anr-drop-loader-cancel:hover { color: var(--fg); }
+
+/* "Suggest this format" nudge - a bottom toast shown for unreadable or very thin
+   files (see showSuggestPopup in app.js). Same bottom-anchored slide-in as the
+   drop loader, but it persists until dismissed or the next file is loaded. */
+.anr-suggest-pop {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%) translateY(14px);
+  z-index: 1200;
+  width: min(380px, calc(100vw - 32px));
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-popover);
+  padding: 12px 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.anr-suggest-pop.is-open { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.anr-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.anr-suggest-kicker {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.anr-suggest-close {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.anr-suggest-close:hover { color: var(--fg); }
+.anr-suggest-text {
+  margin: 0 0 10px;
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--fg);
+}
+.anr-suggest-cta {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--fg);
+  color: var(--bg);
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.anr-suggest-cta:hover { opacity: 0.85; }
 /* The drop loader's bar: a continuously scrolling strip of accent slashes
    inside brackets ([////////]). The motion is a pure CSS `transform`, NOT a
    requestAnimationFrame loop - rAF runs on the main thread, so it froze
@@ -1838,8 +1958,11 @@ audio { width: 100%; }
   color: var(--accent);
   will-change: transform;
   /* steps() makes it jump in discrete chunks - choppy, like the original ASCII
-     bar's character-by-character stepping - rather than a smooth glide. */
-  animation: anr-css-bar-bounce 1.9s steps(16) infinite alternate;
+     bar's character-by-character stepping - rather than a smooth glide.
+     jump-none (not the default jump-end) holds BOTH the first and last step, so
+     the window rests flush against the left bracket AND the right one; jump-end
+     only holds the left, leaving a visible gap before "]" on the right side. */
+  animation: anr-css-bar-bounce 1.9s steps(16, jump-none) infinite alternate;
 }
 /* Paused while the popup is hidden so it costs nothing between loads. */
 .anr-drop-loader:not(.is-open) .anr-css-bar-win { animation-play-state: paused; }
@@ -2242,6 +2365,14 @@ details[open] summary::after { content: "\2212"; }
 .offline-btn.is-done { border-color: var(--accent); }
 .offline-btn.is-done.is-fading { border-color: rgba(255,255,255,0.15); transition: border-color 1s ease; }
 .offline-btn.is-active { border-color: rgba(255,255,255,0.6); }
+/* A lower tier already covered by a higher cached one: greyed and non-interactive
+   (its files are in the cache anyway, so there's nothing to download). */
+.offline-btn.is-included {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+  border-color: var(--hairline);
+}
 .offline-tier {
   font-family: var(--font-mono);
   font-size: var(--t-small);
@@ -4294,6 +4425,14 @@ details[open] summary::after { content: "\2212"; }
   width: 1px;
   background: var(--on-dark);
 }
+
+/* Grab-to-pan: drag the spectrogram body to scroll it horizontally (mouse/pen).
+   A plain click still seeks; the cursor only hints grab when there's room to pan. */
+.anr-spec-pan .anr-spec-canvas { cursor: pointer; }
+.anr-spec-pan.is-pannable .anr-spec-canvas { cursor: grab; }
+.anr-spec-pan.is-panning,
+.anr-spec-pan.is-panning .anr-spec-canvas { cursor: grabbing; }
+.anr-spec-pan.is-panning { user-select: none; }
 
 .anr-spec-transport {
   margin-top: 10px;

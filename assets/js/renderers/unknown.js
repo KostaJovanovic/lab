@@ -180,6 +180,7 @@ export async function renderUnknown(file, resultsEl) {
   } catch (e) {
     resultsEl.innerHTML = '';
     resultsEl.appendChild(errorCard('Could not read this file: ' + (e && e.message)));
+    if (window._anrSuggest) window._anrSuggest.show(fileExt(file.name));
     return;
   }
 
@@ -350,4 +351,12 @@ export async function renderUnknown(file, resultsEl) {
 
   resultsEl.appendChild(card);
 
+  // "Limited readout": an unrecognised binary that yielded only the hex dump (no
+  // text / JSON / XML preview). Nudge the visitor to email the format in so it can
+  // be supported. A readable text/JSON/XML file is a fine result - no nudge then.
+  if (window._anrSuggest) {
+    const limited = !showJson && !showXml && !showPlainText;
+    if (limited) window._anrSuggest.show(fileExt(file.name));
+    else window._anrSuggest.hide();
+  }
 }
