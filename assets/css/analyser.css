@@ -249,10 +249,9 @@ body:has(.patch-page) .site-header::after { margin-top: clamp(28px, 4vw, 48px); 
 }
 /* Online: the connectivity dot is green (label set by updateNetStatus in app.js). */
 .site-meta dd.net-status .dot { background: #22c55e; }
-/* Offline: the dot dims to a hollow grey ring. */
+/* Offline: the dot turns red - the conventional "disconnected" signal. */
 .site-meta dd.net-status.is-offline .dot {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--muted);
+  background: #ef4444;
 }
 
 .site-kicker {
@@ -3949,10 +3948,13 @@ details[open] summary::after { content: "\2212"; }
   .anr-btn, .anr-fs-btn { min-height: 40px; padding: 10px 14px; }
   .anr-toggle button { min-height: 36px; padding: 8px 12px; }
   .anr-control select { min-height: 36px; padding: 6px 8px; }
-  /* Tighten the nav so home + 3 links + search fit on narrow phones (~360px)
-     without the search button overflowing off the right edge. */
+  /* Stay on the desktop grid (1fr 1fr 1fr auto) on phones too - just full-bleed
+     it. An earlier flex layout here distributed the three links by content and
+     then added each one's divider border (Photo 2px, Sound 1px, Video 0px) on
+     top, so the buttons came out 1px stair-stepped instead of equal. Grid's 1fr
+     is border-box, so it absorbs the dividers and the three stay exactly even -
+     verified equal and overflow-free down to 320px. */
   .site-nav {
-    display: flex;
     padding-left: 14px; padding-right: 14px;
     /* Keep the bar pinned while scrolling on phones. Re-assert sticky and drop
        the auto side-margins (which can break position:sticky on iOS Safari);
@@ -3965,7 +3967,7 @@ details[open] summary::after { content: "\2212"; }
     margin-right: 0;
     max-width: none;
   }
-  .nav-link { flex: 1 1 0; padding: 14px 4px; gap: 6px; min-width: 0; }
+  .nav-link { padding: 14px 4px; gap: 6px; min-width: 0; }
   .site-about-link { min-height: 36px; display: inline-flex; align-items: center; }
   .nav-search {}
   .nav-search.is-open .nav-search-btn { display: block; }
