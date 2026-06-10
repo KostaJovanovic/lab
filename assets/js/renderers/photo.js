@@ -7,7 +7,7 @@
    - On-device OCR via lazy-loaded Tesseract.js with language picker
    - SHA-256 file hash */
 
-import { el, row, rowHelp, fmtBytes, h3help, wireInfoToggle, fileExt, sha256Row, loadScript, loadCss, cloudFileWarning, errorCard } from '../core/util.js';
+import { el, row, rowHelp, fmtBytes, h3help, wireInfoToggle, fileExt, sha256Row, loadScript, loadCss, cloudFileWarning, errorCard, attachZoomPan, openOverlayBack } from '../core/util.js';
 import { HEIC_EXTS, RAW_EXTS } from '../core/formats.js';
 import { convertHeic, extractRawPreview, convertWithImageMagick } from './photo-convert.js';
 import { ascii, latin1, utf8, inflate } from '../core/binutil.js';
@@ -226,11 +226,16 @@ export function pickOcrLanguage(opts = {}) {
     panel.appendChild(el('div', { class: 'anr-ocr-lang-actions' }, [helpBtn, cancelBtn, runBtn]));
     backdrop.appendChild(panel);
 
-    function close(val) {
+    let resultVal = null;
+    function finish() {
       backdrop.remove();
       document.removeEventListener('keydown', onKey);
-      resolve(val);
+      resolve(resultVal);
     }
+    // Pushing a history entry lets the device Back button cancel the picker; the
+    // returned closer both hides it and unwinds that entry, whatever the outcome.
+    const backClose = openOverlayBack(finish);
+    function close(val) { resultVal = val; backClose(); }
     // Run with a language; if "Remember" is ticked, persist it for the session.
     function confirm(code) {
       if (remember.checked) _sessionOcrLang = code;
@@ -1081,6 +1086,8 @@ function renderLsbPlanes(img, container) {
 
 // ---------- lightbox (singleton, lazy) ----------
 let lightboxEl = null;
+let lbZoom = null;
+let lbClose = null;   // history-aware closer while the lightbox is open
 function ensureLightbox() {
   if (lightboxEl) return lightboxEl;
   lightboxEl = document.createElement('div');
@@ -1125,6 +1132,7 @@ function ensureLightbox() {
   center.appendChild(wrap);
   center.appendChild(toolbar);
   center.appendChild(meta);
+  lbZoom = attachZoomPan(wrap);
   lightboxEl.appendChild(closeBtn);
   lightboxEl.appendChild(center);
   lightboxEl.addEventListener('click', (e) => {
@@ -1140,6 +1148,7 @@ function ensureLightbox() {
     if (lightboxEl.hidden) return;
     cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(() => {
+      if (lbZoom) lbZoom.reset();
       const im = wrap.querySelector('img:first-child');
       if (im && im.naturalWidth) sizeWrap(wrap, im.naturalWidth, im.naturalHeight);
     });
@@ -1241,6 +1250,7 @@ function computeExposureOverlay(imgEl, canvas, mode) {
 
 export function openLightbox(src, alt, metaText, focusOpts, showAlpha, photoTools = true) {
   const lb = ensureLightbox();
+  if (lbZoom) lbZoom.reset();
   const wrap = lb.querySelector('.lightbox-img-wrap');
   const lbImg = wrap.querySelector('img:first-child');
   const mapOverlay = wrap.querySelector('.lightbox-focus-map');
@@ -1328,13 +1338,24 @@ export function openLightbox(src, alt, metaText, focusOpts, showAlpha, photoTool
     toolbar.appendChild(ptBtn);
   }
   }
+  var wasHidden = lb.hidden;
   lb.hidden = false;
   document.body.style.overflow = 'hidden';
+  // Push a history entry so the device Back button closes the lightbox. Only on
+  // a real open (not when swapping to another image while already open).
+  if (wasHidden) lbClose = openOverlayBack(hideLightbox);
 }
-function closeLightbox() {
+// Raw hide (no history side effects) - this is what the Back button invokes.
+function hideLightbox() {
   if (!lightboxEl) return;
   lightboxEl.hidden = true;
   document.body.style.overflow = '';
+  lbClose = null;
+}
+// User-initiated close (button / Esc / backdrop): also unwinds the history entry.
+function closeLightbox() {
+  if (lbClose) lbClose();
+  else hideLightbox();
 }
 
 // ---------- container structure (additive) ----------

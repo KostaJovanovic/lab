@@ -556,3 +556,219 @@ export function roundFps(raw) {
   }
   return minDiff < 0.5 ? closest : Math.round(raw * 100) / 100;
 }
+
+// Pan + zoom for a lightbox media wrapper (an element with class
+// .lightbox-img-wrap). A single CSS transform is applied to `wrap`, so whatever
+// it contains - an <img>, a <canvas>, the photo overlay layers - zooms and pans
+// as one. Wheel and pinch zoom toward the pointer/midpoint, drag pans once
+// zoomed, and double-click toggles a 2.5x view at the clicked point. Returns
+// { reset } so the caller can clear the zoom when the shown content changes
+// (next page, new image). Used by photo/video, pdf and comic lightboxes.
+export function attachZoomPan(wrap, opts = {}) {
+  const MAX = opts.max || 8;
+  let scale = 1, tx = 0, ty = 0;
+  const center = wrap.closest('.lightbox-center');
+
+  function apply() {
+    wrap.style.transform = scale === 1 ? '' : `translate(${tx}px, ${ty}px) scale(${scale})`;
+    wrap.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
+    wrap.style.touchAction = 'none';   // let us own pinch / drag gestures
+    // .lightbox-center clips with overflow:hidden; lift that while zoomed so the
+    // enlarged content can fill the screen instead of being cropped to its box.
+    if (center) center.style.overflow = scale > 1 ? 'visible' : '';
+  }
+  function clampPan() {
+    // Keep the scaled content overlapping the viewport so it can't be flung away.
+    const baseW = wrap.offsetWidth || 1, baseH = wrap.offsetHeight || 1;
+    const maxX = Math.max(0, (baseW * scale - window.innerWidth) / 2) + 40;
+    const maxY = Math.max(0, (baseH * scale - window.innerHeight) / 2) + 40;
+    tx = Math.max(-maxX, Math.min(maxX, tx));
+    ty = Math.max(-maxY, Math.min(maxY, ty));
+  }
+  // Zoom to `ns`, keeping the content point under (clientX, clientY) fixed.
+  // With the default transform-origin (centre), the translation correction is
+  // tx += (cursor - centre) * (1 - ns/scale).
+  function zoomTo(ns, clientX, clientY) {
+    ns = Math.max(1, Math.min(MAX, ns));
+    if (ns === scale) return;
+    const rect = wrap.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    tx += dx * (1 - ns / scale);
+    ty += dy * (1 - ns / scale);
+    scale = ns;
+    if (scale === 1) { tx = 0; ty = 0; }
+    clampPan();
+    apply();
+  }
+
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomTo(scale * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  }, { passive: false });
+
+  const CLICK_ZOOM = opts.clickZoom || 2;   // modest zoom applied on a plain click / tap
+
+  const pointers = new Map();
+  let pinchDist = 0, pinchScale = 1, lastX = 0, lastY = 0, dragging = false;
+  let downX = 0, downY = 0, suppressClick = false;
+  wrap.addEventListener('pointerdown', (e) => {
+    wrap.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) { downX = e.clientX; downY = e.clientY; suppressClick = false; }
+    if (pointers.size === 2) {
+      const p = [...pointers.values()];
+      pinchDist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      pinchScale = scale;
+      dragging = false;
+      suppressClick = true;            // a pinch must not also toggle via click
+    } else if (scale > 1) {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      wrap.style.cursor = 'grabbing';
+    }
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Past a small threshold this gesture is a drag/pinch, not a click.
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) suppressClick = true;
+    if (pointers.size === 2 && pinchDist) {
+      const p = [...pointers.values()];
+      const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      zoomTo(pinchScale * (dist / pinchDist), (p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2);
+    } else if (dragging) {
+      tx += e.clientX - lastX; ty += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      clampPan(); apply();
+    }
+  });
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = 0;
+    if (pointers.size === 0) { dragging = false; if (scale > 1) wrap.style.cursor = 'grab'; }
+  }
+  wrap.addEventListener('pointerup', endPointer);
+  wrap.addEventListener('pointercancel', endPointer);
+
+  // A plain click / tap toggles a modest zoom at the point; the next one restores
+  // the original size. A drag or pinch flags suppressClick so its trailing click
+  // is ignored. Using `click` (not dblclick) means the same gesture works on
+  // touch, where dblclick is unreliable under touch-action:none.
+  wrap.addEventListener('click', (e) => {
+    if (suppressClick) { suppressClick = false; return; }
+    e.stopPropagation();
+    zoomTo(scale > 1 ? 1 : CLICK_ZOOM, e.clientX, e.clientY);
+  });
+
+  function reset() { scale = 1; tx = 0; ty = 0; pointers.clear(); dragging = false; pinchDist = 0; suppressClick = false; apply(); }
+  reset();
+  return { reset };
+}
+
+// ===========================================================================
+// Back-button handling: close overlays, and confirm before exiting a PWA.
+// ---------------------------------------------------------------------------
+// Every full-screen pop-up (lightbox, viewer, search overlay, modal) calls
+// openOverlayBack(hide) when it opens and the returned close() when it is
+// dismissed by other means. Opening pushes a throwaway history entry so the
+// device / browser Back button (Android system back, browser back, swipe)
+// closes the top overlay instead of leaving the page; close() unwinds that
+// entry so history stays balanced and stacked overlays close one at a time.
+//
+// In an installed PWA we also arm a guard entry on load, so the Back that would
+// otherwise quit the app lands on a popstate we intercept to ask "Are you sure
+// you want to exit?" first.
+var _ovStack = [];          // open overlays, top last: each { hide }
+var _ovIgnorePop = false;   // true while WE call history.back() to unwind
+var _backReady = false;
+
+function _isStandalone() {
+  try {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+           window.navigator.standalone === true;
+  } catch (_) { return false; }
+}
+
+function _initBackButton() {
+  if (_backReady || typeof window === 'undefined') return;
+  _backReady = true;
+  // The exit guard only makes sense when SPA navigation is active (navigate.js,
+  // gated on View Transitions): then in-app pages carry an anrNav state and only
+  // the app's base entry is untagged, so we can tell "Back would exit" apart from
+  // ordinary in-app Back. Without SPA, navigation is full reloads and native Back
+  // is correct, so we leave the exit path alone (overlay-closing still works).
+  var exitGuard = _isStandalone() && !!document.startViewTransition;
+  if (exitGuard) {
+    // Arm the guard: an extra entry the first "would-exit" Back lands on.
+    try { history.pushState({ anrGuard: 1 }, ''); } catch (_) {}
+  }
+  window.addEventListener('popstate', function (e) {
+    if (_ovIgnorePop) { _ovIgnorePop = false; return; }
+    // 1) An overlay is open: Back closes the topmost one and is consumed.
+    if (_ovStack.length) {
+      var top = _ovStack.pop();
+      try { top.hide(); } catch (_) {}
+      return;
+    }
+    // 2) No overlay, and we've fallen past our app history (no tagged state) -
+    // this Back was about to quit the installed app. Confirm first.
+    var tagged = e.state && (e.state.anrGuard || e.state.anrNav || e.state.anrOverlay);
+    if (exitGuard && !tagged) {
+      _confirmExit(function () {
+        _ovIgnorePop = false;
+        history.back();                                  // let the exit proceed
+      }, function () {
+        try { history.pushState({ anrGuard: 1 }, ''); } catch (_) {}   // stay
+      });
+    }
+  });
+}
+
+export function openOverlayBack(hide) {
+  _initBackButton();
+  var entry = { hide: hide };
+  _ovStack.push(entry);
+  try { history.pushState({ anrOverlay: 1 }, ''); } catch (_) {}
+  return function close() {
+    var i = _ovStack.indexOf(entry);
+    if (i === -1) return;                  // already closed (e.g. via Back)
+    _ovStack.splice(i, 1);
+    try { hide(); } catch (_) {}
+    _ovIgnorePop = true;
+    try { history.back(); } catch (_) { _ovIgnorePop = false; }   // unwind our entry
+  };
+}
+
+function _confirmExit(onYes, onNo) {
+  if (document.getElementById('anr-exit-confirm')) return;   // already asking
+  var ov = document.createElement('div');
+  ov.id = 'anr-exit-confirm';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.6);' +
+    'display:flex;align-items:center;justify-content:center;padding:20px;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg,#fff);color:var(--fg,#111);max-width:340px;width:100%;' +
+    'border:1px solid var(--hairline,#ccc);padding:24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.4);';
+  var msg = document.createElement('p');
+  msg.textContent = 'Are you sure you want to exit?';
+  msg.style.cssText = 'margin:0 0 20px;font-size:16px;';
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:10px;justify-content:center;';
+  var yes = document.createElement('button');
+  yes.type = 'button'; yes.className = 'anr-btn'; yes.textContent = 'Exit';
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'anr-btn'; cancel.textContent = 'Cancel';
+  btns.appendChild(yes); btns.appendChild(cancel);
+  box.appendChild(msg); box.appendChild(btns);
+  ov.appendChild(box);
+  function done(fn) { ov.remove(); document.removeEventListener('keydown', onKey); fn(); }
+  function onKey(e) { if (e.key === 'Escape') done(onNo); }
+  yes.addEventListener('click', function () { done(onYes); });
+  cancel.addEventListener('click', function () { done(onNo); });
+  ov.addEventListener('click', function (e) { if (e.target === ov) done(onNo); });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(ov);
+  cancel.focus();
+}
+
+// Arm on load so the PWA exit guard is in place even before any overlay opens.
+_initBackButton();

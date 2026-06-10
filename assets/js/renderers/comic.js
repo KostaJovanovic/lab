@@ -6,7 +6,7 @@
    comic doesn't build hundreds of object URLs up front. CBZ is a ZIP, CBT a TAR,
    and CBR/CB7 go through the lazy libarchive (unrar/7z) WASM loader. */
 
-import { el, row, rowHelp, fmtBytes, errorCard, integrityCard } from '../core/util.js';
+import { el, row, rowHelp, fmtBytes, errorCard, integrityCard, attachZoomPan, openOverlayBack } from '../core/util.js';
 import { openZip } from './zip.js';
 
 const IMG_RE = /\.(jpe?g|png|gif|webp|avif|bmp|jxl)$/i;
@@ -141,7 +141,9 @@ export async function renderComic(file, resultsEl, extOverride) {
       const meta = el('p', { class: 'lightbox-meta' });
       center.appendChild(imgWrap); center.appendChild(toolbar); center.appendChild(meta);
       overlay.appendChild(closeBtn); overlay.appendChild(center);
-      const close = () => { overlay.hidden = true; document.body.style.overflow = ''; };
+      overlay._zoom = attachZoomPan(imgWrap);
+      overlay._hide = () => { overlay.hidden = true; document.body.style.overflow = ''; overlay._backClose = null; };
+      const close = () => { if (overlay._backClose) overlay._backClose(); else overlay._hide(); };
       closeBtn.addEventListener('click', close);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
       document.addEventListener('keydown', (e) => {
@@ -159,6 +161,7 @@ export async function renderComic(file, resultsEl, extOverride) {
     let current = start;
     async function show(i) {
       current = i;
+      if (overlay._zoom) overlay._zoom.reset();
       meta.textContent = 'Page ' + (i + 1) + ' / ' + pages.length;
       prevBtn.style.visibility = i > 0 ? 'visible' : 'hidden';
       nextBtn.style.visibility = i < pages.length - 1 ? 'visible' : 'hidden';
@@ -172,8 +175,10 @@ export async function renderComic(file, resultsEl, extOverride) {
     overlay._prev = () => { if (current > 0) show(current - 1); };
     overlay._next = () => { if (current < pages.length - 1) show(current + 1); };
     toolbar.appendChild(prevBtn); toolbar.appendChild(nextBtn);
+    const wasHidden = overlay.hidden;
     overlay.hidden = false;
     document.body.style.overflow = 'hidden';
+    if (wasHidden) overlay._backClose = openOverlayBack(overlay._hide);
     show(start);
   }
 

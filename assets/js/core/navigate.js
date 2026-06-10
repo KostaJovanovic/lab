@@ -52,7 +52,14 @@
         document.startViewTransition(function () {
           swap(doc);
           currentPath = new URL(url).pathname;
-          if (push) history.pushState(null, '', url);
+          if (push) history.pushState({ anrNav: 1 }, '', url);
+          // The swapped-in page inherits the old scroll offset, so reset it:
+          // land on the linked #anchor if the URL has one, otherwise the top of
+          // the new page (not wherever the link sat on the previous page).
+          var hash = new URL(url).hash;
+          var target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+          if (target) target.scrollIntoView();
+          else window.scrollTo(0, 0);
           window.dispatchEvent(new Event('anr:navigate'));
         });
       })

@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 84;
+const COMMIT_COUNT = 85;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -47,7 +47,7 @@ import { renderGeo } from '../renderers/geo.js';
 import { renderMarkdown } from '../renderers/markdown.js';
 import { renderComic } from '../renderers/comic.js';
 import { initSearch } from './search.js';
-import { fileExt, el, probeReadable, cloudFileWarning } from './util.js';
+import { fileExt, el, probeReadable, cloudFileWarning, openOverlayBack } from './util.js';
 import { walkItems, renderFolder } from '../renderers/folder.js';
 import {
   PHOTO_EXTS, AUDIO_EXTS, VIDEO_EXTS, CSV_EXTS, SVG_EXTS,
@@ -623,8 +623,9 @@ function shareNudgeAllowed() {
 function markShareNudgeShared() {
   try { localStorage.setItem(NUDGE_HOLD_KEY, String(Date.now() + 4 * 24 * 60 * 60 * 1000)); } catch (_) {}
 }
-// Only an explicit dismiss or a share counts toward the once-a-day cap. Auto-
-// dismiss (ignored) does NOT, so it can reappear on a later analysis that day.
+// Only an explicit dismiss (the x) or a share counts toward the once-a-day cap,
+// written to localStorage so it survives a hard refresh. The 30s auto-dismiss
+// (ignored) does NOT, so an ignored nudge can reappear on a later analysis.
 function markShareNudgeSeen() {
   try { localStorage.setItem(NUDGE_DAY_KEY, nudgeDayStamp()); } catch (_) {}
 }
@@ -1016,6 +1017,7 @@ function splitText(container, baseWeight) {
 // each entry's full bullet list for the matching line here. When you add a new
 // patch entry to patch.html, add its one-liner here too (newest at the top).
 const PATCH_TLDR = {
+  '2.25': 'Every photo, PDF and comic viewer now zooms and pans - pinch, scroll or click to zoom, drag to move - and the Back button closes the open viewer or pop-up instead of leaving the page (installed as an app, it asks before you exit). PDF pages render sharper with a new High-res button, and the PDF reader now lists fonts, flags and shows embedded JavaScript, keeps text line breaks and adds a per-page Copy. Links to other pages now open at the top, and the viewer Close button is clearer.',
   '2.24': 'Every supported format now has its own guide page - the nine hundred identification-only ones included - each explaining what the file is and what Analyser reads from it. The Formats page links every extension to its guide, and search engines are told about all the new pages.',
   '2.23': 'Maintenance: a small correction to the GitHub readme. Nothing on the site changed.',
   '2.22': 'Maintenance: the GitHub readme gained a title card and a fuller overview. Nothing on the site changed.',
@@ -1444,7 +1446,10 @@ function boot() {
     hideShareNudge();     // and any pending/visible "share this" nudge
     // If the "Supported formats" overlay is open, drop/paste/pick dismisses it.
     const fmtOv = $('fmtOverlay');
-    if (fmtOv && !fmtOv.hidden) { fmtOv.hidden = true; document.body.style.overflow = ''; }
+    if (fmtOv && !fmtOv.hidden) {
+      if (fmtOv._backClose) fmtOv._backClose();
+      else { fmtOv.hidden = true; document.body.style.overflow = ''; }
+    }
     const token = { cancelled: false };
     _currentToken = token;
     showDropLoader(file, () => cancelLoad(token), undefined, nested);
@@ -2742,9 +2747,12 @@ function boot() {
       syncToggleAll();
     }
 
+    function hideFmt() { fmtOverlay.hidden = true; document.body.style.overflow = ''; fmtOverlay._backClose = null; }
     function openFmt() {
+      const wasHidden = fmtOverlay.hidden;
       fmtOverlay.hidden = false;
       document.body.style.overflow = 'hidden';
+      if (wasHidden) fmtOverlay._backClose = openOverlayBack(hideFmt);   // device Back closes it
       activeCat = 'all';
       buildChips();
       if (fmtSearch) {
@@ -2753,7 +2761,7 @@ function boot() {
       }
       applyFilter();
     }
-    function closeFmt() { fmtOverlay.hidden = true; document.body.style.overflow = ''; }
+    function closeFmt() { if (fmtOverlay._backClose) fmtOverlay._backClose(); else hideFmt(); }
 
     buildChips();
 
@@ -2787,7 +2795,10 @@ function boot() {
       boot._fmtKeyWired = true;
       window.addEventListener('keydown', (e) => {
         const ov = $('fmtOverlay');
-        if (e.key === 'Escape' && ov && !ov.hidden) { ov.hidden = true; document.body.style.overflow = ''; }
+        if (e.key === 'Escape' && ov && !ov.hidden) {
+          if (ov._backClose) ov._backClose();
+          else { ov.hidden = true; document.body.style.overflow = ''; }
+        }
       });
     }
     if (fmtSearch && !fmtSearch._wired) { fmtSearch._wired = true; fmtSearch.addEventListener('input', applyFilter); }

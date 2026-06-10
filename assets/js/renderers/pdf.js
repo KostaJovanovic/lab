@@ -1,7 +1,7 @@
 /* Analyser - PDF module
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
-import { el, row, rowHelp, fmtBytes, errorCard, integrityCard } from '../core/util.js';
+import { el, row, rowHelp, fmtBytes, errorCard, integrityCard, attachZoomPan, openOverlayBack } from '../core/util.js';
 import { renderPhoto, revealPhotoSection, pickOcrLanguage, ocrLangPath } from './photo.js';
 
 // Resolved against this module's URL so the dynamic import() gets a valid
@@ -88,6 +88,27 @@ function fmtDate(d) {
   return String(d);
 }
 
+// Scan the raw PDF bytes for forensic signals pdf.js does not surface: how many
+// times the file was saved (each save appends an %%EOF marker), whether it is
+// linearised for "fast web view", and whether anything non-whitespace trails the
+// final %%EOF (appended / polyglot data, a classic tamper/smuggling tell).
+function scanRawPdf(bytes) {
+  const text = new TextDecoder('latin1').decode(bytes);
+  let eof = 0, idx = 0;
+  while ((idx = text.indexOf('%%EOF', idx)) !== -1) { eof++; idx += 5; }
+  const lastEof = text.lastIndexOf('%%EOF');
+  // Count printable (code > 32) characters after the final %%EOF: any non-blank
+  // trailing content is appended/polyglot data. A char-code loop avoids putting a
+  // raw NUL or escape in the source.
+  let appended = 0;
+  if (lastEof !== -1) {
+    const tail = text.slice(lastEof + 5);
+    for (let i = 0; i < tail.length; i++) if (tail.charCodeAt(i) > 32) appended++;
+  }
+  const linearized = /\/Linearized\b/.test(text.slice(0, 2048));
+  return { eof, appended, linearized };
+}
+
 // ---------- main render ----------
 export async function renderPdf(file, resultsEl) {
   resultsEl.hidden = false;
@@ -172,6 +193,25 @@ export async function renderPdf(file, resultsEl) {
     const extras = [];        // collapsible <details> blocks to append after the table
     const addRow = (node) => { stbl.appendChild(node); structRows++; };
 
+    // -- Raw-byte forensics: revisions, linearisation, appended data --
+    // getDocument() detaches the buffer we passed it, so re-read the file here.
+    try {
+      const fx = scanRawPdf(new Uint8Array(await file.arrayBuffer()));
+      if (fx.eof > 1) {
+        const updates = fx.eof - 1;
+        addRow(rowHelp('Revisions', String(fx.eof) + ' (incrementally updated ' + updates + ' time' + (updates === 1 ? '' : 's') + ')',
+          'Each save appends a new %%EOF marker. More than one means the file was edited and re-saved incrementally, keeping earlier versions inside the file - a strong provenance and tamper signal.'));
+      }
+      if (fx.linearized) {
+        addRow(rowHelp('Linearised', 'yes',
+          'The PDF is linearised ("fast web view"): reorganised so a viewer can display the first page before the whole file downloads. Usually set by web-optimised exporters.'));
+      }
+      if (fx.appended > 0) {
+        addRow(rowHelp('Trailing data', '⚠ ' + fx.appended + ' byte' + (fx.appended === 1 ? '' : 's') + ' after final %%EOF',
+          'Non-blank content follows the final end-of-file marker. Often a harmless re-save artefact, but also how data is smuggled into a PDF (polyglot files, appended payloads) - worth a closer look.'));
+      }
+    } catch (_) {}
+
     // -- Outline / table of contents --
     try {
       const outline = await pdf.getOutline().catch(() => null);
@@ -222,26 +262,39 @@ export async function renderPdf(file, resultsEl) {
       }
     } catch (_) {}
 
-    // -- Embedded JavaScript (security flag) --
+    // -- Embedded JavaScript (security flag + source) --
     try {
-      let hasJs = false;
+      const jsSources = [];
       try {
         const jsActions = await pdf.getJSActions().catch(() => null);
-        if (jsActions && Object.keys(jsActions).length) hasJs = true;
+        if (jsActions) {
+          for (const k of Object.keys(jsActions)) {
+            const v = jsActions[k];
+            const arr = Array.isArray(v) ? v : [v];
+            for (const s of arr) { if (s) jsSources.push('// ' + k + '\n' + String(s)); }
+          }
+        }
       } catch (_) {}
+      let hasJs = jsSources.length > 0;
       // OpenAction-level JavaScript (auto-run on open) is a separate, older path.
-      if (!hasJs && typeof pdf.getOpenAction === 'function') {
+      if (typeof pdf.getOpenAction === 'function') {
         try {
           const oa = await pdf.getOpenAction().catch(() => null);
-          if (oa && (oa.action === 'JavaScript' || oa.dest === undefined && oa.action)) {
-            // Only flag when an action is actually present; be conservative.
-            if (oa.action === 'JavaScript') hasJs = true;
-          }
+          if (oa && oa.action === 'JavaScript') hasJs = true;
         } catch (_) {}
       }
       if (hasJs) {
         addRow(rowHelp('Embedded JavaScript', '⚠ yes',
           'The PDF contains document-level JavaScript that a viewer may execute. Embedded scripts can be benign (form logic) but are also a common malware vector, so treat unexpected scripts with caution.'));
+        // Surface the actual source so it can be reviewed in place.
+        if (jsSources.length) {
+          const det = el('details');
+          det.appendChild(el('summary', {}, 'JavaScript source (' + jsSources.length + ')'));
+          const pre = el('pre', { class: 'anr-ocr-text', style: 'max-height:300px;overflow:auto;white-space:pre-wrap;font-size:12px;margin:8px 0 0;' });
+          pre.textContent = jsSources.join('\n\n');
+          det.appendChild(pre);
+          extras.push(det);
+        }
       }
     } catch (_) {}
 
@@ -312,6 +365,62 @@ export async function renderPdf(file, resultsEl) {
       }
     } catch (_) {}
 
+    // -- Fonts (distinct fonts used across the first pages) --
+    // pdf.js loads each font into page.commonObjs keyed by the id seen in the
+    // setFont operator; resolve those (with a timeout, like image XObjects).
+    try {
+      const cap = Math.min(pdf.numPages, 15);
+      const fonts = new Map();   // id -> { name, embedded, type }
+      const resolveFont = (page, id) => new Promise((resolve) => {
+        let done = false;
+        const finish = (v) => { if (!done) { done = true; resolve(v); } };
+        try {
+          if (page.commonObjs.has && page.commonObjs.has(id)) { finish(page.commonObjs.get(id)); return; }
+          page.commonObjs.get(id, finish);
+        } catch (_) { finish(null); }
+        setTimeout(() => finish(null), 3000);
+      });
+      for (let i = 1; i <= cap; i++) {
+        try {
+          const page = await pdf.getPage(i);
+          const ops = await page.getOperatorList();
+          const ids = new Set();
+          for (let k = 0; k < ops.fnArray.length; k++) {
+            if (ops.fnArray[k] === lib.OPS.setFont) {
+              const id = ops.argsArray[k][0];
+              if (typeof id === 'string') ids.add(id);
+            }
+          }
+          for (const id of ids) {
+            if (fonts.has(id)) continue;
+            const fo = await resolveFont(page, id);
+            if (!fo) continue;
+            // Strip the 6-letter subset prefix (e.g. "ABCDEF+Arial").
+            const name = String(fo.name || fo.loadedName || id).replace(/^[A-Z]{6}\+/, '');
+            fonts.set(id, { name, embedded: !!fo.data, type: fo.type || '' });
+          }
+        } catch (_) {}
+      }
+      if (fonts.size) {
+        const list = [...fonts.values()];
+        const notEmbedded = list.filter((f) => !f.embedded).length;
+        const scope = pdf.numPages > cap ? ' (first ' + cap + ' pages)' : '';
+        addRow(rowHelp('Fonts', list.length + (notEmbedded ? ', ' + notEmbedded + ' not embedded' : ', all embedded') + scope,
+          'Distinct fonts used in the document. Non-embedded fonts rely on the viewer having a matching font installed, so the file may render differently elsewhere - a portability and authenticity tell.'));
+        const det = el('details');
+        det.appendChild(el('summary', {}, 'Fonts (' + list.length + ')'));
+        const ul = el('ul', { style: 'margin:8px 0 0;padding-left:18px;font-size:13px;' });
+        for (const f of list) {
+          const bits = [];
+          if (f.type) bits.push(f.type);
+          bits.push(f.embedded ? 'embedded' : 'not embedded');
+          ul.appendChild(el('li', { style: 'margin:2px 0;' }, f.name + '  (' + bits.join(', ') + ')'));
+        }
+        det.appendChild(ul);
+        extras.push(det);
+      }
+    } catch (_) {}
+
     // Only show the card if we actually surfaced something.
     if (structRows || extras.length) {
       structCard.appendChild(stbl);
@@ -323,10 +432,11 @@ export async function renderPdf(file, resultsEl) {
   // --- Text extraction (all pages, revealed in batches of 3) ---
   const textCard = el('div', { class: 'anr-card' });
   textCard.appendChild(el('h3', {}, 'Text content'));
-  const textPre = el('pre', { class: 'anr-ocr-text' }, 'Extracting…');
-  textPre.style.maxHeight = '400px';
-  textPre.style.overflow = 'auto';
-  textCard.appendChild(textPre);
+  const textNote = el('p', { class: 'anr-hint', style: 'font-size:12px;margin:0 0 10px;display:none;' });
+  textCard.appendChild(textNote);
+  const textWrap = el('div', { style: 'max-height:420px;overflow:auto;' });
+  textWrap.appendChild(el('div', { class: 'anr-info' }, 'Extracting…'));
+  textCard.appendChild(textWrap);
 
   const btnRow = el('div', { class: 'anr-btn-row' });
   const moreBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Show next 3 pages');
@@ -336,25 +446,69 @@ export async function renderPdf(file, resultsEl) {
   textCard.appendChild(btnRow);
   resultsEl.appendChild(textCard);
 
-  const pageTexts = [];
+  // Reconstruct line breaks: pdf.js flags the last item of a visual line with
+  // hasEOL, so honouring it reads far closer to the page than a space-joined blob.
+  const pageTexts = [];     // { n, text }
+  const emptyPages = [];    // pages with no extractable text (likely scanned images)
   for (let i = 1; i <= pdf.numPages; i++) {
     try {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items.map((item) => item.str).join(' ');
-      pageTexts.push(`--- Page ${i} ---\n${pageText}`);
+      let out = '';
+      for (const item of content.items) {
+        out += item.str;
+        if (item.hasEOL) out += '\n';
+        else if (item.str && !item.str.endsWith(' ')) out += ' ';
+      }
+      const text = out.replace(/[ \t]+\n/g, '\n').trim();
+      pageTexts.push({ n: i, text });
+      if (!text) emptyPages.push(i);
     } catch (_) {
-      pageTexts.push(`--- Page ${i} ---\n(could not extract text)`);
+      pageTexts.push({ n: i, text: '(could not extract text)' });
+    }
+  }
+
+  if (emptyPages.length) {
+    textNote.style.display = '';
+    if (emptyPages.length === pdf.numPages) {
+      textNote.textContent = 'No embedded text on any page - this looks like a scanned / image-only PDF. Use OCR below to read it.';
+    } else {
+      const list = emptyPages.length > 12 ? emptyPages.slice(0, 12).join(', ') + '…' : emptyPages.join(', ');
+      textNote.textContent = emptyPages.length + ' page' + (emptyPages.length === 1 ? '' : 's') +
+        ' have no embedded text (likely scanned): ' + list + '. Use OCR for those.';
     }
   }
 
   let visibleCount = Math.min(3, pageTexts.length);
 
   function renderVisible() {
-    textPre.textContent = pageTexts.slice(0, visibleCount).join('\n\n') || '(no text content found)';
+    textWrap.innerHTML = '';
+    if (!pageTexts.length) {
+      textWrap.appendChild(el('div', { class: 'anr-info' }, '(no text content found)'));
+    }
+    for (const pt of pageTexts.slice(0, visibleCount)) {
+      const block = el('div', { style: 'margin:0 0 14px;' });
+      const head = el('div', { style: 'display:flex;align-items:center;gap:10px;margin:0 0 4px;' });
+      head.appendChild(el('span', { style: 'font-size:11px;opacity:0.7;font-family:var(--font-mono);' }, 'Page ' + pt.n));
+      if (pt.text && pt.text !== '(could not extract text)') {
+        const copyBtn = el('button', { type: 'button', class: 'anr-btn anr-btn-sm' }, 'Copy');
+        copyBtn.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(pt.text); copyBtn.textContent = 'Copied'; }
+          catch (_) { copyBtn.textContent = 'Failed'; }
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+        });
+        head.appendChild(copyBtn);
+      }
+      block.appendChild(head);
+      const pre = el('pre', { class: 'anr-ocr-text', style: 'white-space:pre-wrap;margin:0;' });
+      pre.textContent = pt.text || '(no text on this page)';
+      block.appendChild(pre);
+      textWrap.appendChild(block);
+    }
     if (visibleCount >= pageTexts.length) {
       btnRow.hidden = true;
     } else {
+      btnRow.hidden = false;
       moreBtn.textContent = 'Show next 3 pages (' + visibleCount + '/' + pageTexts.length + ')';
     }
   }
@@ -397,7 +551,10 @@ export async function renderPdf(file, resultsEl) {
       center.appendChild(meta);
       overlay.appendChild(closeBtn);
       overlay.appendChild(center);
-      function close() { overlay.hidden = true; document.body.style.overflow = ''; }
+      overlay._zoom = attachZoomPan(cvWrap);
+      // Raw hide vs. user-close: close() also unwinds the Back-button history entry.
+      overlay._hide = function () { overlay.hidden = true; document.body.style.overflow = ''; overlay._backClose = null; };
+      function close() { if (overlay._backClose) overlay._backClose(); else overlay._hide(); }
       closeBtn.addEventListener('click', close);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(); });
@@ -410,9 +567,14 @@ export async function renderPdf(file, resultsEl) {
     toolbar.innerHTML = '';
 
     let current = startPage;
-    async function showPage(num) {
+    let hiRes = false;            // toggled by the High-res button below
+    // keepZoom: re-render the current page (e.g. after toggling resolution)
+    // without clearing the user's zoom/pan - the whole point of hi-res is to add
+    // detail to the view they've already zoomed into.
+    async function showPage(num, keepZoom) {
       current = num;
-      meta.textContent = 'Page ' + num + ' / ' + pdf.numPages;
+      if (!keepZoom && overlay._zoom) overlay._zoom.reset();
+      meta.textContent = 'Page ' + num + ' / ' + pdf.numPages + (hiRes ? '  (hi-res)' : '');
       prevBtn.style.visibility = num > 1 ? 'visible' : 'hidden';
       nextBtn.style.visibility = num < pdf.numPages ? 'visible' : 'hidden';
       try {
@@ -420,12 +582,29 @@ export async function renderPdf(file, resultsEl) {
         const vp = pg.getViewport({ scale: 1 });
         const maxW = window.innerWidth * 0.9;
         const maxH = window.innerHeight * 0.82;
-        const scale = Math.min(maxW / vp.width, maxH / vp.height, 3);
-        const sv = pg.getViewport({ scale });
+        // The page is laid out (CSS) to fit the viewport; the canvas backing store
+        // is what limits sharpness when you zoom in (the lightbox zooms to 8x).
+        // Standard mode renders at device density; High-res oversamples well
+        // beyond it. Either way clamp the longest side to MAX_SIDE so we never
+        // exceed the browser's max-canvas / memory limits (lower on touch). The
+        // CSS size stays fit-to-screen, so the zoom transform just scales this
+        // bitmap down - crisp until you pass the oversample ratio.
+        const cssScale = Math.min(maxW / vp.width, maxH / vp.height, 3);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const OVERSAMPLE = hiRes ? 3 : 1;
+        const MAX_SIDE = isTouch ? 4096 : 8192;
+        let renderScale = cssScale * dpr * OVERSAMPLE;
+        const longest = Math.max(vp.width, vp.height) * renderScale;
+        if (longest > MAX_SIDE) renderScale = MAX_SIDE / Math.max(vp.width, vp.height);
+        const sv = pg.getViewport({ scale: renderScale });
         cv.width = Math.floor(sv.width);
         cv.height = Math.floor(sv.height);
-        cvWrap.style.width = cv.width + 'px';
-        cvWrap.style.height = cv.height + 'px';
+        const cssW = Math.floor(vp.width * cssScale);
+        const cssH = Math.floor(vp.height * cssScale);
+        cv.style.width = cssW + 'px';
+        cv.style.height = cssH + 'px';
+        cvWrap.style.width = cssW + 'px';
+        cvWrap.style.height = cssH + 'px';
         await pg.render({ canvasContext: cv.getContext('2d'), viewport: sv }).promise;
       } catch (_) {
         meta.textContent = 'Page ' + num + ' - could not render';
@@ -436,11 +615,25 @@ export async function renderPdf(file, resultsEl) {
     prevBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current > 1) showPage(current - 1); });
     const nextBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Next →');
     nextBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current < pdf.numPages) showPage(current + 1); });
+    const hiResBtn = el('button', { type: 'button', class: 'lightbox-tool-btn', title: 'Render this page at much higher resolution for sharper zooming (slower, more memory)' }, 'High-res');
+    hiResBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      hiRes = !hiRes;
+      hiResBtn.classList.toggle('is-active', hiRes);
+      hiResBtn.disabled = true;
+      hiResBtn.textContent = hiRes ? 'Rendering…' : 'High-res';
+      await showPage(current, true);   // re-render in place, keep the current zoom
+      hiResBtn.disabled = false;
+      hiResBtn.textContent = 'High-res';
+    });
     toolbar.appendChild(prevBtn);
     toolbar.appendChild(nextBtn);
+    toolbar.appendChild(hiResBtn);
 
+    const wasHidden = overlay.hidden;
     overlay.hidden = false;
     document.body.style.overflow = 'hidden';
+    if (wasHidden) overlay._backClose = openOverlayBack(overlay._hide);
     showPage(startPage);
   }
 
@@ -477,10 +670,11 @@ export async function renderPdf(file, resultsEl) {
     overlay.appendChild(inner);
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
-    function close() { overlay.remove(); document.body.style.overflow = ''; }
-    closeBtn.addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    function hide() { overlay.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
+    const backClose = openOverlayBack(hide);   // device Back closes it
+    closeBtn.addEventListener('click', backClose);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) backClose(); });
+    const onKey = (e) => { if (e.key === 'Escape') backClose(); };
     document.addEventListener('keydown', onKey);
   }
 
