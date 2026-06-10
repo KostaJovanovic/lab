@@ -481,12 +481,13 @@ body:has(.about-page) .site-nav { grid-template-columns: repeat(3, 1fr); }
 }
 .nav-link:last-of-type { border-right: none; }
 /* The search chrome carries a divider on the bar's right edge; mirror it on the
-   left so Photo gets the matching vertical rule it was missing. (Main page only -
-   the About nav has no outer dividers.) */
-body:not(:has(.about-page)) .nav-link:first-of-type { border-left: 1px solid var(--nav-line); }
+   left so Photo gets the matching vertical rule it was missing. (Also on the About
+   nav, which has no search chrome, so the outer edges match the main page.) */
+.nav-link:first-of-type { border-left: 1px solid var(--nav-line); }
 /* The right-edge divider normally comes from the search chrome's left border; when
-   the search is hidden (no file yet) Video would lose it, so close the edge here. */
-body:not(.anr-has-file):not(:has(.about-page)) .nav-link:last-of-type { border-right: 1px solid var(--nav-line); }
+   the search is hidden (no file yet, or the About page) the last link would lose it,
+   so close the edge here. */
+body:not(.anr-has-file) .nav-link:last-of-type { border-right: 1px solid var(--nav-line); }
 .nav-link:hover { background-color: var(--nav-soft); color: var(--nav-fg); }
 .nav-link.is-active { background-color: var(--nav-fg); color: var(--nav-bg); }
 .nav-link.is-active .nav-num { color: var(--nav-bg); opacity: 0.5; }

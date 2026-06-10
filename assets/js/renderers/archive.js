@@ -5,6 +5,7 @@
 import { el, row, rowHelp, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard, integrityCard } from '../core/util.js';
 import { normalizeArchive, renderBreakdownCards, renderViewToggle, categorizeExt } from './folder-archive-shared.js';
 import { ARCHIVE_EXTS } from '../core/formats.js';
+import { extractArchive } from '../lib/libarchive-loader.js';
 
 const FFLATE_URL = new URL('../../vendor/fflate.js', import.meta.url).href;
 
@@ -152,7 +153,11 @@ function entryRatio(e) {
 }
 
 // ---------- main render ----------
-export async function renderArchive(file, resultsEl) {
+// opts.embedded: true when this view is appended UNDER another analysis (the
+// "browse as archive" feature). In that mode the whole-file SHA-256 card is
+// skipped, since the primary analysis above already shows the file's hash.
+export async function renderArchive(file, resultsEl, opts = {}) {
+  const embedded = !!opts.embedded;
   resultsEl.hidden = false;
   resultsEl.innerHTML = '';
   resultsEl.appendChild(el('div', { class: 'anr-info' }, `Reading ZIP archive "${file.name}"…`));
@@ -206,8 +211,9 @@ export async function renderArchive(file, resultsEl) {
   if (methodStr) tbl.appendChild(rowHelp('Compression', methodStr, 'The compression method(s) used for the entries. Deflate is the standard ZIP method; Stored means no compression.'));
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
-  // SHA-256 of the whole archive (was previously missing for ZIP).
-  resultsEl.appendChild(integrityCard(file));
+  // SHA-256 of the whole archive (was previously missing for ZIP). Skipped when
+  // embedded under another analysis that already shows the file hash.
+  if (!embedded) resultsEl.appendChild(integrityCard(file));
 
   // --- Safety / integrity inspection (additive; only shown when noteworthy) ---
   try {
@@ -431,5 +437,106 @@ export async function renderArchive(file, resultsEl) {
       prevCard.appendChild(details);
     }
     resultsEl.appendChild(prevCard);
+  }
+}
+
+// ---------- libarchive-backed browse (RAR / 7z / etc.) ----------
+// renderArchive handles ZIP in pure JS; non-ZIP containers are listed and
+// extracted lazily through the vendored libarchive WASM worker. Same tree +
+// treemap + click-to-analyse UX as the ZIP path, fed from the entry list.
+
+function extLower(name) {
+  const m = name.match(/\.([^./\\]+)$/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+async function renderLibarchive(file, resultsEl, opts) {
+  const label = (opts && opts.label) || 'Archive';
+  resultsEl.hidden = false;
+  resultsEl.innerHTML = '';
+  resultsEl.appendChild(el('div', { class: 'anr-info' }, `Reading ${label} archive "${file.name}"…`));
+
+  let handle;
+  try {
+    handle = await extractArchive(file);
+  } catch (e) {
+    resultsEl.innerHTML = '';
+    if (isUnreadableError(e)) resultsEl.appendChild(cloudFileWarning(file));
+    else resultsEl.appendChild(errorCard('Could not read this archive in the browser - it may be encrypted, solid, or use an unsupported codec.'));
+    return;
+  }
+
+  const fileEntries = (handle.entries || []).filter((e) => e && e.name && !e.name.endsWith('/'));
+  resultsEl.innerHTML = '';
+  if (!fileEntries.length) {
+    resultsEl.appendChild(errorCard('No files found inside this archive.'));
+    return;
+  }
+
+  const items = fileEntries.map((e) => {
+    const ext = extLower(e.name);
+    return { path: e.name, size: e.size || 0, file: null, entry: e, category: categorizeExt(ext), ext };
+  });
+
+  const summaryRows = [
+    row('Application', label + ' Archive'),
+    row('Name', file.name),
+    row('Archive size', `${fmtBytes(file.size)}   (${file.size.toLocaleString()} bytes)`),
+  ];
+  renderBreakdownCards(items, resultsEl, summaryRows);
+
+  // Build the nested tree object (leaf = the libarchive entry, branch = plain {}).
+  const tree = {};
+  for (const e of fileEntries) {
+    const parts = e.name.split('/').filter((p) => p);
+    let node = tree;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        node[part] = e;
+      } else {
+        if (!node[part] || typeof node[part] !== 'object' || node[part].name) node[part] = {};
+        node = node[part];
+      }
+    }
+  }
+
+  async function openEntry(entry) {
+    try {
+      const bytes = await entry.getBytes();
+      const f = new File([bytes], entry.name.split('/').pop() || entry.name, { type: 'application/octet-stream' });
+      if (window._anrHandleFile) window._anrHandleFile(f, { nested: true });
+    } catch (_) { /* extraction failed - ignore */ }
+  }
+  const onFileClick = (item) => { if (item && item.entry) openEntry(item.entry); };
+  const onTreeFileClick = (_key, val) => { if (val && val.name) openEntry(val); };
+
+  renderViewToggle(resultsEl, items, tree, {
+    isDir: (v) => v && typeof v === 'object' && !v.name,
+    fileSize: (v) => (v && v.size) || 0,
+    copyPath: (_key, entry) => entry && entry.name,
+    onFileClick: onTreeFileClick,
+  }, onFileClick);
+}
+
+// ---------- embeddable "browse as archive" view ----------
+// Appended UNDER a file's primary analysis when that file is physically a
+// zip/rar/7z container (e.g. an APK, DOCX, JAR, or a RAR). `opts.mode` is 'zip'
+// (pure-JS path) or 'libarchive' (RAR/7z/etc.); `opts.label` names the format.
+export async function renderArchiveEmbedded(file, container, opts = {}) {
+  const label = opts.label || (opts.mode === 'zip' ? 'ZIP' : 'archive');
+  const head = el('div', { class: 'anr-card' });
+  head.appendChild(el('h3', {}, 'Browse as archive'));
+  head.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;font-size:12px;' },
+    `This file is also a ${label} archive. Browse the files inside, and click any one to analyse it.`));
+  container.appendChild(head);
+
+  const wrap = el('div', {});
+  container.appendChild(wrap);
+  try {
+    if (opts.mode === 'zip') await renderArchive(file, wrap, { embedded: true });
+    else await renderLibarchive(file, wrap, { label });
+  } catch (e) {
+    wrap.appendChild(errorCard('Could not browse this archive: ' + (e && e.message)));
   }
 }

@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 85;
+const COMMIT_COUNT = 86;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -28,7 +28,7 @@ import { initPhoto, renderPhoto } from '../renderers/photo.js';
 import { initAudio, renderAudio } from '../renderers/audio.js';
 import { initVideo, renderVideo } from '../renderers/video.js';
 import { renderPdf } from '../renderers/pdf.js';
-import { renderArchive } from '../renderers/archive.js';
+import { renderArchive, renderArchiveEmbedded } from '../renderers/archive.js';
 import { renderSvg } from '../renderers/svg.js';
 import { renderCsv } from '../renderers/csv.js';
 import { renderUnknown } from '../renderers/unknown.js';
@@ -1519,6 +1519,9 @@ function boot() {
     // or its extension disagrees with its actual content. Shown as a popup once
     // the normal (extension-based) analysis has rendered.
     let suggestion = null;
+    // When the file is physically a zip/rar/7z container, browse-as-archive is
+    // appended under its primary analysis (set here, rendered after it settles).
+    let archiveEmbed = null;
     if (!force) {
       try {
         const sniff = await sniffFileType(file);
@@ -1529,6 +1532,19 @@ function boot() {
           || kind === 'photo' || kind === 'audio' || kind === 'video';
         if (sniff && sniff.kind !== kind && !(sniff.kind === 'zip' && zipFamily.has(kind)) && offerable) {
           suggestion = sniff;
+        }
+        // Browse-as-archive: any non-media file that really is a zip/rar/7z (and
+        // isn't already the dedicated ZIP tree view) gets the archive browser
+        // appended below its normal results.
+        const mediaKind = kind === 'photo' || kind === 'audio' || kind === 'video';
+        if (sniff && !mediaKind && kind !== 'zip') {
+          if (sniff.ext === 'zip') archiveEmbed = { mode: 'zip', label: 'ZIP' };
+          else if (sniff.ext === 'rar') archiveEmbed = { mode: 'libarchive', label: 'RAR' };
+          else if (sniff.ext === '7z') archiveEmbed = { mode: 'libarchive', label: '7-Zip' };
+        }
+        // Don't also pop the "analyse as ZIP/RAR/7z" suggestion - it's embedded now.
+        if (archiveEmbed && suggestion && (suggestion.ext === 'zip' || suggestion.ext === 'rar' || suggestion.ext === '7z')) {
+          suggestion = null;
         }
       } catch (_) {}
     }
@@ -1684,6 +1700,11 @@ function boot() {
       }
       if (suggestion) {
         showTypeSuggestion(suggestion, () => handleFile(file, { kind: suggestion.kind, ext: suggestion.ext }));
+      }
+      // Append the browse-as-archive view under the primary analysis for files
+      // that are physically a zip/rar/7z container (APK, DOCX, JAR, RAR, …).
+      if (archiveEmbed && resultEl) {
+        renderArchiveEmbedded(file, resultEl, archiveEmbed).catch(() => {});
       }
       // Record what was just analysed and, unless a format-suggestion popup is
       // taking the spotlight, line up the post-analysis "share this" nudge. Skip

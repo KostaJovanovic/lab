@@ -4,7 +4,7 @@
    full format parsers. */
 
 import { el, row, rowHelp, fmtBytes, sha256Row, preBlock } from '../core/util.js';
-import { findBytes, utf16 } from '../core/binutil.js';
+import { findBytes, utf16, utf8 } from '../core/binutil.js';
 import { openZip } from './zip.js';
 
 // ---------- format database ----------
@@ -275,7 +275,7 @@ const FORMATS = {
   exe:     { app: 'Windows Executable', icon: 'EXE', magic: [0x4D, 0x5A] },
   dll:     { app: 'Windows Dynamic Library', icon: 'DLL', magic: [0x4D, 0x5A] },
   msi:     { app: 'Windows Installer', icon: 'MSI' },
-  apk:     { app: 'Android Application', icon: 'APK', zip: true },
+  apk:     { app: 'Android Application', icon: 'APK' },
   ipa:     { app: 'iOS Application', icon: 'IPA', zip: true },
   dmg:     { app: 'macOS Disk Image', icon: 'DMG' },
   appimage:{ app: 'Linux AppImage', icon: 'APP' },
@@ -2123,6 +2123,277 @@ async function parseZipMeta(file, ext) {
   } catch (_) {
     return null;
   }
+}
+
+// ---------- Android APK ----------
+// Well-known android: attribute resource IDs, for the case where aapt2 stripped
+// the attribute name strings (then only the resource-map entry identifies them).
+const AXML_KNOWN_ATTRS = {
+  0x01010003: 'name', 0x01010001: 'label', 0x01010002: 'icon',
+  0x0101000b: 'sharedUserId', 0x0101000f: 'debuggable', 0x01010009: 'protectionLevel',
+  0x0101020c: 'minSdkVersion', 0x01010270: 'targetSdkVersion', 0x01010271: 'maxSdkVersion',
+  0x0101021b: 'versionCode', 0x0101021c: 'versionName',
+  0x01010280: 'allowBackup', 0x010102b7: 'installLocation',
+  0x01010281: 'glEsVersion', 0x0101028e: 'required',
+  0x01010572: 'compileSdkVersion', 0x01010573: 'compileSdkVersionCodename',
+  0x01010604: 'usesCleartextTraffic', 0x010104ea: 'extractNativeLibs',
+};
+
+// API level -> marketing Android version (major milestones).
+const ANDROID_API = {
+  1: '1.0', 2: '1.1', 3: '1.5', 4: '1.6', 5: '2.0', 6: '2.0.1', 7: '2.1', 8: '2.2',
+  9: '2.3', 10: '2.3.3', 11: '3.0', 12: '3.1', 13: '3.2', 14: '4.0', 15: '4.0.3',
+  16: '4.1', 17: '4.2', 18: '4.3', 19: '4.4', 20: '4.4W', 21: '5.0', 22: '5.1',
+  23: '6.0', 24: '7.0', 25: '7.1', 26: '8.0', 27: '8.1', 28: '9', 29: '10', 30: '11',
+  31: '12', 32: '12L', 33: '13', 34: '14', 35: '15', 36: '16',
+};
+function androidApiLabel(v) {
+  const n = parseInt(v, 10);
+  if (isNaN(n)) return String(v);
+  return 'API ' + n + (ANDROID_API[n] ? ' (Android ' + ANDROID_API[n] + ')' : '');
+}
+
+// Parse a binary AndroidManifest.xml (Android binary XML / AXML) into an ordered
+// list of element events: { type:'start', tag, attrs } / { type:'end', tag }.
+function parseAxml(bytes) {
+  if (!bytes || bytes.length < 8) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = (p) => dv.getUint16(p, true);
+  const u32 = (p) => dv.getUint32(p, true) >>> 0;
+  if (u16(0) !== 0x0003) return null;                  // RES_XML_TYPE
+  const total = Math.min(u32(4), bytes.length);
+
+  let strings = null;
+  let resIds = null;
+
+  const readStr = (p, isUtf8) => {
+    if (p < 0 || p >= bytes.length) return '';
+    if (isUtf8) {
+      let q = p;
+      let n = bytes[q++]; if (n & 0x80) { n = ((n & 0x7f) << 8) | bytes[q++]; }
+      let blen = bytes[q++]; if (blen & 0x80) { blen = ((blen & 0x7f) << 8) | bytes[q++]; }
+      return utf8(bytes.subarray(q, q + blen));
+    }
+    let q = p;
+    let n = u16(q); q += 2; if (n & 0x8000) { n = ((n & 0x7fff) << 16) | u16(q); q += 2; }
+    return utf16(bytes.subarray(q, q + n * 2), true);
+  };
+  const readStringPool = (off) => {
+    const stringCount = u32(off + 8);
+    const flags = u32(off + 16);
+    const stringsStart = u32(off + 20);
+    const isUtf8 = (flags & 0x100) !== 0;
+    const out = [];
+    for (let i = 0; i < stringCount; i++) {
+      out.push(readStr(off + stringsStart + u32(off + 28 + i * 4), isUtf8));
+    }
+    return out;
+  };
+  const str = (ref) => (ref === 0xffffffff || !strings || ref >= strings.length) ? '' : (strings[ref] || '');
+
+  const events = [];
+  let pos = u16(2) || 8;
+  while (pos + 8 <= total) {
+    const type = u16(pos);
+    const size = u32(pos + 4);
+    if (size < 8 || pos + size > total) break;
+    if (type === 0x0001 && !strings) {
+      strings = readStringPool(pos);
+    } else if (type === 0x0180) {                      // XML resource map
+      const n = (size - 8) >> 2;
+      resIds = [];
+      for (let i = 0; i < n; i++) resIds.push(u32(pos + 8 + i * 4));
+    } else if (type === 0x0102) {                      // start element
+      const attrStart = u16(pos + 24);
+      const attrSize = u16(pos + 26) || 20;
+      const attrCount = u16(pos + 28);
+      const tag = str(u32(pos + 20));
+      const attrs = {};
+      let ap = pos + 16 + attrStart;
+      for (let i = 0; i < attrCount && ap + 20 <= bytes.length; i++, ap += attrSize) {
+        const aNameRef = u32(ap + 4);
+        const aRawRef = u32(ap + 8);
+        const dataType = bytes[ap + 15];
+        const data = u32(ap + 16);
+        let key = str(aNameRef);
+        if (!key && resIds && aNameRef < resIds.length) key = AXML_KNOWN_ATTRS[resIds[aNameRef]] || '';
+        if (!key) continue;
+        let val;
+        if (aRawRef !== 0xffffffff) val = str(aRawRef);
+        else if (dataType === 0x03) val = str(data);
+        else if (dataType === 0x12) val = data !== 0 ? 'true' : 'false';
+        else if (dataType === 0x11) val = '0x' + data.toString(16);
+        else if (dataType === 0x01 || dataType === 0x02) val = '@0x' + data.toString(16);
+        else val = String(data | 0);
+        attrs[key] = val;
+      }
+      events.push({ type: 'start', tag, attrs });
+    } else if (type === 0x0103) {                      // end element
+      events.push({ type: 'end', tag: str(u32(pos + 20)) });
+    }
+    pos += size;
+  }
+  return strings ? { events } : null;
+}
+
+// Read the ZIP central directory from the file tail for an authoritative entry
+// list (the windowed openZip only sees front-placed entries). Returns
+// { names, count, cdOff } or null (e.g. zip64).
+async function apkArchiveInfo(file) {
+  try {
+    const tailLen = Math.min(file.size, 66000);
+    const tail = new Uint8Array(await file.slice(file.size - tailLen).arrayBuffer());
+    let eo = -1;
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) { eo = i; break; }
+    }
+    if (eo < 0) return null;
+    const tv = new DataView(tail.buffer);
+    const count = tv.getUint16(eo + 10, true);
+    const cdSize = tv.getUint32(eo + 12, true);
+    const cdOff = tv.getUint32(eo + 16, true);
+    if (cdOff === 0xffffffff || cdSize === 0xffffffff) return null;   // zip64
+    const cd = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+    const cv = new DataView(cd.buffer);
+    const names = [];
+    let p = 0;
+    while (p + 46 <= cd.length && cv.getUint32(p, true) === 0x02014b50) {
+      const nameLen = cv.getUint16(p + 28, true);
+      const extraLen = cv.getUint16(p + 30, true);
+      const commLen = cv.getUint16(p + 32, true);
+      names.push(utf8(cd.subarray(p + 46, p + 46 + nameLen)));
+      p += 46 + nameLen + extraLen + commLen;
+    }
+    return { names, count, cdOff };
+  } catch (_) { return null; }
+}
+
+function apkDetailsBlock(title, items) {
+  const det = el('details', { style: 'margin-top:12px;' });
+  det.appendChild(el('summary', {}, title));
+  const pre = el('pre', { class: 'anr-code', style: 'max-height:320px;overflow:auto;font-size:12px;' });
+  pre.textContent = items.join('\n');
+  det.appendChild(pre);
+  return det;
+}
+
+async function parseApk(file) {
+  let zip = null;
+  try { zip = await openZip(file, 4 * 1024 * 1024); } catch (_) { /* fall through */ }
+
+  const fields = {};
+  fields['Format'] = 'Android Application Package (APK)';
+
+  // --- AndroidManifest.xml (binary XML) ---
+  let manifest = null;
+  try {
+    const mbytes = zip ? await zip.bytes('AndroidManifest.xml') : null;
+    if (mbytes) manifest = parseAxml(mbytes);
+  } catch (_) { /* ignore */ }
+
+  const permissions = [];
+  const features = [];
+  let launcher = null;
+  if (manifest) {
+    let curActivity = null, inIntent = false, sawMain = false, sawLauncher = false;
+    for (const ev of manifest.events) {
+      if (ev.type === 'start') {
+        const a = ev.attrs;
+        if (ev.tag === 'manifest') {
+          if (a.package) fields['Package'] = a.package;
+          if (a.versionName) fields['Version name'] = a.versionName;
+          if (a.versionCode) fields['Version code'] = a.versionCode;
+          if (a.sharedUserId) fields['Shared user ID'] = a.sharedUserId;
+          if (a.installLocation) fields['Install location'] = a.installLocation;
+          if (a.compileSdkVersion) fields['Built with'] = androidApiLabel(a.compileSdkVersion);
+          if (a.platformBuildVersionName && !fields['Built with']) fields['Built with'] = a.platformBuildVersionName;
+        } else if (ev.tag === 'uses-sdk') {
+          if (a.minSdkVersion) fields['Min Android'] = androidApiLabel(a.minSdkVersion);
+          if (a.targetSdkVersion) fields['Target Android'] = androidApiLabel(a.targetSdkVersion);
+          if (a.maxSdkVersion) fields['Max Android'] = androidApiLabel(a.maxSdkVersion);
+        } else if (ev.tag === 'uses-permission' || ev.tag === 'uses-permission-sdk-23') {
+          if (a.name) permissions.push(a.name);
+        } else if (ev.tag === 'uses-feature') {
+          if (a.name) features.push(a.name + (a.required === 'false' ? ' (optional)' : ''));
+          else if (a.glEsVersion) {
+            const n = parseInt(String(a.glEsVersion).replace(/^0x/, ''), 16);
+            if (n) features.push('OpenGL ES ' + (n >> 16) + '.' + (n & 0xffff));
+          }
+        } else if (ev.tag === 'application') {
+          if (a.label && a.label.charAt(0) !== '@') fields['App label'] = a.label;
+          if (a.debuggable === 'true') fields['Debuggable'] = 'Yes';
+          if (a.usesCleartextTraffic) fields['Cleartext traffic'] = a.usesCleartextTraffic === 'true' ? 'Allowed' : 'Blocked';
+          if (a.allowBackup) fields['Allows backup'] = a.allowBackup === 'true' ? 'Yes' : 'No';
+        } else if (ev.tag === 'activity' || ev.tag === 'activity-alias') {
+          curActivity = a.name || a.targetActivity || null;
+        } else if (ev.tag === 'intent-filter') {
+          inIntent = true; sawMain = false; sawLauncher = false;
+        } else if (ev.tag === 'action' && inIntent) {
+          if (a.name === 'android.intent.action.MAIN') sawMain = true;
+        } else if (ev.tag === 'category' && inIntent) {
+          if (a.name === 'android.intent.category.LAUNCHER') sawLauncher = true;
+        }
+      } else if (ev.type === 'end') {
+        if (ev.tag === 'intent-filter') {
+          if (sawMain && sawLauncher && curActivity && !launcher) launcher = curActivity;
+          inIntent = false;
+        } else if (ev.tag === 'activity' || ev.tag === 'activity-alias') {
+          curActivity = null;
+        }
+      }
+    }
+  } else {
+    fields['Manifest'] = 'AndroidManifest.xml not found in the first 4 MB';
+  }
+  if (launcher) fields['Launcher activity'] = launcher;
+
+  // --- Package contents (authoritative central-directory listing) ---
+  const info = await apkArchiveInfo(file);
+  const contentNames = info ? info.names : (zip ? zip.names() : null);
+  if (contentNames) {
+    const dex = contentNames.filter((n) => /^classes\d*\.dex$/.test(n));
+    if (dex.length) fields['DEX files'] = String(dex.length);
+    const abis = new Set();
+    for (const n of contentNames) { const m = n.match(/^lib\/([^/]+)\//); if (m) abis.add(m[1]); }
+    if (abis.size) fields['Native code'] = [...abis].join(', ');
+    if (contentNames.includes('resources.arsc')) fields['Resource table'] = 'resources.arsc';
+    if (info) fields['Total entries'] = String(info.count);
+  }
+
+  // --- Signing (APK Signature Scheme v2+ block sits before the central dir) ---
+  const schemes = [];
+  if (info && info.cdOff >= 16) {
+    try {
+      const winStart = Math.max(0, info.cdOff - 262144);
+      const blk = new Uint8Array(await file.slice(winStart, info.cdOff).arrayBuffer());
+      const MAGIC = [65, 80, 75, 32, 83, 105, 103, 32, 66, 108, 111, 99, 107, 32, 52, 50]; // "APK Sig Block 42"
+      if (findBytes(blk, new Uint8Array(MAGIC)) >= 0) {
+        const has = (b) => findBytes(blk, new Uint8Array(b)) >= 0;
+        if (has([0x1a, 0x87, 0x09, 0x71])) schemes.push('v2');
+        if (has([0xc0, 0x68, 0x53, 0xf0])) schemes.push('v3');
+        if (has([0x61, 0xad, 0x93, 0x1b])) schemes.push('v3.1');
+        if (!schemes.length) schemes.push('v2+');
+      }
+    } catch (_) { /* ignore */ }
+  }
+  if (contentNames && contentNames.some((n) => /^META-INF\/.+\.(RSA|DSA|EC)$/i.test(n))) schemes.unshift('v1 (JAR)');
+  if (schemes.length) fields['Signature'] = 'APK Signature Scheme ' + schemes.join(', ');
+
+  if (permissions.length) fields['Permissions'] = String(permissions.length);
+
+  // --- Collapsible detail blocks (permissions, features, full contents) ---
+  const parts = [];
+  if (permissions.length) {
+    const shown = permissions.map((p) => p.replace(/^android\.permission\./, ''));
+    parts.push(apkDetailsBlock('Permissions (' + permissions.length + ')', shown));
+  }
+  if (features.length) parts.push(apkDetailsBlock('Features (' + features.length + ')', features));
+  if (contentNames && contentNames.length) {
+    parts.push(apkDetailsBlock('Package contents (' + contentNames.length + ' entries)', contentNames));
+  }
+  if (parts.length) fields['_previewNode'] = el('div', {}, parts);
+
+  return fields;
 }
 
 // ---------- Generic text version detection ----------
@@ -4164,6 +4435,7 @@ const PARSERS = {
   cnc:   c => parseGcode(c.file),
   log:   c => parseLogOrigin(c.file),
   msi:   c => parseMsi(c.head),
+  apk:   c => parseApk(c.file),
   crt:   c => parseCert(c.file),
   cer:   c => parseCert(c.file),
   pem:   c => parseCert(c.file),
