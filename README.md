@@ -34,7 +34,7 @@ The full, searchable list is at [lab.valjdakosta.com/formats](https://lab.valjda
 
 ## Style
 
-You have probably never seen a file analysis website this stylish. It follows a (swiss design)[https://en.wikipedia.org/wiki/Swiss_Style_(design)] inspired layout, color palette, and fonts which i am very happy with. I made sure to sacrifice no functionality or readability for the sake of being cool, and hopefully succeeded in it, too.
+You have probably never seen a file analysis website this stylish. It follows a [swiss design](https://en.wikipedia.org/wiki/Swiss_Style_(design)) inspired layout, color palette, and fonts which i am very happy with. I made sure to sacrifice no functionality or readability for the sake of being cool, and hopefully succeeded in it, too.
 
 ## Under the hood
 
