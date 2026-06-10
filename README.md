@@ -1,101 +1,74 @@
-<div align="center">
+ <div align="center">
 
-![Analyser](assets/img/banner.jpg)
+<img src="assets/img/banner.jpg" alt="Analyser banner" width="640">
 
 # Analyser
 
-### Drop a file. Find out everything. Upload nothing.
+**A zero-backend forensic workbench for files, running entirely in your browser.**
 
-A small, local, **forensic workbench** for photos, sound, video, documents, archives, 3D models and 200+ other formats. Every byte is read and crunched **in your browser** - no servers, no accounts, no analytics, nothing ever leaves your machine.
+Drop in any file and it is classified, parsed and visualised on your device. Nothing is uploaded, ever.
 
-[**Open the app →**](https://lab.valjdakosta.com/) &nbsp;·&nbsp; [Changelog](https://lab.valjdakosta.com/patch.html) &nbsp;·&nbsp; [About](https://lab.valjdakosta.com/about.html)
-
-![status](https://img.shields.io/badge/status-alive-brightgreen?style=flat-square)
-![privacy](https://img.shields.io/badge/data%20uploaded-0%20bytes-blue?style=flat-square)
-![pwa](https://img.shields.io/badge/PWA-offline%20ready-9cf?style=flat-square)
-![deps](https://img.shields.io/badge/framework-none-lightgrey?style=flat-square)
+[**Open Analyser**](https://lab.valjdakosta.com) · [Supported formats](https://lab.valjdakosta.com/formats) · [About](https://lab.valjdakosta.com/about) · [Changelog](https://lab.valjdakosta.com/patch)
 
 </div>
 
 ---
 
-> [!NOTE]
-> **This README is a placeholder.** It looks the part, but the full docs - architecture deep-dive, format-by-format coverage, contribution guide - are still being written. Poke around the source in the meantime; it is friendlier than it looks.
+## Why
 
-## What it does
+Most "file inspector" sites work by uploading your file to a server, which is exactly what you do not want for private photos, contracts, disk images or key files. Analyser takes the opposite approach: the page is static, there is no backend at all, and every byte of analysis happens in your browser through the File API and lazy-loaded WebAssembly. It works offline as an installable PWA, and you can verify the no-upload claim with the network tab open.
 
-Drag anything onto the page and Analyser figures out what it is, then tells you everything it can:
+## What it can open
 
-```
-   your file ──▶  [ classify ]  ──▶  photo · audio · video · doc · archive · 3D · unknown
-                                          │
-                                          ▼
-                                 read · decode · measure · visualise
-                                          │
-                                          ▼
-                                 metadata · forensics · previews
-```
+Analyser recognises **~1,000 file types**. The depth varies by format: photos, audio, video, documents, 3D models, archives, maps and databases get full viewers and deep analysis, while hundreds of proprietary formats are identified by magic bytes with their header metadata decoded. Anything still unknown gets a hex dump and best-effort identification.
 
-- 📷 **Photos** - full EXIF / IPTC / XMP / ICC, GPS on a map, colour palette, histogram, sharpness, focus point, OCR in 32 languages, QR scan, LSB steganography planes, perceptual hash, and AI-generation markers.
-- 🎵 **Audio** - waveform, real-time FFT spectrogram, loudness (LUFS), pitch, BPM, clipping, stereo vectorscope, embedded tags, lyrics and cover art (auto-analysed as a photo).
-- 🎬 **Video** - container, codec, resolution, frame rate, automatic scene detection, frame stepping, contact sheets and audio extraction.
-- 📄 **Documents** - viewers for PDF, Word, Excel, PowerPoint and EPUB, with text, tables, images and OCR.
-- 🗺️ **Data & code** - CSV/TSV tables, SVG, MIDI scores, subtitles, GPX/KML/GeoJSON plotted on a map, and pretty-printed source.
-- 📦 **Archives & 3D** - browse ZIPs and folders as a tree, inspect STL models in interactive WebGL.
-- 🔍 **Everything else** - 200+ proprietary formats identified by magic bytes, with a hex dump and SHA-256 for anything unrecognised.
+The full, searchable list is at [lab.valjdakosta.com/formats](https://lab.valjdakosta.com/formats), with a guide page for every format that gets deep analysis.
 
-## Why it is different
+## Privacy
 
-| | |
-|---|---|
-| 🔒 **100% local** | Files are read with the File API and processed on-device. The network is never touched. |
-| ✈️ **Offline-first** | Installable PWA. Cache the heavy tools once and it works on a plane. |
-| 🪶 **No framework** | Vanilla ES modules, hand-written parsers, lazy-loaded everything. |
-| ⚡ **Instant** | No upload round-trip - analysis starts the moment you drop. |
-
-## Run it locally
-
-```bash
-git clone https://github.com/KostaJovanovic/lab.git
-cd lab
-
-# any static file server works - it is just HTML/CSS/JS
-python -m http.server 8000
-#   ...or...
-npx serve .
-
-# then open http://localhost:8000
-```
-
-No build step. No `node_modules`. No config.
+- No uploads: files are read with the File API and never leave the device.
+- No accounts, no tracking, no analytics.
+- The website uses ZERO tracking cookies.
+- Works fully offline once installed; the service worker precaches the app shell and keeps the WASM engines after first use.
+- Private keys and secrets found inside files are flagged, not transmitted.
 
 ## Under the hood
 
-`HTML + CSS + vanilla JS (ES modules)` · service-worker caching · View Transitions SPA router · hand-rolled radix-2 FFT · a pile of lazy-loaded WASM (FFmpeg, ImageMagick, Tesseract, pdf.js) that only download when you actually need them.
+The site is plain HTML, CSS and ES-module JavaScript. No framework, no build step, no `node_modules`. Heavy lifting is done by WebAssembly engines and specialist libraries, loaded lazily only when a file actually needs them:
+
+- **FFmpeg** for video remuxing, frame extraction and audio decoding
+- **ImageMagick** for RAW photo conversion
+- **pdf.js** and **Ghostscript** for PDF and PostScript
+- **Tesseract** for OCR
+- **OpenCASCADE** for STEP/IGES tessellation (fetched on first use, then cached for offline)
+- **sql.js** for SQLite, **libarchive** and **xz** for archives, **OpenJPEG** for JPEG 2000
+- **exifr**, **heic2any**, **jsQR**, **Leaflet**, **fflate** and friends
+
+Most parsing, though, is hand-written: a couple of hundred binary header parsers organised into lazy per-domain chunks, so the initial page stays small.
+
+Deployment is just static assets on Cloudflare; every push to `main` ships.
+
+## Running locally
 
 ```
-assets/js/
-  core/       app.js (entry + file classification), formats.js (catalog),
-              util.js (helpers), search.js, navigate.js, binutil.js
-  renderers/  photo · audio · video · pdf · archive · svg · csv · stl · ...
-              the per-type renderers (+ proprietary.js, 200+ formats by magic bytes)
-  parsers/    parsers-*.js   lazy per-domain metadata parser chunks
-  lib/        plist · cfbf · sqlite · *-loader   shared binary + WASM helpers
-assets/css/   analyser.css, fonts.css
-assets/img/   banner, favicons, app icons
-assets/vendor/  third-party libraries
+server.bat
 ```
 
-## Status
+This starts a local instance on localhost:3000 and opens it in a browser. It keeps 100% of the functionality since everything was built to be server-independant. The printed network URL also works for phone testing on the same Wi-Fi.
 
-🚧 Actively built, versioned per commit, shipped to [lab.valjdakosta.com](https://lab.valjdakosta.com/). Expect things to move fast and occasionally wobble.
+There is nothing to install and nothing to build; editing a file and refreshing is the whole dev loop.
 
----
+## Project layout
 
-<div align="center">
+- `index.html` - the drop-and-analyse app
+- `assets/js/core/formats.js` - the single source of truth for every supported file type
+- `assets/js/renderers/` - one module per top-level type (photo, audio, video, PDF, 3D, ...)
+- `assets/js/parsers/` - lazy per-domain metadata parsers for the long tail of formats
+- `assets/js/lib/` - shared binary helpers and WASM loaders
+- `assets/vendor/` - third-party libraries, served locally so the app stays offline-capable
+- `tools/` - Node scripts that pre-render the `/formats` SEO pages from the catalog
+- `sw.js` - the service worker behind the offline support
 
-Made with too much curiosity by **[valjdakosta](https://valjdakosta.com/)**
+## Versioning
 
-<sub>Nothing here phones home. Promise.</sub>
-
-</div>
+Every commit is its own version (currently in the 2.x era), stamped automatically at commit time. The full history, one entry per commit, is on the [changelog](https://lab.valjdakosta.com/patch).

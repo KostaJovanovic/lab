@@ -12,7 +12,11 @@
       "PowerShell(git diff 6b4bfca..HEAD -- patch.html about.html | Select-Object -First 5; \\(Get-Content patch.html | Measure-Object -Line\\).Lines)",
       "Bash(node --check assets/js/renderers/video.js)",
       "Bash(node *)",
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Bash(serve.py)",
+      "Bash(server.bat)",
+      "Bash(wrangler.jsonc)",
+      "Bash(README.md\")"
     ]
   },
   "spinnerTipsEnabled": false
