@@ -50,6 +50,19 @@
   --border-on-dark:        rgba(255, 255, 255, 0.15);
   --border-on-dark-strong: rgba(255, 255, 255, 0.5);
 
+  /* Repeated white-on-dark alpha tints. (0.15 and 0.5 already have the semantic
+     --border-on-dark / --border-on-dark-strong tokens above, so only the other
+     two repeated values get a generic token here.) */
+  --white-a40: rgba(255, 255, 255, 0.4);
+  --white-a80: rgba(255, 255, 255, 0.8);
+
+  /* UI transition / animation durations. The --t-* namespace is type sizes, so
+     timing uses its own --dur-* tokens. */
+  --dur-fast:   0.12s;
+  --dur-snappy: 0.15s;
+  --dur-base:   0.2s;
+  --dur-slow:   0.3s;
+
   /* Token triples for alpha tints - use rgb(var(--accent-rgb) / a). */
   --accent-rgb: 230, 0, 35;
   --bg-rgb:     255, 255, 255;
@@ -304,7 +317,7 @@ body:has(.patch-page):not(:has(.format-page)) .site-header::after { margin-top: 
   height: 2px;
   width: 0;
   background: currentColor;
-  transition: width 0.3s ease;
+  transition: width var(--dur-slow) ease;
 }
 .site-title:hover ~ .site-byline .site-byline-link::after,
 .site-byline:hover .site-byline-link::after { width: 100%; }
@@ -451,7 +464,7 @@ button.nav-link {
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--pad-x);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  transition: background-color var(--dur-slow) ease, border-color var(--dur-slow) ease;
 }
 /* The same easing on EVERY descendant (background, text, dividers, search chrome)
    so the whole bar flips between the two palettes in lockstep over 0.3s instead of
@@ -460,8 +473,8 @@ button.nav-link {
    elements used to carry were removed so this single rule governs them uniformly -
    that uneven mix of durations/properties was part of why dividers lagged. */
 .site-nav * {
-  transition: background-color 0.3s ease, color 0.3s ease,
-              border-color 0.3s ease, opacity 0.15s ease;
+  transition: background-color var(--dur-slow) ease, color var(--dur-slow) ease,
+              border-color var(--dur-slow) ease, opacity var(--dur-snappy) ease;
 }
 /* Inverted palette - applied ONLY when all three hold:
      body.anr-has-file   a file has been loaded,
@@ -677,7 +690,7 @@ body.anr-has-file .nav-search { display: flex; }
   align-items: center;
   justify-content: center;
   opacity: 0.5;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition: opacity var(--dur-snappy) ease, background var(--dur-snappy) ease;
 }
 .search-overlay-arrow:hover { opacity: 1; background: var(--surface); }
 .search-overlay-arrow:active { opacity: 1; background: var(--fg); color: var(--bg); }
@@ -810,13 +823,13 @@ body.anr-has-file .nav-search { display: flex; }
   border: 1px solid var(--hairline);
   background: var(--bg);
   margin: 24px 0 32px;
-  transition: background 0.12s ease, border-color 0.2s ease;
+  transition: background var(--dur-fast) ease, border-color var(--dur-base) ease;
 }
 .anr-dropzone:hover {
   border-color: var(--accent);
 }
 .anr-dropzone-inner {
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-snappy) ease;
 }
 .anr-dropzone:hover .anr-dropzone-inner {
   opacity: 0.6;
@@ -912,7 +925,7 @@ body.anr-has-file .nav-search { display: flex; }
   color: var(--fg);
   cursor: pointer;
   border-radius: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-btn:hover,
 .anr-fs-btn:hover {
@@ -998,7 +1011,7 @@ body.anr-has-file .nav-search { display: flex; }
 }
 /* The timecode is an editable readout, not a button - keep it subtle: a quiet
    border that just picks up on hover (no inversion / fill). */
-.anr-timecode { transition: border-color 0.12s ease; }
+.anr-timecode { transition: border-color var(--dur-fast) ease; }
 .anr-timecode:hover { border-color: var(--fg); }
 :root[data-theme="dark"] .anr-timecode { background: var(--surface); }
 /* Per-field editing: HH:MM:SS:FF, each segment focusable and seek-on-commit. */
@@ -1126,7 +1139,7 @@ body.anr-has-file .nav-search { display: flex; }
   line-height: 1;
   color: var(--muted);
   flex: none;
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .anr-card > h3:hover { color: var(--accent); }
 .anr-card > h3:hover::after { color: var(--accent); }
@@ -1250,7 +1263,7 @@ body.anr-has-file .nav-search { display: flex; }
   overflow: hidden;
 }
 .anr-swatch {
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-snappy) ease;
 }
 .anr-swatch:hover {
   transform: translateY(-3px);
@@ -1820,7 +1833,7 @@ body.anr-has-file .nav-search { display: flex; }
   padding: 0;
   font-family: var(--font-sans);
   line-height: 1;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .anr-player-play:hover {
   background: var(--fg);
@@ -1911,7 +1924,7 @@ audio { width: 100%; }
   padding: 12px 14px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) ease;
 }
 .anr-drop-loader.is-open { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 /* Label + Cancel share one line: label fills the left, button hugs the right. */
@@ -1944,7 +1957,7 @@ audio { width: 100%; }
   border: none;
   padding: 0;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .anr-drop-loader-cancel:hover { color: var(--fg); }
 
@@ -1964,7 +1977,7 @@ audio { width: 100%; }
   padding: 12px 14px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) ease;
 }
 .anr-suggest-pop.is-open { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 
@@ -1984,7 +1997,7 @@ audio { width: 100%; }
   padding: 12px 14px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) ease;
 }
 .anr-share-nudge.is-open { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .anr-share-nudge-head {
@@ -2010,7 +2023,7 @@ audio { width: 100%; }
   font-size: 18px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .anr-share-nudge-close:hover { color: var(--fg); }
 .anr-share-nudge-text {
@@ -2029,7 +2042,7 @@ audio { width: 100%; }
   border: none;
   padding: 8px 12px;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-snappy) ease;
 }
 .anr-share-nudge-cta:hover { opacity: 0.85; }
 @media (max-width: 700px) {
@@ -2065,7 +2078,7 @@ audio { width: 100%; }
   font-size: 18px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .anr-suggest-close:hover { color: var(--fg); }
 .anr-suggest-text {
@@ -2084,7 +2097,7 @@ audio { width: 100%; }
   border: none;
   padding: 8px 12px;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-snappy) ease;
 }
 .anr-suggest-cta:hover { opacity: 0.85; }
 .anr-suggest-cta:disabled { cursor: default; opacity: 0.6; }
@@ -2299,7 +2312,7 @@ details summary::after {
   font-family: var(--font-mono);
   font-size: 16px;
   color: var(--muted);
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 details summary:hover::after { color: var(--accent); }
 details[open] summary::after { content: "\2212"; }
@@ -2343,13 +2356,13 @@ details[open] summary::after { content: "\2212"; }
   font-size: var(--t-tiny);
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: rgba(255,255,255,0.4);
+  color: var(--white-a40);
   margin: 0 0 2px;
 }
 .about-defs dd {
   margin: 0;
   font-size: var(--t-small);
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
 }
 .about-details {
   border-top: none;
@@ -2363,7 +2376,7 @@ details[open] summary::after { content: "\2212"; }
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
   background: transparent;
   border: 1px solid rgba(255,255,255,0.15);
   padding: 6px 14px;
@@ -2372,7 +2385,7 @@ details[open] summary::after { content: "\2212"; }
 .about-details summary:hover { color: var(--accent); border-color: rgba(255,255,255,0.5); }
 /* Match the label size so the marker doesn't make the button taller than the
    sibling Install/Clear buttons. */
-.about-details summary::after { color: rgba(255,255,255,0.4); font-size: var(--t-tiny); line-height: 1; }
+.about-details summary::after { color: var(--white-a40); font-size: var(--t-tiny); line-height: 1; }
 .about-details[open] summary { margin-bottom: 16px; }
 .about-details .about-defs { margin: 0; }
 /* Dependencies now lives in the Install/Clear button row. Drop its margin, and
@@ -2426,7 +2439,7 @@ details[open] summary::after { content: "\2212"; }
 .offline-help-panel > div {
   padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.12);
   font-family: var(--font-sans); font-size: var(--t-small); line-height: 1.45;
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
 }
 .offline-help-panel > div:first-child { border-top: none; }
 .offline-help-panel strong {
@@ -2503,11 +2516,11 @@ details[open] summary::after { content: "\2212"; }
   padding: 14px 16px;
   border: 1px solid rgba(255,255,255,0.15);
   background: transparent;
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
   cursor: pointer;
   text-align: left;
   font-family: var(--font-sans);
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: border-color var(--dur-base) ease, background var(--dur-base) ease;
 }
 /* "Recommended" crown badge, top-right of the Everything tier. Faint + decorative
    (pointer-events:none so it never intercepts the button click). */
@@ -2527,7 +2540,7 @@ details[open] summary::after { content: "\2212"; }
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.4);
+  color: var(--white-a40);
 }
 @media (max-width: 700px) {
   /* Keep just the crown when the buttons get narrow. */
@@ -2554,7 +2567,7 @@ details[open] summary::after { content: "\2212"; }
 }
 .offline-desc {
   font-size: 12px;
-  color: rgba(255,255,255,0.4);
+  color: var(--white-a40);
   line-height: 1.3;
 }
 .offline-size {
@@ -2574,10 +2587,10 @@ details[open] summary::after { content: "\2212"; }
   line-height: 1;
 }
 .offline-bar .offline-bar-fill {
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
 }
 .offline-btn.is-done .offline-bar .offline-bar-fill { color: var(--accent); }
-.offline-btn.is-done.is-fading .offline-bar .offline-bar-fill { color: rgba(255,255,255,0.8); transition: color 1s ease; }
+.offline-btn.is-done.is-fading .offline-bar .offline-bar-fill { color: var(--white-a80); transition: color 1s ease; }
 /* "✓ Cached" badge pinned to the bottom of a tier button once its files are in
    the offline cache. Persisted across reloads via localStorage; the accent tint
    stays even after the border fades, so the cached tier reads at a glance. */
@@ -2620,12 +2633,12 @@ details[open] summary::after { content: "\2212"; }
   border: 1px solid rgba(255,255,255,0.15);
   cursor: pointer;
   padding: 6px 14px;
-  transition: border-color 0.2s ease, color 0.2s ease;
+  transition: border-color var(--dur-base) ease, color var(--dur-base) ease;
 }
-.offline-install { color: rgba(255,255,255,0.8); }
+.offline-install { color: var(--white-a80); }
 .offline-install:hover { border-color: rgba(255,255,255,0.5); color: var(--accent); }
-.offline-clear { color: rgba(255,255,255,0.4); }
-.offline-clear:hover { border-color: rgba(255,255,255,0.5); color: rgba(255,255,255,0.8); }
+.offline-clear { color: var(--white-a40); }
+.offline-clear:hover { border-color: rgba(255,255,255,0.5); color: var(--white-a80); }
 
 :root[data-theme="dark"] .offline-section { border-top-color: #333; }
 :root[data-theme="dark"] .offline-btn { border-color: #333; }
@@ -2641,7 +2654,7 @@ details[open] summary::after { content: "\2212"; }
   border-top: 1px solid rgba(255,255,255,0.15);
   padding-top: 24px;
 }
-.footer-bottom .footer-meta { color: rgba(255,255,255,0.4); }
+.footer-bottom .footer-meta { color: var(--white-a40); }
 .footer-bottom .footer-meta a { color: rgba(255,255,255,0.5); }
 /* "Email me!" - a plain text button (no scrapeable address) that reveals the
    mailto only after a Turnstile challenge passes (see wireFooterContact). */
@@ -2669,7 +2682,7 @@ details[open] summary::after { content: "\2212"; }
   border: 1px solid rgba(255,255,255,0.15);
   padding: 6px 14px;
   text-decoration: none;
-  transition: border-color 0.2s ease, color 0.2s ease;
+  transition: border-color var(--dur-base) ease, color var(--dur-base) ease;
 }
 .footer-nav-btn:hover { border-color: rgba(255,255,255,0.5); }
 :root[data-theme="dark"] .footer-nav-btn { border-color: #333; }
@@ -2803,7 +2816,7 @@ details[open] summary::after { content: "\2212"; }
   content: '+';
   font-size: 14px;
   color: var(--muted);
-  transition: transform 0.2s ease;
+  transition: transform var(--dur-base) ease;
 }
 .about-formats[open] summary::after {
   content: '\2212';
@@ -2882,7 +2895,7 @@ details[open] summary::after { content: "\2212"; }
   border: 1px solid var(--hairline);
   color: var(--fg);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background var(--dur-snappy) ease, color var(--dur-snappy) ease, border-color var(--dur-snappy) ease;
 }
 .patch-tldr-toggle:hover { background: var(--fg); color: var(--bg); }
 .patch-tldr-toggle.is-active {
@@ -3113,7 +3126,7 @@ details[open] summary::after { content: "\2212"; }
   padding: 11px 8px;
   width: auto;
   z-index: 2;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.2s ease;
+  transition: background var(--dur-snappy) ease, color var(--dur-snappy) ease, border-color var(--dur-base) ease;
 }
 .fmt-help-btn:hover { background: var(--fg); color: var(--bg); border-top-color: var(--fg); border-left-color: var(--fg); }
 
@@ -3181,7 +3194,7 @@ details[open] summary::after { content: "\2212"; }
   border: 1px solid var(--hairline);
   border-radius: 0;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-ocr-lang-help:hover { color: var(--fg); border-color: var(--fg); }
 .anr-ocr-lang-help.is-active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -3227,7 +3240,7 @@ details[open] summary::after { content: "\2212"; }
   cursor: pointer;
   display: inline-grid;
   place-content: center;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-ocr-lang-remember input::before {
   content: '';
@@ -3237,7 +3250,7 @@ details[open] summary::after { content: "\2212"; }
   border: solid var(--accent-fg, #fff);
   border-width: 0 1.6px 1.6px 0;
   transform: rotate(45deg) scale(0);
-  transition: transform 0.12s ease;
+  transition: transform var(--dur-fast) ease;
 }
 .anr-ocr-lang-remember input:hover { border-color: var(--fg); }
 .anr-ocr-lang-remember input:checked {
@@ -3290,7 +3303,7 @@ details[open] summary::after { content: "\2212"; }
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .fmt-overlay-close:hover { color: var(--fg); }
 .fmt-overlay-search {
@@ -3455,7 +3468,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   cursor: pointer;
   border-radius: 0;
   white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .fmt-chip:hover { color: var(--fg); border-color: var(--fg); }
 .fmt-chip.is-active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -3481,7 +3494,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   text-transform: uppercase;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--dur-fast) ease;
 }
 .fmt-toggle-all:hover { color: var(--accent); }
 .fmt-toggle-all:disabled { opacity: 0.4; cursor: default; }
@@ -3560,7 +3573,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-color: var(--hairline);
-  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+  transition: color var(--dur-snappy) ease, text-decoration-color var(--dur-snappy) ease;
 }
 .fmt-count-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 .about-formats-actions { margin: 8px 0 0; }
@@ -3576,7 +3589,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   padding: 0;
   border-top: 1px solid var(--hairline);
   gap: 0;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--dur-base) ease;
 }
 .quickdrop-zone .anr-audio-modes .anr-btn {
   flex: 1 1 0;
@@ -3612,7 +3625,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  animation: anr-fade-in 0.12s ease;
+  animation: anr-fade-in var(--dur-fast) ease;
 }
 .page-drop[hidden] { display: none; }
 .page-drop::before {
@@ -3703,7 +3716,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   border: 1px solid var(--border-on-dark);
   opacity: 0.85;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .anr-preview-img-wrap:hover::after { opacity: 1; }
 .anr-checkerboard {
@@ -3798,7 +3811,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   cursor: pointer;
   min-height: 40px;
   min-width: 40px;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .lightbox-close:hover { background: var(--media-bg); color: var(--on-dark); border-color: var(--on-dark); }
 .lightbox-center {
@@ -3856,14 +3869,14 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
 .lightbox-tool-btn {
   background: transparent;
   border: 1px solid var(--border-on-dark-strong);
-  color: rgba(255,255,255,0.8);
+  color: var(--white-a80);
   padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .lightbox-tool-btn:hover {
   background: var(--border-on-dark);
@@ -3979,7 +3992,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   cursor: pointer;
   white-space: nowrap;
   min-width: 160px;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--dur-fast) ease;
 }
 .anr-dropdown-trigger:hover:not(.is-disabled) { border-color: var(--fg); }
 .anr-dropdown-trigger::after {
@@ -4121,7 +4134,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   border: 1px solid var(--hairline);
   background: var(--bg);
   color: var(--fg);
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-modal-cancel:hover { background: var(--surface); }
 .anr-modal-ok { background: var(--fg); color: var(--bg); }
@@ -4248,7 +4261,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   color: var(--fg);
   cursor: pointer;
   background: var(--bg);
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-share-target:hover { background: var(--fg); color: var(--bg); }
 /* Cancel just gets a little breathing room above it - the "More platforms"
@@ -4351,7 +4364,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   flex-shrink: 0;
   color: var(--muted);
   font-size: 10px;
-  transition: transform 0.12s ease, color 0.12s ease;
+  transition: transform var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .anr-tree-dir[open] > summary > .anr-tree-icon { transform: rotate(90deg); }
 .anr-tree-dir > summary:hover { background: var(--surface); color: var(--accent); }
@@ -4437,7 +4450,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   cursor: pointer; font-family: inherit; font-size: inherit;
   letter-spacing: inherit;
   padding: 0; text-transform: uppercase;
-  transition: color 0.12s ease;
+  transition: color var(--dur-fast) ease;
 }
 .anr-treemap-breadcrumb button:hover { color: var(--accent); }
 .anr-crumb-sep { color: var(--muted); opacity: 0.5; }
@@ -4472,7 +4485,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   text-transform: uppercase; letter-spacing: 0.05em;
   padding: 5px 11px; border: 1px solid var(--hairline);
   background: var(--bg); color: var(--fg); cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-tm-btn:hover { background: var(--fg); color: var(--bg); }
 .anr-tm-btn-ok { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
@@ -4553,7 +4566,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
 .anr-ext-more summary::-webkit-details-marker { display: none; }
 .anr-ext-more summary::after {
   content: '+'; font-size: 13px; color: var(--muted);
-  transition: color 0.15s ease;
+  transition: color var(--dur-snappy) ease;
 }
 .anr-ext-more[open] summary::after { content: '\2212'; }
 .anr-ext-more summary:hover { color: var(--accent); }
@@ -4589,7 +4602,7 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
   padding: 4px 9px;
   background: var(--surface); color: var(--fg);
   border: 1px solid var(--hairline); cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .anr-extchip:hover { border-color: var(--accent); color: var(--accent); }
 .anr-extchip.is-active {
