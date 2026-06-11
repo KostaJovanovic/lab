@@ -840,7 +840,7 @@ body.anr-has-file .nav-search { display: flex; }
    card edge goes red while the button edges stay dark. */
 .anr-dropzone:hover .fmt-help-btn {
   border-top-color: var(--accent);
-  border-left-color: var(--accent);
+  border-right-color: var(--accent);
 }
 .anr-dropzone:hover .anr-audio-modes { border-top-color: var(--accent); }
 .anr-dropzone:hover .anr-audio-modes .anr-btn { border-right-color: var(--accent); }
@@ -3111,11 +3111,11 @@ details[open] summary::after { content: "\2212"; }
 .fmt-help-btn {
   position: absolute;
   bottom: 0;
-  right: 0;
+  left: 0;
   background: var(--bg);
   border: none;
   border-top: 1px solid var(--hairline);
-  border-left: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
   border-radius: 0;
   font-family: var(--font-sans);
   font-size: var(--t-small);
@@ -3128,7 +3128,7 @@ details[open] summary::after { content: "\2212"; }
   z-index: 2;
   transition: background var(--dur-snappy) ease, color var(--dur-snappy) ease, border-color var(--dur-base) ease;
 }
-.fmt-help-btn:hover { background: var(--fg); color: var(--bg); border-top-color: var(--fg); border-left-color: var(--fg); }
+.fmt-help-btn:hover { background: var(--fg); color: var(--bg); border-top-color: var(--fg); border-right-color: var(--fg); }
 
 /* OCR language picker modal (PDF page OCR; same menu as the image OCR dropdown) */
 .anr-ocr-lang {
