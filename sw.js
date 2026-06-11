@@ -35,6 +35,7 @@ const SHELL = [
   './assets/js/renderers/comic.js',
   './assets/js/renderers/unknown.js',
   './assets/js/renderers/proprietary.js',
+  './assets/js/renderers/proprietary-formats.js',
   './assets/js/core/binutil.js',
   './assets/js/lib/plist.js',
   './assets/js/lib/cfbf.js',
