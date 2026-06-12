@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 101;
+const COMMIT_COUNT = 102;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 â€¦ (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -1093,6 +1093,9 @@ function boot() {
       // cloud-file warning) - there's nothing worth sharing.
       const analysed = { ext: fileExt(file.name), category: kind, name: file.name };
       window._anrLastAnalysis = analysed;
+      // Keep a handle on the analysed File so the data export can compute a hash
+      // (e.g. the video SHA-256) on demand without re-reading from disk.
+      window._anrLastFile = file;
       // Reveal the "About .EXT files" link above the footer, deep-linking to the
       // analysed extension's own /formats guide page. A forced re-analyse (sniff
       // popup) passes the true extension; otherwise use the file's own. Stays

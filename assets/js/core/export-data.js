@@ -12,7 +12,7 @@
    to know about any individual format. All generation is local; nothing leaves
    the browser. */
 
-import { el } from './util.js';
+import { el, sha256Hex } from './util.js';
 
 // Per-cell cap for long text payloads (hex dumps, extracted strings, OCR), so a
 // huge <pre> can't bloat the export to tens of MB. Matches the "capped" choice.
@@ -125,6 +125,51 @@ function collectSections() {
     if (blocks.length) out.push({ title: root.title, blocks });
   }
   return out;
+}
+
+// Ready the page so the scrape captures everything, then enrich it. Run BEFORE
+// collectSections(). Three steps:
+//   1. Expand every collapsed card and open every <details>, so content that was
+//      hidden (its visuals would otherwise read back blank / be skipped) is live.
+//   2. For video, force the contact sheet to generate if it hasn't been already
+//      (it is otherwise behind a button), so the export always includes it.
+async function prepForExport() {
+  // 1. Open all closed sections.
+  document.querySelectorAll('.anr-card.is-collapsed').forEach((c) => c.classList.remove('is-collapsed'));
+  for (const root of exportRoots()) {
+    if (root.main) root.main.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; });
+  }
+
+  // 2. Video contact sheet, if the video section is present.
+  const vr = document.getElementById('videoResults');
+  if (isVisible(vr)) {
+    const sheetCard = vr.querySelector('.anr-contact-sheet-card');
+    if (sheetCard && typeof sheetCard._anrEnsure === 'function') {
+      try { await sheetCard._anrEnsure(); } catch (_) {}
+    }
+  }
+}
+
+// True when a section already carries a real SHA-256 (so we don't compute twice).
+function hasSha(section) {
+  return section.blocks.some((b) => b.type === 'kv'
+    && b.rows.some(([label, value]) => /sha-?256/i.test(label) && /^[0-9a-f]{64}$/i.test(String(value || '').trim())));
+}
+
+// Ensure the video section carries a SHA-256 of the file. The video renderer only
+// shows one for smaller files (and behind an async/button path), so the export
+// computes it from the stored File when it is missing.
+async function augmentVideoSha(sections) {
+  const file = window._anrLastFile;
+  const a = window._anrLastAnalysis;
+  if (!file || !a || a.category !== 'video') return;
+  const vsec = sections.find((s) => s.title === 'Video');
+  if (!vsec || hasSha(vsec)) return;
+  let hex = null;
+  try { hex = await sha256Hex(file); } catch (_) { hex = null; }
+  if (!hex) return;
+  // Lead the section with an Integrity block so the hash is easy to find.
+  vsec.blocks.unshift({ type: 'kv', heading: 'Integrity', rows: [['SHA-256', hex]] });
 }
 
 // ---------- filename ----------
@@ -314,36 +359,23 @@ async function buildHtml(sections) {
 let _open = false;
 function showChooser() {
   if (_open) return;
-  const sections = collectSections();
-
   _open = true;
-  const htmlBtn = el('button', { type: 'button', class: 'anr-export-opt anr-export-opt--featured' }, [
-    el('strong', {}, 'Complete report'),
-    el('span', {}, 'Self-contained HTML - every table plus the spectrogram, histogram and previews embedded. Opens in any browser.'),
-  ]);
-  const jsonBtn = el('button', { type: 'button', class: 'anr-export-opt' }, [
-    el('strong', {}, 'Machine-readable'),
-    el('span', {}, 'A structured JSON file - every field, table and text block, typed and grouped by section. Ideal for scripts and tooling.'),
-  ]);
-  const csvBtn = el('button', { type: 'button', class: 'anr-export-opt' }, [
-    el('strong', {}, 'Plain text only'),
-    el('span', {}, 'A CSV of all metadata and text. Long text is capped; images are listed but not included.'),
-  ]);
-  const closeBtn = el('button', { type: 'button', class: 'anr-modal-btn anr-modal-cancel' }, 'Cancel');
 
-  const cardKids = [
+  // Filled once preparation + collection finish; the format buttons close over it.
+  let sections = [];
+
+  const closeBtn = el('button', { type: 'button', class: 'anr-modal-btn anr-modal-cancel' }, 'Cancel');
+  // Holds the "preparing" status, then the format choices.
+  const slot = el('div', { class: 'anr-export-slot' },
+    el('p', { class: 'anr-share-lead' }, 'Preparing the analysis for export…'));
+
+  const card = el('div', { class: 'anr-modal-card anr-export-card' }, [
     el('p', { class: 'anr-modal-kicker' }, 'Export'),
     el('p', { class: 'anr-modal-title' }, 'Export the analysis'),
     el('p', { class: 'anr-share-lead' }, 'Choose a format. It is built right here in your browser - nothing is uploaded.'),
-  ];
-  if (!sections.length) {
-    cardKids.push(el('p', { class: 'anr-share-lead' }, 'No analysed data on the page yet to export.'));
-  } else {
-    cardKids.push(el('div', { class: 'anr-export-choices' }, [htmlBtn, jsonBtn, csvBtn]));
-  }
-  cardKids.push(el('div', { class: 'anr-modal-actions' }, [closeBtn]));
-
-  const card = el('div', { class: 'anr-modal-card anr-export-card' }, cardKids);
+    slot,
+    el('div', { class: 'anr-modal-actions' }, [closeBtn]),
+  ]);
   const overlay = el('div', { class: 'anr-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Export the analysis' }, card);
   document.body.appendChild(overlay);
 
@@ -360,33 +392,67 @@ function showChooser() {
   closeBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', onKey);
-
-  htmlBtn.addEventListener('click', async () => {
-    if (htmlBtn._busy) return;
-    htmlBtn._busy = true;
-    htmlBtn.querySelector('strong').textContent = 'Building…';
-    try {
-      const html = await buildHtml(sections);
-      download(new Blob([html], { type: 'text/html;charset=utf-8' }), baseName() + '-analysis.html');
-    } catch (_) {}
-    close();
-  });
-  jsonBtn.addEventListener('click', () => {
-    try {
-      const json = buildJson(sections);
-      download(new Blob([json], { type: 'application/json;charset=utf-8' }), baseName() + '-analysis.json');
-    } catch (_) {}
-    close();
-  });
-  csvBtn.addEventListener('click', () => {
-    try {
-      const csv = buildCsv(sections);
-      download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), baseName() + '-analysis.csv');
-    } catch (_) {}
-    close();
-  });
-
   requestAnimationFrame(() => overlay.classList.add('is-open'));
+
+  function renderChoices() {
+    const htmlBtn = el('button', { type: 'button', class: 'anr-export-opt anr-export-opt--featured' }, [
+      el('strong', {}, 'Complete report'),
+      el('span', {}, 'Self-contained HTML - every table plus the spectrogram, histogram and previews embedded. Opens in any browser.'),
+    ]);
+    const jsonBtn = el('button', { type: 'button', class: 'anr-export-opt' }, [
+      el('strong', {}, 'Machine-readable'),
+      el('span', {}, 'A structured JSON file - every field, table and text block, typed and grouped by section. Ideal for scripts and tooling.'),
+    ]);
+    const csvBtn = el('button', { type: 'button', class: 'anr-export-opt' }, [
+      el('strong', {}, 'Plain text only'),
+      el('span', {}, 'A CSV of all metadata and text. Long text is capped; images are listed but not included.'),
+    ]);
+
+    htmlBtn.addEventListener('click', async () => {
+      if (htmlBtn._busy) return;
+      htmlBtn._busy = true;
+      htmlBtn.querySelector('strong').textContent = 'Building…';
+      try {
+        const html = await buildHtml(sections);
+        download(new Blob([html], { type: 'text/html;charset=utf-8' }), baseName() + '-analysis.html');
+      } catch (_) {}
+      close();
+    });
+    jsonBtn.addEventListener('click', () => {
+      try {
+        const json = buildJson(sections);
+        download(new Blob([json], { type: 'application/json;charset=utf-8' }), baseName() + '-analysis.json');
+      } catch (_) {}
+      close();
+    });
+    csvBtn.addEventListener('click', () => {
+      try {
+        const csv = buildCsv(sections);
+        download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), baseName() + '-analysis.csv');
+      } catch (_) {}
+      close();
+    });
+
+    slot.innerHTML = '';
+    slot.appendChild(el('div', { class: 'anr-export-choices' }, [htmlBtn, jsonBtn, csvBtn]));
+  }
+
+  // Prepare the page (open closed sections, generate the video contact sheet),
+  // collect, then enrich (video SHA-256). Only then offer the formats.
+  (async () => {
+    try {
+      await prepForExport();
+      sections = collectSections();
+      await augmentVideoSha(sections);
+    } catch (_) {}
+    if (settled) return;   // cancelled while preparing
+    if (!sections.length) {
+      slot.innerHTML = '';
+      slot.appendChild(el('p', { class: 'anr-share-lead' }, 'No analysed data on the page yet to export.'));
+      return;
+    }
+    renderChoices();
+  })();
 }
 
 // Wire the "Export data" button. Re-runnable; the per-element flag guards against

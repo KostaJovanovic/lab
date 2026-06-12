@@ -437,6 +437,14 @@ button.nav-link {
   flex: none;
 }
 
+/* On small phones the header chip row (now five: About/Patches/Formats/Stats/
+   Share) is tight - shave the gap and chip padding so the Share button stays on
+   the same row instead of dropping to a second one. */
+@media (max-width: 480px) {
+  .site-mark-nav { gap: 6px; }
+  .header-btn { padding: 3px 6px; letter-spacing: 0.05em; }
+}
+
 /* Canonical responsive breakpoints (CSS @media can't read custom properties, so
    these literals ARE the contract): 420px = small phone, 700px = phone, 900px =
    tablet / single-column. Header and sections both collapse at 900px. */

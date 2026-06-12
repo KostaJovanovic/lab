@@ -2683,13 +2683,13 @@ export async function renderVideo(file, resultsEl, opts = {}) {
     sheetCard.appendChild(shH); sheetCard.appendChild(shHelp);
     sheetCard.appendChild(el('p', { class: 'anr-hint', style: 'margin-bottom:12px !important;' },
       '4×2 grid of 8 evenly-spaced thumbnails from the video'));
+    // Marked so the data export can find this card and force the sheet to be
+    // generated (via _anrEnsure below) before it scrapes the page.
+    sheetCard.classList.add('anr-contact-sheet-card');
     const sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
     const sheetOut = el('div');
 
-    sheetBtn.addEventListener('click', async () => {
-      sheetBtn.disabled = true;
-      sheetBtn.textContent = 'Generating…';
-
+    async function buildSheet() {
       const cols = 4, rows = 2, total = cols * rows;
       const thumbW = Math.round(vw * (320 / Math.max(vw, vh)));
       const thumbH = Math.round(vh * (320 / Math.max(vw, vh)));
@@ -2717,20 +2717,35 @@ export async function renderVideo(file, resultsEl, opts = {}) {
         ctx.drawImage(playerEl, x, y, thumbW, thumbH);
       }
 
+      const url = gridCanvas.toDataURL('image/png');
       sheetOut.innerHTML = '';
-      sheetOut.appendChild(sheetImg(gridCanvas.toDataURL('image/png')));
+      sheetOut.appendChild(sheetImg(url));
 
       const saveBtn = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:8px;', onclick: () => {
         const a = document.createElement('a');
-        a.href = gridCanvas.toDataURL('image/png');
+        a.href = url;
         a.download = (file.name || 'video').replace(/\.[^/.]+$/, '') + '_contact_sheet.png';
         a.click();
       }}, 'Save as PNG');
       sheetOut.appendChild(saveBtn);
+    }
 
-      sheetBtn.disabled = false;
-      sheetBtn.textContent = 'Generate contact sheet';
-    });
+    // Generate at most once; reuse the in-flight or finished promise. The button
+    // and the data export both go through this.
+    let sheetDone = false, sheetPromise = null;
+    function ensureSheet() {
+      if (sheetDone) return Promise.resolve();
+      if (sheetPromise) return sheetPromise;
+      sheetBtn.disabled = true;
+      sheetBtn.textContent = 'Generating…';
+      sheetPromise = buildSheet()
+        .then(() => { sheetDone = true; })
+        .catch(() => { sheetPromise = null; })
+        .finally(() => { sheetBtn.disabled = false; sheetBtn.textContent = 'Generate contact sheet'; });
+      return sheetPromise;
+    }
+    sheetBtn.addEventListener('click', ensureSheet);
+    sheetCard._anrEnsure = ensureSheet;
 
     sheetCard.appendChild(el('div', { class: 'anr-btn-row' }, [sheetBtn]));
     sheetCard.appendChild(sheetOut);
