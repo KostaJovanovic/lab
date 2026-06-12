@@ -4,12 +4,12 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 102;
+const COMMIT_COUNT = 103;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
-// 0.03 â€¦ (the part after the dot is the commit's 1-based position, zero-padded to
+// 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
 // major version and resets the counter within its era: commit 29 reads "1.0" (and
-// 30 â†’ "1.01"), commit 60 reads "2.0" (and 61 â†’ "2.01"). To crown a future 3.0,
+// 30 → "1.01"), commit 60 reads "2.0" (and 61 → "2.01"). To crown a future 3.0,
 // append its commit number here (keep the list sorted ascending, and mirror the
 // RELEASES constant in save.bat).
 const RELEASE_COMMITS = [29, 60, 100];
@@ -123,7 +123,7 @@ function showDropLoader(file, onCancel, labelText, immediate) {
   const name = (file && file.name) ? file.name : 'file';
   const reveal = () => {
     if (!_dropLoaderEl || !_dropLoaderEl.isConnected) {
-      // A window of accent slashes ('////') bouncing leftâ†”right inside brackets
+      // A window of accent slashes ('////') bouncing left↔right inside brackets
       // ([   ////   ]), stepped in discrete jumps via a CSS steps() timing so it
       // reads choppy like the original ASCII bar. The motion is a CSS transform,
       // NOT a requestAnimationFrame loop - rAF runs on the main thread, so it
@@ -146,7 +146,7 @@ function showDropLoader(file, onCancel, labelText, immediate) {
       _dropLoaderEl._label = label;
       document.body.appendChild(_dropLoaderEl);
     }
-    _dropLoaderEl._label.textContent = labelText || ('Reading ' + name + 'â€¦');
+    _dropLoaderEl._label.textContent = labelText || ('Reading ' + name + '…');
     _dropLoaderShownAt = performance.now();
     _dropLoaderOpen = true;
     // Guard the class-add on the intent flag: if hideDropLoader() runs in the
@@ -184,7 +184,7 @@ function hideDropLoader() {
 // The bar is a CSS animation, so it keeps stepping even under the heavy
 // synchronous decode/FFT work these actions trigger.
 window._anrLoader = {
-  show: (label) => showDropLoader(null, null, label || 'Workingâ€¦'),
+  show: (label) => showDropLoader(null, null, label || 'Working…'),
   hide: hideDropLoader,
 };
 
@@ -343,7 +343,7 @@ function classifyFile(file) {
   return 'unknown';
 }
 
-// kind â†’ how to route it. `results` names the container (the three media kinds
+// kind → how to route it. `results` names the container (the three media kinds
 // get their own section + nav flash + scroll; everything else funnels into
 // unknownResults). `nav`/`analysed` list the nav links and sections to mark.
 // Adding a file type means adding one row here plus a classifyFile() case.
@@ -1082,7 +1082,7 @@ function boot() {
         showTypeSuggestion(suggestion, () => handleFile(file, { kind: suggestion.kind, ext: suggestion.ext }));
       }
       // Append the browse-as-archive view under the primary analysis for files
-      // that are physically a zip/rar/7z container (APK, DOCX, JAR, RAR, â€¦).
+      // that are physically a zip/rar/7z container (APK, DOCX, JAR, RAR, …).
       if (archiveEmbed && resultEl) {
         renderArchiveEmbedded(file, resultEl, archiveEmbed).catch(() => {});
       }
@@ -1388,7 +1388,7 @@ function boot() {
 
     setInterval(anrSweep, ANR_REFRESH);
 
-    // Live connectivity â†’ header "Status" line (Online / Offline). The OS events
+    // Live connectivity → header "Status" line (Online / Offline). The OS events
     // are unreliable (navigator.onLine ignores real internet reach), so we also
     // re-probe when the tab regains focus and on a modest interval while visible -
     // that catches the internet dropping while the page just sits open.
@@ -1734,7 +1734,7 @@ function boot() {
     return null;
   }
 
-  // The "âœ“ Cached" badge pinned to the bottom of a button (created lazily so the
+  // The "✓ Cached" badge pinned to the bottom of a button (created lazily so the
   // HTML stays untouched across all three pages that share this markup).
   function cachedBadge(btn) {
     let badge = btn.querySelector('.offline-cached');
@@ -1749,13 +1749,13 @@ function boot() {
   function markCached(btn, version) {
     const badge = cachedBadge(btn);
     // Parts are separate spans so the responsive trimming is pure CSS: on mobile
-    // the checkmark and the Â· separator are hidden (a - is shown instead), so the
-    // badge reads just "Cached - v2.0". Desktop keeps "âœ“ Cached Â· v2.0".
+    // the checkmark and the · separator are hidden (a - is shown instead), so the
+    // badge reads just "Cached - v2.0". Desktop keeps "✓ Cached · v2.0".
     const ver = 'v' + analyserVersion(version, RELEASE_COMMITS);
     badge.textContent = '';
-    badge.appendChild(el('span', { class: 'offline-cached-check' }, 'âœ“'));
+    badge.appendChild(el('span', { class: 'offline-cached-check' }, '✓'));
     badge.appendChild(el('span', {}, 'Cached'));
-    badge.appendChild(el('span', { class: 'offline-cached-dot' }, 'Â·'));
+    badge.appendChild(el('span', { class: 'offline-cached-dot' }, '·'));
     badge.appendChild(el('span', { class: 'offline-cached-dash' }, '-'));
     badge.appendChild(el('span', {}, ver));
     badge.hidden = false;
@@ -1953,14 +1953,14 @@ function boot() {
       if (deferredPrompt) {
         deferredPrompt.prompt();
         const result = await deferredPrompt.userChoice;
-        if (result.outcome === 'accepted') installBtn.textContent = 'Installed âœ“';
+        if (result.outcome === 'accepted') installBtn.textContent = 'Installed ✓';
         deferredPrompt = null;
         return;
       }
       const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const msg = isIos
         ? 'Tap the Share button, then "Add to Home Screen".'
-        : 'Open browser menu (â‹®), then "Install app" or "Add to Home Screen".';
+        : 'Open browser menu (⋮), then "Install app" or "Add to Home Screen".';
       installBtn.textContent = msg;
       // Expand full width (mobile only, via CSS) so the long message fits, like
       // an opened Dependencies. Clear + Dependencies split the row below it.
@@ -1972,7 +1972,7 @@ function boot() {
     });
   }
   window.addEventListener('appinstalled', () => {
-    if (installBtn) installBtn.textContent = 'Installed âœ“';
+    if (installBtn) installBtn.textContent = 'Installed ✓';
     deferredPrompt = null;
   });
 
@@ -1980,7 +1980,7 @@ function boot() {
   const clearBtn = document.getElementById('offlineClear');
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
-      clearBtn.textContent = 'Clearingâ€¦';
+      clearBtn.textContent = 'Clearing…';
       // 1. Preserve the dark-mode state, then wipe localStorage + sessionStorage.
       const theme = localStorage.getItem('anr-theme');
       const themeTs = localStorage.getItem('anr-theme:ts');
@@ -2026,7 +2026,7 @@ function boot() {
       // With the record gone, this repaints every button to its un-cached state:
       // no greying, full per-tier sizes.
       refreshTierButtons();
-      clearBtn.textContent = 'All data cleared âœ“';
+      clearBtn.textContent = 'All data cleared ✓';
       setTimeout(() => { clearBtn.textContent = 'Clear storage'; }, 3000);
     });
   }
@@ -2188,11 +2188,11 @@ function boot() {
       if (firstVisibleLabel) firstVisibleLabel.classList.add('is-first-visible');
       if (fmtResultCount) {
         fmtResultCount.textContent =
-          visCount + (visCount === 1 ? ' format' : ' formats') + ' Â· ' + extSet.size + ' extensions';
+          visCount + (visCount === 1 ? ' format' : ' formats') + ' · ' + extSet.size + ' extensions';
       }
       if (fmtEmpty) {
         fmtEmpty.hidden = visCount !== 0;
-        if (visCount === 0) fmtEmpty.textContent = raw ? `No formats match â€œ${raw}â€.` : 'No formats in this category.';
+        if (visCount === 0) fmtEmpty.textContent = raw ? `No formats match “${raw}”.` : 'No formats in this category.';
       }
       syncToggleAll();
     }

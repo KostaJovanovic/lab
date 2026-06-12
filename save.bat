@@ -54,12 +54,16 @@ set RELEASES=29,60,100
 for /f %%v in ('powershell -NoProfile -Command "$n=%NEXT_COUNT%; $major=0; $base=0; foreach($r in @(%RELEASES%)){ if($n -ge $r){ $major++; $base=$r } else { break } }; if($major -eq 0){ '0.{0:D2}' -f $n } elseif(($n-$base) -eq 0){ '{0}.0' -f $major } else { '{0}.{1:D2}' -f $major,($n-$base) }"') do set VERLABEL=%%v
 echo Bumping version to %VERLABEL% (commit %NEXT_COUNT%)
 
-powershell -Command "(Get-Content 'assets/js/core/app.js') -replace 'const COMMIT_COUNT = \d+;', 'const COMMIT_COUNT = %NEXT_COUNT%;' | Set-Content 'assets/js/core/app.js' -Encoding utf8"
+rem -Encoding UTF8 on BOTH ends is required: without it, Get-Content defaults to
+rem the ANSI code page and reads this UTF-8 file as Windows-1252, mangling every
+rem non-ASCII char (e.g. the ellipsis in "Reading file..." became "...â€¦...") a
+rem little more on every commit. Read and write UTF-8 explicitly so it round-trips.
+powershell -Command "(Get-Content 'assets/js/core/app.js' -Encoding UTF8) -replace 'const COMMIT_COUNT = \d+;', 'const COMMIT_COUNT = %NEXT_COUNT%;' | Set-Content 'assets/js/core/app.js' -Encoding utf8"
 
 rem Bump the service-worker cache epoch too, so every commit ships fresh JS/CSS
 rem instead of leaving cached clients on a stale shell (stale-while-revalidate
 rem otherwise keeps serving the old code until VERSION changes).
-powershell -Command "(Get-Content 'sw.js') -replace 'const VERSION = ''analyser-v\d+'';', 'const VERSION = ''analyser-v%NEXT_COUNT%'';' | Set-Content 'sw.js' -Encoding utf8"
+powershell -Command "(Get-Content 'sw.js' -Encoding UTF8) -replace 'const VERSION = ''analyser-v\d+'';', 'const VERSION = ''analyser-v%NEXT_COUNT%'';' | Set-Content 'sw.js' -Encoding utf8"
 
 rem Prerender the static /formats page from the catalog (single source of truth
 rem in assets/js/core/formats.js), so the supported-formats list and its #fmt- /

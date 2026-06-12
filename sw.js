@@ -1,7 +1,7 @@
 ﻿/* Analyser - service worker
    Precache the app shell; stale-while-revalidate the rest. */
 
-const VERSION = 'analyser-v102';
+const VERSION = 'analyser-v103';
 const SHELL = [
   './',
   './about',

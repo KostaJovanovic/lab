@@ -103,9 +103,10 @@ export function showSuggestPopup(ext) {
       const body = 'Hi! Analyser couldn’t get much out of ' + (_suggestPopEl._label || 'this file type') + '.\n'
         + 'Could you add (or improve) support for it?\n\n'
         + 'I can attach a sample file to this email if that helps.\n';
-      window.location.href = 'mailto:' + addr
+      // Open in a new tab so the current analysis page is never navigated away.
+      window.open('mailto:' + addr
         + '?subject=' + encodeURIComponent(subject)
-        + '&body=' + encodeURIComponent(body);
+        + '&body=' + encodeURIComponent(body), '_blank');
     };
 
     const resetCta = () => {
@@ -216,9 +217,10 @@ function openContactModal() {
         + 'I was using Analyser and wanted to get in touch about:\n\n'
         + '\n\n'
         + '(Feel free to attach a file if it helps.)\n';
-      window.location.href = 'mailto:' + addr
+      // Open in a new tab so this page stays put rather than being navigated away.
+      window.open('mailto:' + addr
         + '?subject=' + encodeURIComponent(subject)
-        + '&body=' + encodeURIComponent(body);
+        + '&body=' + encodeURIComponent(body), '_blank');
       setTimeout(close, 700);
     })
     .catch((reason) => {
