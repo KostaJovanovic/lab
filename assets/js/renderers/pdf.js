@@ -1,7 +1,7 @@
 /* Analyser - PDF module
    Lazy-loads pdf.js from CDN, extracts metadata, text, and page thumbnails. */
 
-import { el, row, rowHelp, fmtBytes, errorCard, integrityCard, attachZoomPan, openOverlayBack } from '../core/util.js';
+import { el, row, rowHelp, fmtBytes, errorCard, integrityCard, openOverlayBack } from '../core/util.js';
 import { renderPhoto, revealPhotoSection, pickOcrLanguage, ocrLangPath } from './photo.js';
 
 // Resolved against this module's URL so the dynamic import() gets a valid
@@ -535,46 +535,104 @@ export async function renderPdf(file, resultsEl) {
     style: 'display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-start;'
   });
 
+  const PDF_ZOOM = 2;   // double-click / double-tap zoom factor in the viewer
   function openPageViewer(startPage) {
     let overlay = document.getElementById('anr-pdf-viewer');
     if (!overlay) {
-      overlay = el('div', { id: 'anr-pdf-viewer', class: 'lightbox' });
+      overlay = el('div', { id: 'anr-pdf-viewer', class: 'lightbox anr-doc-lightbox' });
       const closeBtn = el('button', { type: 'button', class: 'lightbox-close' }, 'Close');
       const center = el('div', { class: 'lightbox-center' });
-      const cvWrap = el('div', { class: 'lightbox-img-wrap' });
+      const stage = el('div', { class: 'anr-doc-stage anr-pdf-stage' });
+      const pagebox = el('div', { class: 'anr-pdf-pagebox' });
       const cv = el('canvas', {});
-      cvWrap.appendChild(cv);
+      const textLayer = el('div', { class: 'textLayer' });
+      pagebox.appendChild(cv);
+      pagebox.appendChild(textLayer);
+      stage.appendChild(pagebox);
       const toolbar = el('div', { class: 'lightbox-toolbar' });
       const meta = el('p', { class: 'lightbox-meta' });
-      center.appendChild(cvWrap);
+      center.appendChild(stage);
       center.appendChild(toolbar);
       center.appendChild(meta);
       overlay.appendChild(closeBtn);
       overlay.appendChild(center);
-      overlay._zoom = attachZoomPan(cvWrap);
       // Raw hide vs. user-close: close() also unwinds the Back-button history entry.
       overlay._hide = function () { overlay.hidden = true; document.body.style.overflow = ''; overlay._backClose = null; };
       function close() { if (overlay._backClose) overlay._backClose(); else overlay._hide(); }
       closeBtn.addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+      // Backdrop click closes - but not when finishing a text selection on it.
+      overlay.addEventListener('click', (e) => {
+        if (e.target !== overlay) return;
+        const sel = window.getSelection && window.getSelection();
+        if (sel && String(sel).length) return;
+        close();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (overlay.hidden) return;
+        if (e.key === 'Escape') close();
+        else if (e.key === 'ArrowLeft') overlay._prev && overlay._prev();
+        else if (e.key === 'ArrowRight') overlay._next && overlay._next();
+      });
+
+      // Zoom on double-click / double-tap (single tap+drag stays free for
+      // selecting text on the layer). CSS `zoom` scales canvas + text layer
+      // together while keeping selection live; the stage scrolls to pan.
+      let zoomed = false;
+      overlay._resetZoom = () => { zoomed = false; pagebox.style.zoom = ''; };
+      overlay._toggleZoom = (clientX, clientY) => {
+        zoomed = !zoomed;
+        if (!zoomed) { pagebox.style.zoom = ''; return; }
+        const rect = pagebox.getBoundingClientRect();
+        const cx = stage.scrollLeft + (clientX - rect.left);
+        const cy = stage.scrollTop + (clientY - rect.top);
+        pagebox.style.zoom = String(PDF_ZOOM);
+        stage.scrollLeft = cx * PDF_ZOOM - stage.clientWidth / 2;
+        stage.scrollTop = cy * PDF_ZOOM - stage.clientHeight / 2;
+      };
+      stage.addEventListener('dblclick', (e) => { e.preventDefault(); overlay._toggleZoom(e.clientX, e.clientY); });
+      let lastTap = 0, lastX = 0, lastY = 0;
+      stage.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'touch') return;
+        const now = e.timeStamp;
+        if (now - lastTap < 320 && Math.abs(e.clientX - lastX) < 30 && Math.abs(e.clientY - lastY) < 30) {
+          const sel = window.getSelection && window.getSelection();
+          if (!(sel && String(sel).length)) overlay._toggleZoom(e.clientX, e.clientY);
+          lastTap = 0;
+        } else { lastTap = now; lastX = e.clientX; lastY = e.clientY; }
+      });
+
       document.body.appendChild(overlay);
     }
-    const cvWrap = overlay.querySelector('.lightbox-img-wrap');
-    const cv = cvWrap.querySelector('canvas');
+    const stage = overlay.querySelector('.anr-pdf-stage');
+    const pagebox = overlay.querySelector('.anr-pdf-pagebox');
+    const cv = pagebox.querySelector('canvas');
+    const textLayer = pagebox.querySelector('.textLayer');
     const toolbar = overlay.querySelector('.lightbox-toolbar');
     const meta = overlay.querySelector('.lightbox-meta');
     toolbar.innerHTML = '';
 
     let current = startPage;
     let hiRes = false;            // toggled by the High-res button below
-    // keepZoom: re-render the current page (e.g. after toggling resolution)
-    // without clearing the user's zoom/pan - the whole point of hi-res is to add
-    // detail to the view they've already zoomed into.
+
+    // Overlay a selectable, position-aligned text layer on top of the canvas.
+    async function buildTextLayer(pg, cssScale, cssW, cssH) {
+      textLayer.innerHTML = '';
+      textLayer.style.width = cssW + 'px';
+      textLayer.style.height = cssH + 'px';
+      textLayer.style.setProperty('--scale-factor', String(cssScale));
+      try {
+        const tc = await pg.getTextContent();
+        const vp = pg.getViewport({ scale: cssScale });
+        const task = lib.renderTextLayer({ textContentSource: tc, container: textLayer, viewport: vp });
+        await (task && task.promise ? task.promise : task);
+      } catch (_) { /* page just won't be selectable */ }
+    }
+
     async function showPage(num, keepZoom) {
       current = num;
-      if (!keepZoom && overlay._zoom) overlay._zoom.reset();
-      meta.textContent = 'Page ' + num + ' / ' + pdf.numPages + (hiRes ? '  (hi-res)' : '');
+      if (!keepZoom) { overlay._resetZoom(); stage.scrollTop = 0; stage.scrollLeft = 0; }
+      meta.textContent = 'Page ' + num + ' / ' + pdf.numPages + (hiRes ? '  (hi-res)' : '') +
+        '  -  double-click to zoom';
       prevBtn.style.visibility = num > 1 ? 'visible' : 'hidden';
       nextBtn.style.visibility = num < pdf.numPages ? 'visible' : 'hidden';
       try {
@@ -582,13 +640,10 @@ export async function renderPdf(file, resultsEl) {
         const vp = pg.getViewport({ scale: 1 });
         const maxW = window.innerWidth * 0.9;
         const maxH = window.innerHeight * 0.82;
-        // The page is laid out (CSS) to fit the viewport; the canvas backing store
-        // is what limits sharpness when you zoom in (the lightbox zooms to 8x).
-        // Standard mode renders at device density; High-res oversamples well
-        // beyond it. Either way clamp the longest side to MAX_SIDE so we never
-        // exceed the browser's max-canvas / memory limits (lower on touch). The
-        // CSS size stays fit-to-screen, so the zoom transform just scales this
-        // bitmap down - crisp until you pass the oversample ratio.
+        // The page is laid out (CSS) at fit-to-screen size; the canvas backing
+        // store is rendered larger (device density, or High-res oversampling)
+        // so it stays crisp when the viewer is zoomed. Clamp the longest side to
+        // MAX_SIDE to stay within browser canvas/memory limits (lower on touch).
         const cssScale = Math.min(maxW / vp.width, maxH / vp.height, 3);
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const OVERSAMPLE = hiRes ? 3 : 1;
@@ -603,9 +658,10 @@ export async function renderPdf(file, resultsEl) {
         const cssH = Math.floor(vp.height * cssScale);
         cv.style.width = cssW + 'px';
         cv.style.height = cssH + 'px';
-        cvWrap.style.width = cssW + 'px';
-        cvWrap.style.height = cssH + 'px';
+        pagebox.style.width = cssW + 'px';
+        pagebox.style.height = cssH + 'px';
         await pg.render({ canvasContext: cv.getContext('2d'), viewport: sv }).promise;
+        await buildTextLayer(pg, cssScale, cssW, cssH);
       } catch (_) {
         meta.textContent = 'Page ' + num + ' - could not render';
       }
@@ -615,6 +671,8 @@ export async function renderPdf(file, resultsEl) {
     prevBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current > 1) showPage(current - 1); });
     const nextBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Next →');
     nextBtn.addEventListener('click', (e) => { e.stopPropagation(); if (current < pdf.numPages) showPage(current + 1); });
+    const zoomBtn = el('button', { type: 'button', class: 'lightbox-tool-btn' }, 'Zoom');
+    zoomBtn.addEventListener('click', (e) => { e.stopPropagation(); overlay._toggleZoom(window.innerWidth / 2, window.innerHeight / 2); });
     const hiResBtn = el('button', { type: 'button', class: 'lightbox-tool-btn', title: 'Render this page at much higher resolution for sharper zooming (slower, more memory)' }, 'High-res');
     hiResBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -626,8 +684,11 @@ export async function renderPdf(file, resultsEl) {
       hiResBtn.disabled = false;
       hiResBtn.textContent = 'High-res';
     });
+    overlay._prev = () => { if (current > 1) showPage(current - 1); };
+    overlay._next = () => { if (current < pdf.numPages) showPage(current + 1); };
     toolbar.appendChild(prevBtn);
     toolbar.appendChild(nextBtn);
+    toolbar.appendChild(zoomBtn);
     toolbar.appendChild(hiResBtn);
 
     const wasHidden = overlay.hidden;

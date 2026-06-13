@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 111;
+const COMMIT_COUNT = 112;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -37,6 +37,8 @@ import { renderDocx } from '../renderers/docx.js';
 import { renderXlsx } from '../renderers/xlsx.js';
 import { renderEpub } from '../renderers/epub.js';
 import { renderPptx } from '../renderers/pptx.js';
+import { renderOdt, renderOds, renderOdp } from '../renderers/odf.js';
+import { renderDoc, renderXls, renderPpt } from '../renderers/legacy-office.js';
 import { renderStl } from '../renderers/stl.js';
 import { renderModel3d } from '../renderers/model3d.js';
 import { renderTimeline } from '../renderers/timeline.js';
@@ -320,6 +322,12 @@ function classifyFile(file) {
   if (ext === 'xlsx') return 'xlsx';
   if (ext === 'epub') return 'epub';
   if (ext === 'pptx') return 'pptx';
+  if (ext === 'odt') return 'odt';
+  if (ext === 'ods') return 'ods';
+  if (ext === 'odp') return 'odp';
+  if (ext === 'doc') return 'doc';
+  if (ext === 'xls') return 'xls';
+  if (ext === 'ppt' || ext === 'pps') return 'ppt';
   if (ext === 'stl') return 'stl';
   // 3D models with an interactive WebGL viewer. Native meshes: STL (above), OBJ,
   // PLY, OFF, 3MF, AMF. B-rep CAD via OpenCASCADE: STEP, IGES, BREP.
@@ -356,6 +364,12 @@ const ROUTES = {
   xlsx:        { render: renderXlsx,        results: 'unknown', scroll: '#unknownResults' },
   epub:        { render: renderEpub,        results: 'unknown', scroll: '#unknownResults' },
   pptx:        { render: renderPptx,        results: 'unknown', scroll: '#unknownResults' },
+  odt:         { render: renderOdt,         results: 'unknown', scroll: '#unknownResults' },
+  ods:         { render: renderOds,         results: 'unknown', scroll: '#unknownResults' },
+  odp:         { render: renderOdp,         results: 'unknown', scroll: '#unknownResults' },
+  doc:         { render: renderDoc,         results: 'unknown', scroll: '#unknownResults' },
+  xls:         { render: renderXls,         results: 'unknown', scroll: '#unknownResults' },
+  ppt:         { render: renderPpt,         results: 'unknown', scroll: '#unknownResults' },
   stl:         { render: renderStl,         results: 'unknown', scroll: '#unknownResults' },
   model3d:     { render: renderModel3d,     results: 'unknown', scroll: '#unknownResults' },
   timeline:    { render: renderTimeline,    results: 'unknown', scroll: '#unknownResults' },
@@ -1009,7 +1023,7 @@ function boot() {
         const sniff = await sniffFileType(file);
         if (token.cancelled) return;
         const noExt = !fileExt(file.name);
-        const zipFamily = new Set(['docx', 'xlsx', 'pptx', 'epub', 'zip', 'comic']);
+        const zipFamily = new Set(['docx', 'xlsx', 'pptx', 'epub', 'zip', 'comic', 'odt', 'ods', 'odp']);
         const offerable = noExt || kind === 'unknown' || kind === 'proprietary'
           || kind === 'photo' || kind === 'audio' || kind === 'video';
         if (sniff && sniff.kind !== kind && !(sniff.kind === 'zip' && zipFamily.has(kind)) && offerable) {

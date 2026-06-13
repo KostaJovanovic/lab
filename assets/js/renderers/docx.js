@@ -4,6 +4,7 @@
 
 import { el, row, rowHelp, buildReadout, fmtBytes, integrityCard } from '../core/util.js';
 import { openZip } from './zip.js';
+import { paginateFlow, pagedPreviewCard, pagedTextCard } from './paged.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -474,36 +475,16 @@ export async function renderDocx(file, container) {
 
     const imageMap = await buildImageMap(zip);
 
-    const docCard = el('div', { class: 'anr-card' });
-    docCard.appendChild(el('h3', {}, 'Document'));
+    // Render the document body, then lay it out onto page sheets (the PDF-style
+    // "Page previews" presentation). textContent must be read before paginating,
+    // since paginateFlow moves the blocks out of `rendered`.
     const rendered = renderDocumentXml(docXml, imageMap);
-    rendered.style.cssText =
-      'max-height:700px;overflow:auto;padding:24px 28px;background:var(--bg);color:var(--fg);' +
-      'border:1px solid var(--rule);font-family:Georgia,"Times New Roman",serif;' +
-      'font-size:15px;line-height:1.7;';
-    docCard.appendChild(rendered);
-    container.appendChild(docCard);
+    const pages = paginateFlow(rendered);
+    const pageTexts = pages.map((p) => p.textContent);
+    container.appendChild(pagedPreviewCard(pages, { title: 'Page previews', label: 'Page' }));
 
-    const fullText = rendered.textContent;
-    if (fullText.trim()) {
-      const textCard = el('div', { class: 'anr-card' });
-      textCard.appendChild(el('h3', {}, 'Text'));
-      const wordCount = fullText.trim().split(/\s+/).filter(Boolean).length;
-      const textTbl = el('table', { class: 'anr-readout' });
-      textTbl.appendChild(row('Words', wordCount.toLocaleString()));
-      textTbl.appendChild(row('Characters', fullText.length.toLocaleString()));
-      textCard.appendChild(textTbl);
-      const copyBtn = el('button', { type: 'button', class: 'anr-btn', style: 'margin-top:8px;' },
-        'Copy all text');
-      copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(fullText);
-          copyBtn.textContent = 'Copied ✓';
-        } catch (_) { copyBtn.textContent = 'Copy failed'; }
-        setTimeout(() => { copyBtn.textContent = 'Copy all text'; }, 2000);
-      });
-      textCard.appendChild(copyBtn);
-      container.appendChild(textCard);
+    if (pageTexts.some((t) => t.trim())) {
+      container.appendChild(pagedTextCard(pageTexts, { label: 'Page' }));
     }
 
     if (file.size <= 500 * 1024 * 1024) {

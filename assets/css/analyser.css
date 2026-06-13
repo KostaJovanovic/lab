@@ -5467,3 +5467,187 @@ a.stats-ext-link:hover { color: var(--accent); text-decoration: none; }
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ============================================================================
+   Document "page preview" sheets (paged.js) - shared by DOCX/ODT/ODS/ODP and
+   the legacy DOC/XLS/PPT viewers. Pages render as paper sheets regardless of
+   theme, the way the PDF page previews do.
+   ============================================================================ */
+.anr-page-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 6px 0 14px;
+}
+.anr-page-fig { margin: 0; width: 200px; }
+.anr-page-thumb {
+  position: relative;
+  overflow: hidden;
+  width: 200px;
+  background: #fff;
+  border: 1px solid var(--hairline);
+  cursor: zoom-in;
+  transition: box-shadow var(--dur-fast, 0.15s) ease;
+}
+.anr-page-thumb:hover { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.30); }
+.anr-page-thumb-inner {
+  width: 760px;
+  transform-origin: top left;
+  pointer-events: none;
+}
+.anr-page-thumb-inner .anr-page {
+  border: none;
+  box-shadow: none;
+  margin: 0;
+}
+.anr-page-cap {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 6px;
+}
+.anr-page {
+  box-sizing: border-box;
+  width: 760px;
+  max-width: 100%;
+  min-height: 1075px;
+  padding: 56px;
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #d8d8d8;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.anr-page :is(h1, h2, h3, h4, h5, h6) { color: #111; line-height: 1.3; }
+.anr-page img { max-width: 100%; height: auto; }
+.anr-page table { border-collapse: collapse; max-width: 100%; }
+.anr-page td, .anr-page th { border: 1px solid #c9c9c9; }
+/* Spreadsheet page: let wide grids scroll horizontally inside the sheet. */
+.anr-page--sheet {
+  min-height: 0;
+  padding: 28px;
+  font-family: var(--font-sans, system-ui), sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+.anr-page--sheet table { width: max-content; min-width: 100%; }
+.anr-page--sheet td, .anr-page--sheet th { padding: 4px 8px; white-space: nowrap; }
+.anr-page--sheet th {
+  background: #f3f3f3;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.anr-page--sheet .anr-sheet-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: #333;
+}
+/* Presentation page: landscape slide. */
+.anr-page--slide {
+  width: 760px;
+  min-height: 0;
+  aspect-ratio: 4 / 3;
+  padding: 40px 48px;
+  font-family: var(--font-sans, system-ui), sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+.anr-page--slide .anr-slide-title { font-size: 26px; font-weight: 700; line-height: 1.25; }
+.anr-page--slide .anr-slide-body { font-size: 17px; line-height: 1.5; }
+.anr-page--slide img { max-height: 60%; object-fit: contain; align-self: flex-start; }
+
+/* Lightbox stage holding a cloned page, stepped through with prev/next. Single
+   tap/drag selects text; double-click/double-tap zooms (handled in paged.js). */
+.anr-doc-lightbox { cursor: default; }
+.anr-doc-stage {
+  max-width: 92vw;
+  max-height: 82vh;
+  overflow: auto;
+  background: transparent;
+  -webkit-overflow-scrolling: touch;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+.anr-page--lightbox {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  margin: 0 auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* PDF page viewer: a canvas with a selectable, position-aligned text layer
+   overlaid (PDF.js v4 text-layer styles). Single tap/drag selects, double-click
+   zooms (handled in pdf.js). */
+.anr-pdf-stage { text-align: center; }
+.anr-pdf-pagebox {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+.anr-pdf-pagebox > canvas { display: block; }
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 2;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.textLayer span.markedContent { top: 0; height: 0; }
+.textLayer ::selection { background: rgba(0, 100, 255, 0.30); }
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+
+/* Per-page selectable text card (pagedTextCard), shared by the doc viewers. */
+.anr-pagetext-wrap { max-height: 460px; overflow: auto; margin-top: 4px; }
+.anr-pagetext-block { margin: 0 0 14px; }
+.anr-pagetext-head { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+.anr-pagetext-label { font-size: 11px; opacity: 0.7; font-family: var(--font-mono); }
+.anr-pagetext {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  user-select: text;
+  -webkit-user-select: text;
+}
+@media (max-width: 540px) {
+  .anr-page { padding: 28px; min-height: 0; }
+  .anr-page--slide { padding: 24px; }
+}
