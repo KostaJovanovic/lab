@@ -7,6 +7,7 @@ import { makeSpectrogramPanel, makePlayer, buildHistogramCard, buildWaveformCard
 import { renderPhoto, revealPhotoSection, openLightbox } from './photo.js';
 import { el, row, rowHelp, fmtBytes, h3help, sha256Row, integrityCard, roundFps, asciiBar } from '../core/util.js';
 import { parseAviHeader, extractAviData, encodeWav } from './video-avi.js';
+import { buildReverseAudioCard } from './media-reverse.js';
 
 // iOS (iPhone/iPad) detection. On iOS the custom scrubber's touch handling is
 // unreliable, so we show the native <video> controls there; everywhere else the
@@ -2014,6 +2015,7 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
       apCard.appendChild(audioPlayer); apCard.appendChild(makePlayer(audioPlayer));
       apCard.appendChild(audioDownloadRow(wavUrl, file));
       audioResultsEl.appendChild(apCard);
+      audioResultsEl.appendChild(buildReverseAudioCard(audioBuf, (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio', signal));
       const at = el('table', { class: 'anr-readout' });
       at.appendChild(row('Duration', formatDuration(audioBuf.duration)));
       at.appendChild(rowHelp('Sample rate', audioBuf.sampleRate.toLocaleString() + ' Hz', 'Audio samples captured per second, in hertz - e.g. 48000 Hz means 48,000 amplitude readings per second of sound.'));
@@ -2544,6 +2546,7 @@ export async function renderVideo(file, resultsEl, opts = {}) {
         apCard.appendChild(makePlayer(audioPlayer));
         apCard.appendChild(audioDownloadRow(wavUrl, file));
         audioResultsEl.appendChild(apCard);
+        audioResultsEl.appendChild(buildReverseAudioCard(audioBuf, (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio', renderSignal));
 
         const audioCard = el('div', { class: 'anr-card' });
         audioCard.appendChild(el('h3', {}, 'Audio track'));
@@ -3034,6 +3037,7 @@ export async function renderVideo(file, resultsEl, opts = {}) {
       playerCard.appendChild(makePlayer(audioPlayer));
       playerCard.appendChild(audioDownloadRow(wavUrl, file));
       audioResultsEl.appendChild(playerCard);
+      audioResultsEl.appendChild(buildReverseAudioCard(audioBuf, (file.name || 'video').replace(/\.[^/.]+$/, '') + '_audio', renderSignal));
 
       // Info table
       const at = el('table', { class: 'anr-readout' });

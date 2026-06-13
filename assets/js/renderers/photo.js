@@ -13,6 +13,7 @@ import { convertHeic, extractRawPreview, convertWithImageMagick, demosaicRaw, ex
 import { ascii, latin1, utf8, inflate } from '../core/binutil.js';
 import { decodeGifFrames } from './gif-frames.js';
 import { decodeWebpFrames } from './webp-frames.js';
+import { encodeAnimatedGif } from './gif-encode.js';
 
 // ---------- Browser-undecodable images ----------
 // Some image formats a web browser has no decoder for, so an <img> can't paint
@@ -2121,6 +2122,55 @@ function buildFrameViewerCard(file, decoded, resultsEl, signal, opts = {}) {
   return card;
 }
 
+// Reverse card for the animated GIF / WebP viewers: on demand it builds a second
+// frame viewer playing the (already-decoded) frames backwards, and a reversed-GIF
+// download encoded from those frames. Mirrors the audio/video reverse controls.
+// `decoded` is the same object the forward viewer used; `opts` carries kindLabel
+// and (for WebP) the per-frame delaysMs.
+function buildReverseAnimationCard(file, decoded, resultsEl, signal, opts = {}) {
+  const kindLabel = opts.kindLabel || 'animated GIF';
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Reverse'));
+  card.appendChild(el('p', { class: 'anr-hint' },
+    `Play this ${kindLabel} backwards, and download the reversed animation as a GIF.`));
+  const out = el('div');
+  const btn = el('button', { type: 'button', class: 'anr-btn' }, '↺ Reverse');
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    btn.textContent = 'Reversing…';
+    // Defer so the button repaints before the (synchronous) reverse + GIF encode.
+    setTimeout(() => {
+      try {
+        const fwdDelaysMs = opts.delaysMs ||
+          decoded.frames.map((f) => { const ms = f.delay * 10; return ms < 20 ? 100 : ms; });
+        const frames = decoded.frames.slice().reverse();
+        const delaysMs = fwdDelaysMs.slice().reverse();
+        const reversed = { ...decoded, frames, delaysMs };
+        out.appendChild(buildFrameViewerCard(file, reversed, resultsEl, signal,
+          { kindLabel: kindLabel + ' (reversed)', delaysMs }));
+
+        const delaysCs = delaysMs.map((ms) => Math.max(2, Math.round(ms / 10)));
+        const blob = encodeAnimatedGif(decoded.width, decoded.height,
+          frames.map((f) => f.data), delaysCs, decoded.loop == null ? 0 : decoded.loop);
+        const url = URL.createObjectURL(blob);
+        if (signal) signal.addEventListener('abort', () => { try { URL.revokeObjectURL(url); } catch (_) {} });
+        const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+        out.appendChild(el('div', { style: 'margin-top:10px;' }, [
+          el('a', { href: url, download: base + '_reversed.gif', class: 'anr-btn',
+            style: 'display:inline-block;text-decoration:none;' }, 'Download reversed (GIF)')
+        ]));
+        btn.remove();
+      } catch (_) {
+        btn.disabled = false;
+        btn.textContent = 'Reverse failed - try again';
+      }
+    }, 0);
+  });
+  card.appendChild(btn);
+  card.appendChild(out);
+  return card;
+}
+
 // Tears down the previous photo's persistent loops (the GIF frame player's
 // requestAnimationFrame loop) when a new file is analysed or the page navigates.
 let photoRenderAbort = null;
@@ -2487,6 +2537,7 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
       const decoded = decodeGifFrames(await file.arrayBuffer());
       if (decoded && decoded.frames.length > 1) {
         resultsEl.appendChild(buildFrameViewerCard(file, decoded, resultsEl, renderSignal));
+        resultsEl.appendChild(buildReverseAnimationCard(file, decoded, resultsEl, renderSignal));
       }
     } catch (_) { /* malformed GIF - leave the normal photo view untouched */ }
   } else if (!inline && (fileExt(file.name) === 'webp' || file.type === 'image/webp')) {
@@ -2494,6 +2545,8 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
       const decoded = await decodeWebpFrames(file);
       if (decoded && decoded.frames.length > 1) {
         resultsEl.appendChild(buildFrameViewerCard(file, decoded, resultsEl, renderSignal,
+          { kindLabel: 'animated WebP', delaysMs: decoded.delaysMs }));
+        resultsEl.appendChild(buildReverseAnimationCard(file, decoded, resultsEl, renderSignal,
           { kindLabel: 'animated WebP', delaysMs: decoded.delaysMs }));
       }
     } catch (_) { /* not animated / no ImageDecoder - leave the normal photo view */ }
