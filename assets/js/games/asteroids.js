@@ -158,8 +158,8 @@ export function launchAsteroids() {
   const LIGHTNING_RANGE = 0.7 * 540 * 0.9 * S;   // 70% of a normal bullet's reach
   const SHIELD_DUR = 7;       // health pickup at full HP grants a 7s shield instead
   const LASER_WIDTH = 34 * S; // full beam width; the hitbox is drawn to match it
-  const ULTRASOUND_RADIUS = 0.25 * 540 * 0.9 * S;   // a quarter of a normal bullet's reach
-  const ULTRASOUND_TICK = 0.7;                  // AoE damage cadence
+  const ULTRASOUND_RADIUS = 0.25 * 540 * 0.9 * 1.1 * S;   // a quarter of a normal bullet's reach, +10%
+  const ULTRASOUND_TICK = 0.35;                 // AoE damage / ripple cadence
   const RIPPLE_DUR = 1.4;                        // seconds a ripple takes to reach the rim
   // Nuclear bomb cinematic phases: instant full-white, hold, fade, then a beat of
   // empty scope before the player respawns into the next wave.
@@ -179,7 +179,7 @@ export function launchAsteroids() {
     sniper: { color: '#bc8cff', letter: 'S', label: 'SNIPER', dur: 12 },
     laser: { color: '#58a6ff', letter: 'L', label: 'LASER', dur: 10 },
     lightning: { color: '#3b5bdb', letter: 'Z', label: 'LIGHTNING', dur: 10 },
-    ultrasound: { color: '#7fd3ff', letter: 'U', label: 'SHOCKWAVE', dur: 10 },
+    ultrasound: { color: '#7fd3ff', letter: 'U', label: 'SHOCKWAVE', dur: 8 },
     // Nuclear bomb: instant, double-edged. Wipes the board and advances a wave but
     // costs a life. No `dur` - it fires once on pickup (see applyPowerup/triggerNuke).
     nuke: { color: '#ffd60a', letter: '☢', label: 'NUCLEAR' }
@@ -199,6 +199,10 @@ export function launchAsteroids() {
 
   let asteroids = [], bullets = [], particles = [], powerups = [], lasers = [];
   let wave = 0, score = 0, lives = 3, gameOver = false;
+  // What dealt the final blow, for the leaderboard: an asteroid's file label
+  // (e.g. '.pdf') or 'nuke'. Overwritten on each life lost, so at game over it
+  // holds the last (fatal) one.
+  let cause = null;
   let weapon = 'normal', weaponTimer = 0, lightningTarget = null, shield = 0;
   // Lightning's mid kink is stored as an offset from the ship (so it tracks the
   // player and survives a target redirect) and re-rolled every 0.5s.
@@ -310,6 +314,7 @@ export function launchAsteroids() {
   // marked dead (that would fire the death timer) - it's just hidden while nuke > 0.
   function triggerNuke() {
     lives--;
+    cause = 'nuke';   // if this was the last life, the bomb is the final blow
     asteroids = []; bullets = []; lasers = [];
     // End any power-up the player was carrying - they come out of the blast clean.
     weapon = 'normal'; weaponTimer = 0; shield = 0;
@@ -338,7 +343,7 @@ export function launchAsteroids() {
     nuke = 0; wreck = null; overlay.style.cursor = '';
     clearEndPanel(); scoreDone = false;
     mobileControls.forEach((elm) => { elm.style.display = ''; });   // controls back for play
-    wave = 0; score = 0; lives = 3; gameOver = false; newHigh = false;
+    wave = 0; score = 0; lives = 3; gameOver = false; newHigh = false; cause = null;
     resetShip(SPAWN_INVULN);
     spawnWave();
   }
@@ -377,12 +382,13 @@ export function launchAsteroids() {
     }
   }
 
-  function spawnBullet(angle, speed, life, sniper) {
+  function spawnBullet(angle, speed, life, sniper, pierce) {
     if (bullets.length >= MAX_BULLETS) return;
     const c = Math.cos(angle), s = Math.sin(angle);
     bullets.push({
       x: ship.x + c * 14 * S, y: ship.y + s * 14 * S,
-      vx: c * speed + ship.vx, vy: s * speed + ship.vy, life, sniper: !!sniper
+      vx: c * speed + ship.vx, vy: s * speed + ship.vy, life, sniper: !!sniper,
+      pierce: pierce | 0   // extra asteroids this round punches through before dying
     });
   }
 
@@ -448,7 +454,7 @@ export function launchAsteroids() {
       spawnBullet(ship.angle + spread, 540 * S, 0.9, false);
       fireCd = 0.18; return;
     }
-    if (weapon === 'sniper') { spawnBullet(ship.angle, 1080 * S, Infinity, true); fireCd = 0.2; return; }
+    if (weapon === 'sniper') { spawnBullet(ship.angle, 1080 * S, Infinity, true, 1); fireCd = 0.4; return; }   // half rate, but each round punches through one asteroid into a second
     spawnBullet(ship.angle, 540 * S, 0.9, false); fireCd = 0.18;                 // normal
   }
 
@@ -674,7 +680,11 @@ export function launchAsteroids() {
         const a = asteroids[ai];
         if (a.grace > 0) continue;
         const dx = a.x - b.x, dy = a.y - b.y;
-        if (dx * dx + dy * dy < a.radius * a.radius) { bullets.splice(bi, 1); destroyAsteroid(ai); break; }
+        if (dx * dx + dy * dy < a.radius * a.radius) {
+          destroyAsteroid(ai);
+          if (b.pierce > 0) { b.pierce--; break; }   // survive the hit, one less pierce left
+          bullets.splice(bi, 1); break;
+        }
       }
     }
 
@@ -683,7 +693,7 @@ export function launchAsteroids() {
       for (const a of asteroids) {
         if (a.grace > 0) continue;
         const dx = a.x - ship.x, dy = a.y - ship.y, rr = a.radius + 11 * S;
-        if (dx * dx + dy * dy < rr * rr) { loseLife(); break; }
+        if (dx * dx + dy * dy < rr * rr) { cause = a.label; loseLife(); break; }
       }
     }
   }
@@ -1022,17 +1032,18 @@ export function launchAsteroids() {
   }
 
   // Local memory for the leaderboard, kept under non-anr keys so app.js's anrSweep
-  // (which refreshes anr-* timestamps and would defeat a 1-day TTL) doesn't touch
-  // them. The remembered name expires after a day; submissions are capped at one
-  // per device per day. Both are best-effort client-side only.
+  // (which refreshes anr-* timestamps and would defeat a TTL) doesn't touch them.
+  // The remembered name is kept forever; submissions are rate-limited to one per
+  // minute and 15 per device per day. Both are best-effort client-side only.
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const MAX_PER_DAY = 10;     // submissions allowed per device per day
+  const MIN_MS = 60 * 1000;   // minimum gap between submissions: one per minute
+  const MAX_PER_DAY = 15;     // submissions allowed per device per day
   const NAME_KEY = 'asteroids-name';
   const SUBMIT_KEY = 'asteroids-submits';
   function rememberedName() {
     try {
       const raw = JSON.parse(localStorage.getItem(NAME_KEY) || 'null');
-      if (raw && raw.name && Date.now() - raw.ts < DAY_MS) return String(raw.name);
+      if (raw && raw.name) return String(raw.name);   // never expires
     } catch (_) {}
     return '';
   }
@@ -1040,17 +1051,23 @@ export function launchAsteroids() {
     try { localStorage.setItem(NAME_KEY, JSON.stringify({ name, ts: Date.now() })); } catch (_) {}
   }
   const dayBucket = () => Math.floor(Date.now() / DAY_MS);
+  function submitRecord() {
+    try { return JSON.parse(localStorage.getItem(SUBMIT_KEY) || 'null'); } catch (_) { return null; }
+  }
   function submitsToday() {
-    try {
-      const raw = JSON.parse(localStorage.getItem(SUBMIT_KEY) || 'null');
-      if (raw && raw.day === dayBucket()) return raw.count || 0;
-    } catch (_) {}
-    return 0;
+    const raw = submitRecord();
+    return (raw && raw.day === dayBucket()) ? (raw.count || 0) : 0;
   }
-  function canSubmitToday() { return submitsToday() < MAX_PER_DAY; }
+  function lastSubmit() {
+    const raw = submitRecord();
+    return (raw && typeof raw.ts === 'number') ? raw.ts : 0;
+  }
+  // Two gates: at least a minute since the last submission, and under the daily cap.
+  function canSubmitToday() { return Date.now() - lastSubmit() >= MIN_MS && submitsToday() < MAX_PER_DAY; }
   function markSubmitted() {
-    try { localStorage.setItem(SUBMIT_KEY, JSON.stringify({ day: dayBucket(), count: submitsToday() + 1 })); } catch (_) {}
+    try { localStorage.setItem(SUBMIT_KEY, JSON.stringify({ day: dayBucket(), count: submitsToday() + 1, ts: Date.now() })); } catch (_) {}
   }
+
 
   // Game-over headline shown at the top of the end card: GAME OVER + score + high.
   function endHeaderNodes() {
@@ -1128,7 +1145,7 @@ export function launchAsteroids() {
     try {
       const resp = await fetch('/api/score', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, score })
+        body: JSON.stringify({ name, score, wave, cause })
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) {
@@ -1137,8 +1154,8 @@ export function launchAsteroids() {
         return;
       }
       scoreDone = true;
-      rememberName(name);   // prefill next time (1-day memory)
-      markSubmitted();      // one submission per device per day
+      rememberName(name);   // prefill next time (kept forever)
+      markSubmitted();      // rate limit: one per minute, 15 per day
       leaderboard = data.top || leaderboard;
       showLeaderboardView(data.top, name);
     } catch (_) {
@@ -1188,9 +1205,9 @@ export function launchAsteroids() {
     setTimeout(() => input.focus(), 30);   // focus once it's in the DOM (helps on mobile)
   }
 
-  // End the run. Prompt to post the score unless it's zero, already sent this run,
-  // or this device has already submitted today (one per device per day). Otherwise
-  // just show the board (and play again).
+  // End the run. Prompt to post the score only if this run beat the player's
+  // personal best (a new high score), and unless it's already been sent this run
+  // or this device has hit the daily cap. Otherwise just show the board.
   function endGame() {
     if (gameOver) return;
     gameOver = true;
@@ -1199,7 +1216,7 @@ export function launchAsteroids() {
     mobileControls.forEach((elm) => { elm.style.display = 'none'; });
     input.left = input.right = input.thrust = input.fire = false;
     joy.active = false; joy.mag = 0;
-    if (score > 0 && !scoreDone && canSubmitToday()) showSubmitView();
+    if (newHigh && !scoreDone && canSubmitToday()) showSubmitView();
     else { endPanel = document.createElement('div'); endPanel.className = 'anr-score-panel'; overlay.appendChild(endPanel); skipToLeaderboard(); }
   }
 

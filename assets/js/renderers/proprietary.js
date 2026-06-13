@@ -7,6 +7,7 @@ import { el, row, rowHelp, fmtBytes, sha256Row, preBlock } from '../core/util.js
 import { findBytes, utf16, utf8 } from '../core/binutil.js';
 import { openZip } from './zip.js';
 import { FORMATS } from './proprietary-formats.js';
+import { parseNrbf } from '../lib/nrbf.js';
 
 // ---------- helpers ----------
 function extFromName(name) {
@@ -2792,26 +2793,112 @@ async function parseCriterium(file, head) {
 }
 
 // ---------- ULTRAKILL save (.bepis) ----------
-// The internal layout isn't publicly documented, so this is best-effort:
-// identify the container, then surface any readable strings (level / weapon /
-// difficulty names, JSON keys) found in the bytes.
+// .bepis files are .NET BinaryFormatter (NRBF) streams holding ULTRAKILL's save
+// classes from Assembly-CSharp. We decode the object graph (see lib/nrbf.js),
+// then turn the known save classes - GameProgressMoneyAndGear, GameProgressData,
+// RankData and CyberRankData - into a readable gameplay summary, and dump the
+// full decoded data underneath. Unknown classes still get the generic dump.
+const UK_DIFFICULTIES = ['Harmless', 'Lenient', 'Standard', 'Violent', 'Brutal', 'UMD'];
+const UK_WEAPONS = { rev: 'Revolver', sho: 'Shotgun', nai: 'Nailgun', rai: 'Railcannon', rock: 'Rocket Launcher', arm: 'Arm' };
+
+const isArr = (v) => Array.isArray(v);
+const countTruthy = (a) => isArr(a) ? a.filter((x) => x && x !== 0 && x !== -1).length : 0;
+const sumArr = (a) => isArr(a) ? a.reduce((s, x) => s + (Number(x) || 0), 0) : 0;
+function maxWithIndex(a) {
+  if (!isArr(a) || !a.length) return null;
+  let bi = -1, bv = -Infinity;
+  a.forEach((x, i) => { const n = Number(x); if (n > bv) { bv = n; bi = i; } });
+  return bv > 0 ? { value: bv, index: bi } : null;
+}
+const fmtTime = (s) => { const t = Number(s) || 0; const m = Math.floor(t / 60); return `${m}:${String(Math.floor(t % 60)).padStart(2, '0')}.${String(Math.round((t % 1) * 100)).padStart(2, '0')}`; };
+const diffName = (i) => UK_DIFFICULTIES[i] !== undefined ? `${UK_DIFFICULTIES[i]} (${i})` : String(i);
+
+function summariseBepis(cls, o, fields) {
+  if (cls === 'GameProgressMoneyAndGear') {
+    fields['Save type'] = 'General progress (money & gear)';
+    if (typeof o.money === 'number') fields['Money'] = o.money.toLocaleString();
+    // Weapon variant unlock flags (rev0..rev3/revalt, sho*, nai*, rai*, rock*, arm*).
+    const byFam = {};
+    for (const k in o) {
+      const m = k.match(/^(rev|sho|nai|rai|rock|arm)/);
+      if (m && typeof o[k] === 'number') { const f = m[1]; (byFam[f] = byFam[f] || { n: 0, t: 0 }); byFam[f].t++; if (o[k] > 0) byFam[f].n++; }
+    }
+    const fam = Object.keys(byFam).filter((f) => UK_WEAPONS[f]);
+    if (fam.length) fields['Weapon variants unlocked'] = fam.map((f) => `${UK_WEAPONS[f]} ${byFam[f].n}/${byFam[f].t}`).join(', ');
+    const flags = [];
+    if (o.clashModeUnlocked) flags.push('Clash mode');
+    if (o.ghostDroneModeUnlocked) flags.push('Ghost drone');
+    if (o.tutorialBeat) flags.push('Tutorial beaten');
+    if (flags.length) fields['Unlocked'] = flags.join(', ');
+    if (isArr(o.newEnemiesFound)) fields['Enemies in bestiary'] = `${countTruthy(o.newEnemiesFound)} / ${o.newEnemiesFound.length}`;
+    if (isArr(o.secretMissions)) fields['Secret missions found'] = `${countTruthy(o.secretMissions)} / ${o.secretMissions.length}`;
+  } else if (cls === 'GameProgressData') {
+    fields['Save type'] = 'Difficulty progress';
+    if (typeof o.difficulty === 'number') fields['Difficulty'] = diffName(o.difficulty);
+    if (typeof o.levelNum === 'number') fields['Furthest level reached'] = String(o.levelNum);
+    if (isArr(o.primeLevels)) fields['Prime sanctums cleared'] = `${countTruthy(o.primeLevels)} / ${o.primeLevels.length}`;
+    if (typeof o.encores === 'number') fields['Encores'] = String(o.encores);
+  } else if (cls === 'RankData') {
+    fields['Save type'] = 'Per-level rank data';
+    if (typeof o.levelNumber === 'number') fields['Level number'] = String(o.levelNumber);
+    if (isArr(o.ranks)) { const played = o.ranks.filter((x) => x !== -1).length; fields['Completions (per difficulty)'] = `${played} / ${o.ranks.length}`; }
+    if (isArr(o.secretsFound)) fields['Secrets found'] = `${countTruthy(o.secretsFound)} / ${o.secretsAmount != null ? o.secretsAmount : o.secretsFound.length}`;
+    if (o.challenge) fields['Challenge'] = 'Completed';
+    if (isArr(o.majorAssists)) { const used = countTruthy(o.majorAssists); if (used) fields['Major assists used'] = `${used} difficulties`; }
+    // Best stats from the populated RankScoreData entries.
+    if (isArr(o.stats)) {
+      const best = o.stats.filter((s) => s && typeof s === 'object');
+      if (best.length) {
+        const k = Math.max(...best.map((s) => Number(s.kills) || 0));
+        const st = Math.max(...best.map((s) => Number(s.style) || 0));
+        const times = best.map((s) => Number(s.time) || 0).filter((t) => t > 0);
+        if (k) fields['Best kills'] = String(k);
+        if (st) fields['Best style'] = st.toLocaleString();
+        if (times.length) fields['Best time'] = fmtTime(Math.min(...times));
+      }
+    }
+  } else if (cls === 'CyberRankData') {
+    fields['Save type'] = 'Cyber Grind high score';
+    const wave = maxWithIndex(o.preciseWavesByDifficulty);
+    if (wave) { fields['Best wave'] = (Math.floor(wave.value * 100) / 100).toString(); fields['On difficulty'] = diffName(wave.index); }
+    else if (typeof o.wave === 'number') fields['Best wave'] = String(o.wave);
+    if (isArr(o.kills)) { const m = maxWithIndex(o.kills); if (m) fields['Kills'] = String(m.value); }
+    if (isArr(o.style)) { const m = maxWithIndex(o.style); if (m) fields['Style points'] = m.value.toLocaleString(); }
+    if (isArr(o.time)) { const m = maxWithIndex(o.time); if (m) fields['Time survived'] = fmtTime(m.value); }
+  }
+}
+
 async function parseBepis(file, head) {
   const fields = { 'Game': 'ULTRAKILL', 'File type': 'Save data' };
-  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 1024 * 1024)).arrayBuffer());
-  const headStr = new TextDecoder('latin1').decode(buf.subarray(0, 256)).trimStart();
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 4 * 1024 * 1024)).arrayBuffer());
 
-  // JSON save?
+  // Modern .bepis: a .NET BinaryFormatter (NRBF) stream (magic 00 01 00 00 00).
+  if (buf[0] === 0x00 && buf[1] === 0x01 && buf[2] === 0x00 && buf[3] === 0x00) {
+    const res = parseNrbf(buf);
+    if (res.ok && res.root) {
+      fields['Container'] = '.NET BinaryFormatter';
+      if (res.rootClass) fields['Save class'] = res.rootClass;
+      summariseBepis(res.rootClass, res.root, fields);
+      const dump = prettyKV(typeof res.root === 'object' && !Array.isArray(res.root) ? res.root : { value: res.root });
+      if (dump) fields['_readableText'] = dump.slice(0, 20000);
+      return fields;
+    }
+  }
+
+  // JSON variant (e.g. MapVars .vars.json companions, or older saves).
+  const headStr = new TextDecoder('latin1').decode(buf.subarray(0, 256)).trimStart();
   if (headStr[0] === '{' || headStr[0] === '[') {
     fields['Container'] = 'JSON';
     try {
       const obj = JSON.parse(new TextDecoder('utf-8').decode(buf));
       const keys = Object.keys(obj);
       if (keys.length) fields['Fields'] = keys.slice(0, 20).join(', ');
+      fields['_readableText'] = prettyKV(obj).slice(0, 20000);
     } catch (_) { /* truncated / not pure JSON */ }
     return fields;
   }
 
-  // Binary save - pull printable ASCII runs (≥4 chars) as a hint at contents.
+  // Fallback - pull printable ASCII runs (≥4 chars) as a hint at contents.
   fields['Container'] = 'Binary';
   const strings = [];
   let cur = '';
@@ -2826,7 +2913,6 @@ async function parseBepis(file, head) {
   }
   if (cur.length >= 4) strings.push(cur);
   const uniq = [...new Set(strings)];
-  // Highlight known ULTRAKILL tokens if present.
   const known = uniq.filter(s => /(level|prelude|layer|secret|rank|difficulty|brutal|violent|standard|harmless|cybergrind|weapon|revolver|shotgun|nailgun|railcannon|fist|whiplash|coin|time|kills|style)/i.test(s));
   if (known.length) fields['Recognised tokens'] = known.slice(0, 25).join(', ');
   if (uniq.length) fields['_readableText'] = uniq.slice(0, 300).join('\n');

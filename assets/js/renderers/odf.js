@@ -11,29 +11,32 @@ import { el, rowHelp, buildReadout, fmtBytes, integrityCard, errorCard } from '.
 import { openZip } from './zip.js';
 import { paginateFlow, pagedPreviewCard, pagedTextCard, makePage } from './paged.js';
 
+// Each key maps to the candidate namespace URIs: the OASIS ODF 1.x URI first,
+// then the older OpenOffice.org 1.x URI so StarOffice .sxw/.sxc/.sxd parse too.
 const NS = {
-  office: 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
-  text: 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
-  table: 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
-  draw: 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0',
-  style: 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
-  fo: 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0',
-  svg: 'urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0',
-  xlink: 'http://www.w3.org/1999/xlink',
-  meta: 'urn:oasis:names:tc:opendocument:xmlns:meta:1.0',
-  dc: 'http://purl.org/dc/elements/1.1/',
-  presentation: 'urn:oasis:names:tc:opendocument:xmlns:presentation:1.0',
+  office: ['urn:oasis:names:tc:opendocument:xmlns:office:1.0', 'http://openoffice.org/2000/office'],
+  text: ['urn:oasis:names:tc:opendocument:xmlns:text:1.0', 'http://openoffice.org/2000/text'],
+  table: ['urn:oasis:names:tc:opendocument:xmlns:table:1.0', 'http://openoffice.org/2000/table'],
+  draw: ['urn:oasis:names:tc:opendocument:xmlns:drawing:1.0', 'http://openoffice.org/2000/drawing'],
+  style: ['urn:oasis:names:tc:opendocument:xmlns:style:1.0', 'http://openoffice.org/2000/style'],
+  fo: ['urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0', 'http://www.w3.org/1999/XSL/Format'],
+  svg: ['urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0', 'http://openoffice.org/2000/svg'],
+  xlink: ['http://www.w3.org/1999/xlink'],
+  meta: ['urn:oasis:names:tc:opendocument:xmlns:meta:1.0', 'http://openoffice.org/2000/meta'],
+  dc: ['http://purl.org/dc/elements/1.1/'],
+  presentation: ['urn:oasis:names:tc:opendocument:xmlns:presentation:1.0', 'http://openoffice.org/2000/presentation'],
 };
 
-// ---------- tiny DOM helpers (namespace-aware) ----------
+// ---------- tiny DOM helpers (namespace-aware, tolerant of OASIS + OO1) ----------
 
 function attrNS(elem, nsKey, name) {
   if (!elem || !elem.getAttributeNS) return '';
-  return elem.getAttributeNS(NS[nsKey], name) || '';
+  for (const uri of NS[nsKey]) { const v = elem.getAttributeNS(uri, name); if (v) return v; }
+  return '';
 }
 
 function isEl(node, nsKey, local) {
-  return node && node.nodeType === 1 && node.localName === local && node.namespaceURI === NS[nsKey];
+  return node && node.nodeType === 1 && node.localName === local && NS[nsKey].indexOf(node.namespaceURI) !== -1;
 }
 
 function childEls(parent, nsKey, local) {
@@ -43,10 +46,16 @@ function childEls(parent, nsKey, local) {
   return out;
 }
 
+// All descendants matching key:local across every candidate namespace.
+function elsNS(parent, nsKey, local) {
+  const out = [];
+  if (!parent || !parent.getElementsByTagNameNS) return out;
+  for (const uri of NS[nsKey]) for (const e of parent.getElementsByTagNameNS(uri, local)) out.push(e);
+  return out;
+}
+
 function firstNS(parent, nsKey, local) {
-  if (!parent) return null;
-  const list = parent.getElementsByTagNameNS(NS[nsKey], local);
-  return list[0] || null;
+  return elsNS(parent, nsKey, local)[0] || null;
 }
 
 function parseXml(text) {
@@ -60,7 +69,7 @@ function parseXml(text) {
 
 function collectStyles(doc, into) {
   if (!doc) return into;
-  for (const s of doc.getElementsByTagNameNS(NS.style, 'style')) {
+  for (const s of elsNS(doc, 'style', 'style')) {
     const name = attrNS(s, 'style', 'name');
     if (!name) continue;
     const entry = into[name] || {};
@@ -244,13 +253,13 @@ function renderTextBody(textBody, styles, imageMap) {
 
 // ---------- metadata ----------
 
-async function extractMeta(zip) {
+// Pull document properties from a parsed meta source - meta.xml (zip ODF) or
+// the inline office:meta of a flat ODF document.
+function extractMeta(doc) {
   const fields = {};
-  if (!zip.has('meta.xml')) return fields;
-  const doc = parseXml(await zip.text('meta.xml'));
   if (!doc) return fields;
-  const dc = (t) => { const n = doc.getElementsByTagNameNS(NS.dc, t)[0]; return n ? n.textContent.trim() : null; };
-  const mt = (t) => { const n = doc.getElementsByTagNameNS(NS.meta, t)[0]; return n ? n.textContent.trim() : null; };
+  const dc = (t) => { const n = elsNS(doc, 'dc', t)[0]; return n ? n.textContent.trim() : null; };
+  const mt = (t) => { const n = elsNS(doc, 'meta', t)[0]; return n ? n.textContent.trim() : null; };
   const title = dc('title'); if (title) fields['Title'] = title;
   const creator = dc('creator'); if (creator) fields['Author'] = creator;
   const subject = dc('subject'); if (subject) fields['Subject'] = subject;
@@ -258,10 +267,10 @@ async function extractMeta(zip) {
   const created = mt('creation-date'); if (created) fields['Created'] = created.replace('T', ' ').replace(/\..*$/, '');
   const dcDate = dc('date'); if (dcDate) fields['Modified'] = dcDate.replace('T', ' ').replace(/\..*$/, '');
   const gen = mt('generator'); if (gen) fields['Generator'] = gen;
-  const stat = doc.getElementsByTagNameNS(NS.meta, 'document-statistic')[0];
+  const stat = elsNS(doc, 'meta', 'document-statistic')[0];
   if (stat) {
-    const pc = stat.getAttributeNS(NS.meta, 'page-count'); if (pc) fields['Pages'] = pc;
-    const wc = stat.getAttributeNS(NS.meta, 'word-count'); if (wc) fields['Words'] = wc;
+    const pc = attrNS(stat, 'meta', 'page-count'); if (pc) fields['Pages'] = pc;
+    const wc = attrNS(stat, 'meta', 'word-count'); if (wc) fields['Words'] = wc;
   }
   return fields;
 }
@@ -284,7 +293,7 @@ function infoCard(file, kindLabel, meta) {
 
 function cellText(tc) {
   let out = '';
-  for (const p of tc.getElementsByTagNameNS(NS.text, 'p')) {
+  for (const p of elsNS(tc, 'text', 'p')) {
     if (out) out += '\n';
     out += p.textContent;
   }
@@ -364,26 +373,38 @@ export async function renderOdf(file, container, kind) {
   container.appendChild(el('div', { class: 'anr-info' }, 'Reading document…'));
 
   try {
-    const zip = await openZip(file, 128 * 1024 * 1024);
-    if (!zip.has('content.xml')) {
-      container.innerHTML = '';
-      container.appendChild(errorCard('Could not find content.xml in this OpenDocument file.'));
-      return;
+    // Flat ODF (.fodt/.fods/.fodp/.fodg) is a single XML file, not a zip - so
+    // sniff the first bytes and take whichever path fits.
+    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+    const isZip = head[0] === 0x50 && head[1] === 0x4B;
+
+    let contentDoc, styles = {}, imageMap = {}, meta = {};
+    if (isZip) {
+      const zip = await openZip(file, 128 * 1024 * 1024);
+      if (!zip.has('content.xml')) {
+        container.innerHTML = '';
+        container.appendChild(errorCard('Could not find content.xml in this OpenDocument file.'));
+        return;
+      }
+      meta = extractMeta(zip.has('meta.xml') ? parseXml(await zip.text('meta.xml')) : null);
+      contentDoc = parseXml(await zip.text('content.xml'));
+      if (contentDoc) {
+        collectStyles(contentDoc, styles);
+        if (zip.has('styles.xml')) collectStyles(parseXml(await zip.text('styles.xml')), styles);
+        imageMap = await buildImageMap(zip);
+      }
+    } else {
+      // Flat ODF: content, styles and metadata all live in one document.
+      contentDoc = parseXml(await file.text());
+      if (contentDoc) { collectStyles(contentDoc, styles); meta = extractMeta(contentDoc); }
     }
-    const meta = await extractMeta(zip);
-    const contentDoc = parseXml(await zip.text('content.xml'));
+
     if (!contentDoc) {
       container.innerHTML = '';
       container.appendChild(errorCard('Could not parse the document content.'));
       return;
     }
 
-    // Styles: automatic styles live in content.xml; named styles in styles.xml.
-    const styles = {};
-    collectStyles(contentDoc, styles);
-    if (zip.has('styles.xml')) collectStyles(parseXml(await zip.text('styles.xml')), styles);
-
-    const imageMap = await buildImageMap(zip);
     const body = firstNS(contentDoc, 'office', 'body');
 
     container.innerHTML = '';
@@ -392,21 +413,28 @@ export async function renderOdf(file, container, kind) {
     let kindLabel = 'OpenDocument';
     let pageLabel = 'Page';
 
+    // OpenOffice 1.x puts content directly under office:body (no inner wrapper),
+    // so fall back to the body itself when the wrapper is absent.
     if (kind === 'ods') {
       kindLabel = 'OpenDocument Spreadsheet';
       pageLabel = 'Sheet';
-      const sheet = firstNS(body, 'office', 'spreadsheet');
+      const sheet = firstNS(body, 'office', 'spreadsheet') || body;
       const tables = sheet ? childEls(sheet, 'table', 'table') : [];
       pages = tables.map(renderSheetPage);
     } else if (kind === 'odp') {
       kindLabel = 'OpenDocument Presentation';
       pageLabel = 'Slide';
-      const pres = firstNS(body, 'office', 'presentation');
+      const pres = firstNS(body, 'office', 'presentation') || body;
       const slides = pres ? childEls(pres, 'draw', 'page') : [];
       pages = slides.map((s, i) => renderSlidePage(s, styles, imageMap, i));
+    } else if (kind === 'odg') {
+      kindLabel = 'OpenDocument Graphics';
+      const drawing = firstNS(body, 'office', 'drawing') || body;
+      const dpages = drawing ? childEls(drawing, 'draw', 'page') : [];
+      pages = dpages.map((s, i) => renderSlidePage(s, styles, imageMap, i));
     } else {
       kindLabel = 'OpenDocument Text';
-      const textBody = firstNS(body, 'office', 'text');
+      const textBody = firstNS(body, 'office', 'text') || body;
       const content = textBody ? renderTextBody(textBody, styles, imageMap) : document.createElement('div');
       pages = paginateFlow(content);
     }
@@ -432,3 +460,4 @@ export async function renderOdf(file, container, kind) {
 export const renderOdt = (file, container) => renderOdf(file, container, 'odt');
 export const renderOds = (file, container) => renderOdf(file, container, 'ods');
 export const renderOdp = (file, container) => renderOdf(file, container, 'odp');
+export const renderOdg = (file, container) => renderOdf(file, container, 'odg');

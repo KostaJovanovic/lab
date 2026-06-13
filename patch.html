@@ -188,6 +188,44 @@
              ===================================================================== -->
 
         <div class="patch-entry">
+          <p class="patch-version">3.13</p>
+          <p class="patch-name">Off Grid</p>
+          <p class="patch-date">13 June 2026, 15:45</p>
+          <ul class="patch-list">
+            <li><span class="patch-tag">New</span><strong>Highscores can now be seen in the <a href="/stats">Stats page</a>.</strong></li>
+            <li><strong>Industrial CAD models now travel with you - they open with no connection at all.</strong></li>
+            <li><span class="patch-tag">New</span><strong>CAD solids open fully offline.</strong> The engine that turns a <a href="/about#ext-step">.step</a> model - and its <strong>IGES</strong> and <strong>BREP</strong> cousins - into something you can view is now part of the <strong>Everything</strong> offline download, so these heavy engineering files open even with no internet, the same way the rest of the app already does.</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
+          <p class="patch-version">3.12</p>
+          <p class="patch-name">Paper Trail</p>
+          <p class="patch-date">13 June 2026, 15:05</p>
+          <ul class="patch-list">
+            <li><strong>Old Office files and OpenDocument files now open as tidy page-by-page previews, just like PDFs.</strong></li>
+            <li><span class="patch-tag">New</span><strong>The pre-2007 Office formats open.</strong> Legacy <a href="/about#ext-doc">.doc</a> (Word), <a href="/about#ext-xls">.xls</a> (Excel) and <a href="/about#ext-ppt">.ppt</a> (PowerPoint) files from Office 97-2003 now open and lay out their text, tables and slides - no copy of Office needed.</li>
+            <li><span class="patch-tag">New</span><strong>OpenDocument files open too.</strong> The <a href="/about#ext-odt">.odt</a>, <a href="/about#ext-ods">.ods</a> and <a href="/about#ext-odp">.odp</a> documents from LibreOffice and OpenOffice now read out their contents, drawings included.</li>
+            <li><span class="patch-tag">New</span><strong>Documents look like paper.</strong> Word, OpenDocument and the legacy Office files now render as paper-like pages you can flip through and open full-size, mirroring the PDF reading experience.</li>
+            <li><strong>A small touch.</strong> Each of these document types now has its own format guide page.</li>
+          </ul>
+        </div>
+
+        <div class="patch-entry">
+          <p class="patch-version">3.06 - 3.11</p>
+          <p class="patch-name">Flip Book</p>
+          <p class="patch-date">13 June 2026, 06:57</p>
+          <ul class="patch-list">
+            <li><strong>Step through an animated GIF a single frame at a time.</strong></li>
+            <li><span class="patch-tag">New</span><strong>Every frame of an animated GIF.</strong> An animated <a href="/about#ext-gif">.gif</a> can now be stepped through frame by frame - each one fully composited the way it appears mid-loop - so you can study a single moment instead of watching it play.</li>
+            <li><strong>Maintenance</strong> - internal fixes and housekeeping, including a versioning glitch in the release script.</li>
+          </ul>
+        </div>
+
+        <details class="about-formats">
+          <summary>Older updates</summary>
+
+        <div class="patch-entry">
           <p class="patch-version">3.02 - 3.05</p>
           <p class="patch-name">Going Pro (RAW)</p>
           <p class="patch-date">12 June 2026, 21:32</p>
@@ -230,9 +268,6 @@
             <li><span class="patch-tag is-fix">Fix</span><strong>Drag big photos freely.</strong> Panning a zoomed-in photo no longer gets snatched away by the browser trying to drag the picture itself.</li>
           </ul>
         </div>
-
-        <details class="about-formats">
-          <summary>Older updates</summary>
 
         <div class="patch-entry">
           <p class="patch-version">2.39</p>
@@ -1249,7 +1284,7 @@
       <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback. Automatic scene detection with confidence scoring. iOS visible-player fallback.</dd></div>
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. The ~31 MB core is fetched from a CDN the first time it's needed (then cached for offline use).</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
-      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, loaded only when needed.</dd></div>
+      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, in the Everything download (or loaded on demand).</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a> for ZIP, <a href="https://github.com/nika-begiashvili/libarchivejs" target="_blank" rel="noopener">libarchive.js</a> for RAR / 7-Zip (CBR / CB7 comics), plus <a href="https://github.com/101arrowz/fzstd" target="_blank" rel="noopener">fzstd</a> (Zstandard) and <a href="https://github.com/httptoolkit/xzwasm" target="_blank" rel="noopener">xzwasm</a> (XZ / LZMA2) decompressors. Loaded on demand.</dd></div>
       <div><dt>Databases</dt><dd><a href="https://github.com/sql-js/sql.js" target="_blank" rel="noopener">sql.js</a>. SQLite compiled to WASM - lists tables, schema and row counts from <code>.sqlite</code> / <code>.db</code> files.</dd></div>
       <div><dt>JPEG 2000</dt><dd><a href="https://github.com/GoogleChromeLabs/jpeg2000" target="_blank" rel="noopener">OpenJPEG</a> compiled to WASM. Decodes JP2 / J2K images the browser can&rsquo;t. Loaded only when needed.</dd></div>

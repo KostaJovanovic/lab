@@ -27,7 +27,7 @@
   <link rel="apple-touch-icon" href="/assets/img/icon.png">
   <link rel="manifest" href="/manifest.json">
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .ICS file?","acceptedAnswer":{"@type":"Answer","text":"ICS is an iCalendar event or calendar. Opened by Google Calendar, Outlook and Apple Calendar. iCalendar (RFC 5545) is the standard behind the calendar invites apps send each other. iCalendar was created in 1998 by an IETF working group, authored by Frank Dawson of Lotus and Derik Stenerson of Microsoft. It descends from the earlier vCalendar (.vcs) format, and its current definition is RFC 5545, which superseded RFC 2445 in 2009."}},{"@type":"Question","name":"How do I open a .ICS file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .ICS file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Open email and personal-information files: .eml/.emlx/.mbox messages (From/To/Subject/Date, Received hops, SPF/DKIM/DMARC, attachments, body preview), iCalendar .ics/.ical and .vcs (events, times, recurrence, organiser/attendees), vCard .vcf contacts (fields + inline base64 photo), LDIF directory exports and Windows .contact - with Outlook .msg/.pst, IBM Notes .nsf, Exchange .edb and Outlook Express .dbx identified."}}]}
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .ICS file?","acceptedAnswer":{"@type":"Answer","text":"ICS is an iCalendar event or calendar. Opened by Google Calendar, Outlook and Apple Calendar. iCalendar (RFC 5545) is the standard behind the calendar invites apps send each other. iCalendar was created in 1998 by an IETF working group, authored by Frank Dawson of Lotus and Derik Stenerson of Microsoft. It descends from the earlier vCalendar (.vcs) format, and its current definition is RFC 5545, which superseded RFC 2445 in 2009."}},{"@type":"Question","name":"How do I open a .ICS file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .ICS file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Open personal-information files: iCalendar .ics/.ical and .vcs (events, times, recurrence, organiser/attendees), vCard .vcf contacts (fields + inline base64 photo), LDIF directory exports and Windows .contact - with Outlook .msg/.pst, IBM Notes .nsf, Exchange .edb and Outlook Express .dbx identified. Email messages (.eml/.emlx/.mbox) now open in a full viewer - see Email above."}}]}
   </script>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Analyser","item":"https://lab.valjdakosta.com/"},{"@type":"ListItem","position":2,"name":"Supported file types","item":"https://lab.valjdakosta.com/formats"},{"@type":"ListItem","position":3,"name":".ICS","item":"https://lab.valjdakosta.com/formats/id/ics"}]}
@@ -73,12 +73,15 @@
 </header>
 
 <nav class="site-nav format-nav" aria-label="Browse file types">
-  <a href="/formats/id/mbox" class="nav-link" rel="prev"><span class="nav-num" aria-hidden="true">&larr;</span><span>Previous</span></a>
+  <a href="/formats/id/der" class="nav-link" rel="prev"><span class="nav-num" aria-hidden="true">&larr;</span><span>Previous</span></a>
   <button type="button" class="nav-link nav-link-lucky" data-fmt-random><span class="nav-num" aria-hidden="true">&#9733;</span><span>I&rsquo;m feeling lucky</span></button>
   <a href="/formats/id/ical" class="nav-link" rel="next"><span class="nav-num" aria-hidden="true">&rarr;</span><span>Next</span></a>
 </nav>
 
 <main class="site-main about-page patch-page format-page">
+  <div class="format-cta">
+    <a href="/" class="format-cta-btn">Click here to analyse any file <span aria-hidden="true">&rarr;</span></a>
+  </div>
   <section class="section">
     <div class="grid">
       <div class="section-content">
@@ -89,10 +92,10 @@
         <div class="about-block">
           <dl class="about-caps">
             <div class="didyouknow"><dt>Did you know</dt><dd><ul class="dyk-list"><li>iCalendar (RFC 5545) is the standard behind the calendar invites apps send each other.</li><li>iCalendar was created in 1998 by an IETF working group, authored by Frank Dawson of Lotus and Derik Stenerson of Microsoft.</li><li>It descends from the earlier vCalendar (.vcs) format, and its current definition is RFC 5545, which superseded RFC 2445 in 2009.</li></ul></dd></div>
-            <div><dt>What Analyser reads</dt><dd>Open email and personal-information files: .eml/.emlx/.mbox messages (From/To/Subject/Date, Received hops, SPF/DKIM/DMARC, attachments, body preview), iCalendar .ics/.ical and .vcs (events, times, recurrence, organiser/attendees), vCard .vcf contacts (fields + inline base64 photo), LDIF directory exports and Windows .contact - with Outlook .msg/.pst, IBM Notes .nsf, Exchange .edb and Outlook Express .dbx identified.</dd></div>
+            <div><dt>What Analyser reads</dt><dd>Open personal-information files: iCalendar .ics/.ical and .vcs (events, times, recurrence, organiser/attendees), vCard .vcf contacts (fields + inline base64 photo), LDIF directory exports and Windows .contact - with Outlook .msg/.pst, IBM Notes .nsf, Exchange .edb and Outlook Express .dbx identified. Email messages (.eml/.emlx/.mbox) now open in a full viewer - see Email above.</dd></div>
             <div><dt>Depth of analysis</dt><dd>.ICS is an identification-grade format: Analyser recognises it from its bytes and decodes the header metadata it carries, rather than opening it in a full viewer. Formats that do get a full viewer are marked "Full" on the <a href="/formats">formats page</a>.</dd></div>
             <div><dt>Open a .ICS file</dt><dd>Drag a .ICS file onto <a href="/">the Analyser home page</a> (or tap to pick one). It is identified entirely in your browser - nothing is uploaded, there is no account, and it works offline once installed.</dd></div>
-            <div><dt>Related formats</dt><dd><a href="/formats/id/eml">.EML</a> &middot; <a href="/formats/id/emlx">.EMLX</a> &middot; <a href="/formats/id/mbox">.MBOX</a> &middot; <a href="/formats/id/ical">.ICAL</a> &middot; <a href="/formats/id/ifb">.IFB</a> &middot; <a href="/formats/id/vcf">.VCF</a> &middot; <a href="/formats/id/vcard">.VCARD</a> &middot; <a href="/formats/id/vcs">.VCS</a> &middot; <a href="/formats/id/ldif">.LDIF</a> &middot; <a href="/formats/id/contact">.CONTACT</a> &middot; <a href="/formats/id/msg">.MSG</a> &middot; <a href="/formats/id/pst">.PST</a> &middot; <a href="/formats/id/ost">.OST</a> &middot; <a href="/formats/id/nsf">.NSF</a> &middot; <a href="/formats/id/edb">.EDB</a> &middot; <a href="/formats/id/dbx">.DBX</a>. See <a href="/formats">all supported file types</a>.</dd></div>
+            <div><dt>Related formats</dt><dd><a href="/formats/id/ical">.ICAL</a> &middot; <a href="/formats/id/ifb">.IFB</a> &middot; <a href="/formats/id/vcf">.VCF</a> &middot; <a href="/formats/id/vcard">.VCARD</a> &middot; <a href="/formats/id/vcs">.VCS</a> &middot; <a href="/formats/id/ldif">.LDIF</a> &middot; <a href="/formats/id/contact">.CONTACT</a> &middot; <a href="/formats/id/msg">.MSG</a> &middot; <a href="/formats/id/pst">.PST</a> &middot; <a href="/formats/id/ost">.OST</a> &middot; <a href="/formats/id/nsf">.NSF</a> &middot; <a href="/formats/id/edb">.EDB</a> &middot; <a href="/formats/id/dbx">.DBX</a>. See <a href="/formats">all supported file types</a>.</dd></div>
           </dl>
         </div>
       </div>

@@ -2,10 +2,14 @@
    Lazy-loads fflate from CDN to inspect ZIP archives without full extraction.
    Uses the shared folder/archive modules for treemap, breakdown, and tree. */
 
-import { el, row, rowHelp, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard, integrityCard } from '../core/util.js';
+import { el, row, rowHelp, fmtBytes, buildFileTree, isUnreadableError, cloudFileWarning, errorCard, integrityCard, loadScript } from '../core/util.js';
 import { normalizeArchive, renderBreakdownCards, renderViewToggle, categorizeExt } from './folder-archive-shared.js';
 import { ARCHIVE_EXTS } from '../core/formats.js';
 import { extractArchive } from '../lib/libarchive-loader.js';
+import { gunzip } from '../core/binutil.js';
+import { xzDecompress } from '../lib/xz-loader.js';
+import { unlz4, unlzw } from '../lib/legacy-decompress.js';
+import { lzmaDecompress } from '../lib/lzma-loader.js';
 
 const FFLATE_URL = new URL('../../vendor/fflate.js', import.meta.url).href;
 
@@ -484,6 +488,14 @@ async function renderLibarchive(file, resultsEl, opts) {
     return;
   }
 
+  renderHandleTree(handle, fileEntries, file, resultsEl, opts);
+}
+
+// Render an already-opened libarchive handle as the tree + treemap + breakdown,
+// with click-to-analyse. Shared by renderLibarchive and the compressed-tarball
+// path so neither has to re-open the archive.
+function renderHandleTree(handle, fileEntries, file, resultsEl, opts) {
+  const label = (opts && opts.label) || 'Archive';
   const items = fileEntries.map((e) => {
     const ext = extLower(e.name);
     return { path: e.name, size: e.size || 0, file: null, entry: e, category: categorizeExt(ext), ext };
@@ -518,7 +530,7 @@ async function renderLibarchive(file, resultsEl, opts) {
       const f = new File([bytes], entry.name.split('/').pop() || entry.name, { type: 'application/octet-stream' });
       // Register a Back-bar restore that re-renders this archive (one level up).
       if (window._anrPushNav) {
-        window._anrPushNav(file.name || 'archive', () => { resultsEl.hidden = false; renderLibarchive(file, resultsEl, opts); });
+        window._anrPushNav(file.name || 'archive', () => { resultsEl.hidden = false; resultsEl.innerHTML = ''; renderHandleTree(handle, fileEntries, file, resultsEl, opts); });
       }
       if (window._anrHandleFile) window._anrHandleFile(f, { nested: true });
     } catch (_) { /* extraction failed - ignore */ }
@@ -534,22 +546,90 @@ async function renderLibarchive(file, resultsEl, opts) {
   }, onFileClick);
 }
 
+// Decompress a single-stream compressor (gzip / xz / zstd) by magic. Returns
+// { data, codec, drop } where `drop` strips the compression extension from the
+// inner filename, or null if the codec has no in-browser decoder (bzip2) or the
+// magic is unknown. The tar/tarball case never reaches here - libarchive handles
+// it directly (it bundles the gzip/xz/zstd/bzip2 read filters).
+async function decompressStream(file) {
+  const head = new Uint8Array(await file.slice(0, 13).arrayBuffer());
+  const is = (sig) => sig.every((v, i) => head[i] === v);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (is([0x1F, 0x8B])) return { data: await gunzip(bytes), codec: 'gzip', drop: /\.(gz|tgz)$/i };
+  if (is([0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00])) return { data: await xzDecompress(bytes), codec: 'xz', drop: /\.(xz|txz)$/i };
+  if (is([0x28, 0xB5, 0x2F, 0xFD])) {
+    if (!(window.fzstd && window.fzstd.decompress)) await loadScript('assets/vendor/fzstd.js');
+    if (!(window.fzstd && window.fzstd.decompress)) return null;
+    return { data: window.fzstd.decompress(bytes), codec: 'zstd', drop: /\.(zst|tzst)$/i };
+  }
+  if (is([0x04, 0x22, 0x4D, 0x18])) { const d = unlz4(bytes); return d ? { data: d, codec: 'LZ4', drop: /\.(lz4|tlz4)$/i } : null; }
+  if (is([0x1F, 0x9D])) { const d = unlzw(bytes); return d ? { data: d, codec: 'LZW', drop: /\.(z|tz)$/i } : null; }
+  // Legacy .lzma has no fixed magic; the default properties byte 0x5D plus the
+  // 13-byte header is the reliable tell (matches the sniff in app.js).
+  if (head[0] === 0x5D && bytes.length >= 13) { const d = await lzmaDecompress(bytes); if (d) return { data: d, codec: 'LZMA', drop: /\.(lzma|tlz)$/i }; }
+  return null;   // bzip2 (no in-browser decoder) or unknown
+}
+
+// Browse/open a TAR or compressed stream: libarchive reads tar + tarballs
+// (.tar.gz/.tgz/.tar.xz/.tar.zst/.tar.bz2) directly; a bare single compressed
+// file is decompressed so the file inside can be analysed.
+async function renderCompressedEmbedded(file, container, label) {
+  const wrap = el('div', {});
+  container.appendChild(wrap);
+  wrap.appendChild(el('div', { class: 'anr-info' }, `Reading ${label} contents…`));
+
+  let handle = null;
+  try { handle = await extractArchive(file); } catch (_) { /* not a libarchive-readable archive */ }
+  const fileEntries = handle ? (handle.entries || []).filter((e) => e && e.name && !e.name.endsWith('/')) : [];
+  if (fileEntries.length) { wrap.remove(); renderHandleTree(handle, fileEntries, file, container, { label }); return; }
+
+  // Single compressed stream: decompress and offer the file inside.
+  let res = null;
+  try { res = await decompressStream(file); } catch (_) { /* decompression failed */ }
+  wrap.remove();
+  if (!res || !res.data) {
+    container.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;font-size:12px;' },
+      /bzip2|bz2/i.test(label)
+        ? 'This is a single bzip2-compressed file. In-browser bzip2 decompression is not available, so only the identification above is shown.'
+        : 'This compressed file could not be decompressed in the browser.'));
+    return;
+  }
+  const innerName = (file.name || 'file').replace(res.drop, '') || 'decompressed';
+  const inner = new File([res.data], innerName, { type: 'application/octet-stream' });
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Decompressed file'));
+  card.appendChild(el('p', { class: 'anr-hint', style: 'margin:0 0 8px;font-size:12px;' },
+    `A single ${res.codec}-compressed file (${fmtBytes(res.data.length)} decompressed). Open the file inside to analyse it.`));
+  const btn = el('button', { type: 'button', class: 'anr-btn' }, 'Analyse ' + innerName);
+  btn.addEventListener('click', () => {
+    if (window._anrPushNav) window._anrPushNav(file.name || 'archive', () => { if (window._anrHandleFile) window._anrHandleFile(file, {}); });
+    if (window._anrHandleFile) window._anrHandleFile(inner, { nested: true });
+  });
+  card.appendChild(btn);
+  container.appendChild(card);
+}
+
 // ---------- embeddable "browse as archive" view ----------
 // Appended UNDER a file's primary analysis when that file is physically a
-// zip/rar/7z container (e.g. an APK, DOCX, JAR, or a RAR). `opts.mode` is 'zip'
-// (pure-JS path) or 'libarchive' (RAR/7z/etc.); `opts.label` names the format.
+// container we can open. `opts.mode` is 'zip' (pure-JS path), 'libarchive'
+// (RAR/7z/etc.), or 'compressed' (TAR + gz/xz/zst/bz2 tarballs and single
+// streams); `opts.label` names the format.
 export async function renderArchiveEmbedded(file, container, opts = {}) {
+  const compressed = opts.mode === 'compressed';
   const label = opts.label || (opts.mode === 'zip' ? 'ZIP' : 'archive');
   const head = el('div', { class: 'anr-card' });
-  head.appendChild(el('h3', {}, 'Browse as archive'));
+  head.appendChild(el('h3', {}, compressed ? 'Open contents' : 'Browse as archive'));
   head.appendChild(el('p', { class: 'anr-hint', style: 'margin:0;font-size:12px;' },
-    `This file is also a ${label} archive. Browse the files inside, and click any one to analyse it.`));
+    compressed
+      ? `This ${label} file is decompressed in your browser so you can open what is inside it.`
+      : `This file is also a ${label} archive. Browse the files inside, and click any one to analyse it.`));
   container.appendChild(head);
 
   const wrap = el('div', {});
   container.appendChild(wrap);
   try {
     if (opts.mode === 'zip') await renderArchive(file, wrap, { embedded: true });
+    else if (compressed) { wrap.remove(); await renderCompressedEmbedded(file, container, label); }
     else await renderLibarchive(file, wrap, { label });
   } catch (e) {
     wrap.appendChild(errorCard('Could not browse this archive: ' + (e && e.message)));

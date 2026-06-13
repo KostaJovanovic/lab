@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Analyser - Open and Inspect Any File in Your Browser</title>
-  <meta name="description" content="View EXIF, spectrograms, video frames &amp; metadata for 1026+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
+  <meta name="description" content="View EXIF, spectrograms, video frames &amp; metadata for 1038+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
   <link rel="canonical" href="https://lab.valjdakosta.com/">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
@@ -12,7 +12,7 @@
   <meta property="og:site_name" content="Analyser">
   <meta property="og:locale" content="en_GB">
   <meta property="og:title" content="Analyser - Open and Inspect Any File in Your Browser">
-  <meta property="og:description" content="View EXIF, spectrograms, video frames &amp; metadata for 1026+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
+  <meta property="og:description" content="View EXIF, spectrograms, video frames &amp; metadata for 1038+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
   <meta property="og:url" content="https://lab.valjdakosta.com/">
   <meta property="og:image" content="https://lab.valjdakosta.com/assets/img/banner.jpg">
   <meta property="og:image:width" content="1200">
@@ -20,7 +20,7 @@
   <meta property="og:image:alt" content="The Analyser wordmark on a faint grid - a free, local, in-browser file metadata and forensics tool.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Analyser - Open and Inspect Any File in Your Browser">
-  <meta name="twitter:description" content="View EXIF, spectrograms, video frames &amp; metadata for 1026+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
+  <meta name="twitter:description" content="View EXIF, spectrograms, video frames &amp; metadata for 1038+ file types in your browser. No ads, no telemetry, no upload - everything stays on your device.">
   <meta name="twitter:image" content="https://lab.valjdakosta.com/assets/img/banner.jpg">
   <meta name="twitter:image:alt" content="The Analyser wordmark on a faint grid - a free, local, in-browser file metadata and forensics tool.">
   <link rel="icon" href="assets/img/favicon.png" type="image/png">
@@ -33,7 +33,7 @@
     "@type": "WebApplication",
     "name": "Analyser",
     "url": "https://lab.valjdakosta.com/",
-    "description": "View EXIF, spectrograms, video frames and metadata for 1026+ file types, entirely in your browser. No ads, no telemetry, no upload - everything stays on your device.",
+    "description": "View EXIF, spectrograms, video frames and metadata for 1038+ file types, entirely in your browser. No ads, no telemetry, no upload - everything stays on your device.",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Any (web browser)",
     "browserRequirements": "Requires JavaScript.",
@@ -46,7 +46,7 @@
       "Audio spectrogram and waveform visualisation",
       "Video frame and codec analysis",
       "PDF, archive, and document inspection",
-      "Identification of 1026+ file formats",
+      "Identification of 1038+ file formats",
       "Works offline as a Progressive Web App"
     ]
   }
@@ -150,7 +150,7 @@
           <span class="anr-drop-icon" aria-hidden="true">+</span>
           <strong><span class="drop-word">Drop</span><span class="tap-word">Pick</span> any file or folder</strong>
           <input type="file" id="videoInput" hidden>
-          <p class="anr-hint">PDF &middot; ZIP &middot; CSV &middot; SVG &middot; Folders &middot; <button type="button" class="fmt-count-link" data-fmt-open data-fmt-count data-fmt-count-tpl="{n}+ formats">1026+ formats</button></p>
+          <p class="anr-hint">PDF &middot; ZIP &middot; CSV &middot; SVG &middot; Folders &middot; <button type="button" class="fmt-count-link" data-fmt-open data-fmt-count data-fmt-count-tpl="{n}+ formats">1038+ formats</button></p>
           <p class="anr-drop-warn">Analysis may be limited for some formats</p>
         </label>
         <button type="button" class="fmt-help-btn" id="fmtHelpBtn" data-fmt-open aria-label="Supported formats">Info</button>
@@ -298,7 +298,7 @@
       <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback. Automatic scene detection with confidence scoring. iOS visible-player fallback.</dd></div>
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. The ~31 MB core is fetched from a CDN the first time it's needed (then cached for offline use).</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
-      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, loaded only when needed.</dd></div>
+      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, in the Everything download (or loaded on demand).</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a> for ZIP, <a href="https://github.com/nika-begiashvili/libarchivejs" target="_blank" rel="noopener">libarchive.js</a> for RAR / 7-Zip (CBR / CB7 comics), plus <a href="https://github.com/101arrowz/fzstd" target="_blank" rel="noopener">fzstd</a> (Zstandard) and <a href="https://github.com/httptoolkit/xzwasm" target="_blank" rel="noopener">xzwasm</a> (XZ / LZMA2) decompressors. Loaded on demand.</dd></div>
       <div><dt>Databases</dt><dd><a href="https://github.com/sql-js/sql.js" target="_blank" rel="noopener">sql.js</a>. SQLite compiled to WASM - lists tables, schema and row counts from <code>.sqlite</code> / <code>.db</code> files.</dd></div>
       <div><dt>JPEG 2000</dt><dd><a href="https://github.com/GoogleChromeLabs/jpeg2000" target="_blank" rel="noopener">OpenJPEG</a> compiled to WASM. Decodes JP2 / J2K images the browser can&rsquo;t. Loaded only when needed.</dd></div>

@@ -59,6 +59,8 @@
       <nav class="site-mark-nav" aria-label="Pages">
         <a href="/" class="header-btn">Home</a>
         <a href="/about" class="header-btn">About</a>
+        <a href="/patch" class="header-btn">Patches</a>
+        <a href="/formats" class="header-btn">Formats</a>
         <a href="/stats" class="header-btn">Stats</a>
         <button type="button" class="header-btn header-btn-share"><svg class="header-btn-ico" viewBox="0 0 50 50" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15 30c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z"/><path d="M35 20c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z"/><path d="M35 40c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z"/><path d="M19.007 25.885l12.88 6.44-.895 1.788-12.88-6.44z"/><path d="M30.993 15.885l.894 1.79-12.88 6.438-.894-1.79z"/></svg>Share</button>
       </nav>
@@ -168,7 +170,7 @@
       <div><dt>Video</dt><dd>HTML5 video for playback. Frame rate parsed from MP4 container metadata with FFmpeg fallback. Automatic scene detection with confidence scoring. iOS visible-player fallback.</dd></div>
       <div><dt>FFmpeg</dt><dd><a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a>. Audio extraction and frame rate detection for formats the browser can't decode natively. The ~31 MB core is fetched from a CDN the first time it's needed (then cached for offline use).</dd></div>
       <div><dt>PDF</dt><dd><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> by Mozilla. Renders PDF pages, extracts text, and supports OCR scanning of image-only pages via Tesseract. Loaded only for PDF files.</dd></div>
-      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, loaded only when needed.</dd></div>
+      <div><dt>3D / CAD</dt><dd><a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js</a> (OpenCASCADE). Tessellates STEP, IGES and BREP CAD solids to meshes for the in-browser 3D viewer. ~9 MB, in the Everything download (or loaded on demand).</dd></div>
       <div><dt>Archives</dt><dd><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener">fflate</a> for ZIP, <a href="https://github.com/nika-begiashvili/libarchivejs" target="_blank" rel="noopener">libarchive.js</a> for RAR / 7-Zip (CBR / CB7 comics), plus <a href="https://github.com/101arrowz/fzstd" target="_blank" rel="noopener">fzstd</a> (Zstandard) and <a href="https://github.com/httptoolkit/xzwasm" target="_blank" rel="noopener">xzwasm</a> (XZ / LZMA2) decompressors. Loaded on demand.</dd></div>
       <div><dt>Databases</dt><dd><a href="https://github.com/sql-js/sql.js" target="_blank" rel="noopener">sql.js</a>. SQLite compiled to WASM - lists tables, schema and row counts from <code>.sqlite</code> / <code>.db</code> files.</dd></div>
       <div><dt>JPEG 2000</dt><dd><a href="https://github.com/GoogleChromeLabs/jpeg2000" target="_blank" rel="noopener">OpenJPEG</a> compiled to WASM. Decodes JP2 / J2K images the browser can&rsquo;t. Loaded only when needed.</dd></div>

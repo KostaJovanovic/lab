@@ -75,6 +75,34 @@ export function paginateFlow(contentEl, opts = {}) {
   return pages;
 }
 
+// Lay plain text onto page sheets. `mono` keeps source formatting (one block
+// per line, monospace, whitespace preserved); otherwise each line becomes a
+// prose paragraph. Returns page nodes ready for pagedPreviewCard.
+export function paginateText(text, opts = {}) {
+  const container = document.createElement('div');
+  const lines = String(text == null ? '' : text).split('\n');
+  if (opts.mono) {
+    container.style.cssText = 'font-family:var(--font-mono, monospace);font-size:12.5px;line-height:1.5;';
+    for (const ln of lines) {
+      const d = document.createElement('div');
+      d.style.cssText = 'white-space:pre-wrap;min-height:1.2em;';
+      d.textContent = ln;
+      container.appendChild(d);
+    }
+  } else {
+    let blanks = 0;
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, '');
+      if (!line) { if (++blanks > 1) continue; } else blanks = 0;
+      const p = document.createElement('p');
+      p.style.margin = line ? '0 0 10px' : '0 0 4px';
+      p.textContent = line || ' ';
+      container.appendChild(p);
+    }
+  }
+  return paginateFlow(container, opts);
+}
+
 // Open (or reuse) the document page lightbox and show `pages[startIndex]`.
 // The amount a double-click / double-tap zooms the page in.
 const DOC_ZOOM = 2;

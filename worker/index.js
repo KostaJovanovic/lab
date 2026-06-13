@@ -82,13 +82,40 @@ function isProfane(name) {
 
 async function topScores(env, limit = 5) {
   try {
+    // ts (achieved date), wave and cause (the fatal file / nuke) are shown on the
+    // /stats board. Fall back to the bare columns if the DB predates them, so the
+    // board still renders before the migration runs.
     const rows = await env.DB.prepare(
-      'SELECT name, score FROM scores ORDER BY score DESC, ts ASC LIMIT ?',
+      'SELECT name, score, ts, wave, cause FROM scores ORDER BY score DESC, ts ASC LIMIT ?',
     ).bind(limit).all();
-    return (rows.results || []).map((r) => ({ name: r.name, score: r.score }));
+    return (rows.results || []).map((r) => ({ name: r.name, score: r.score, ts: r.ts, wave: r.wave, cause: r.cause }));
   } catch (_) {
-    return [];   // table may not exist yet (pre-migration) - don't break /api/stats
+    try {
+      const rows = await env.DB.prepare(
+        'SELECT name, score, ts FROM scores ORDER BY score DESC, ts ASC LIMIT ?',
+      ).bind(limit).all();
+      return (rows.results || []).map((r) => ({ name: r.name, score: r.score, ts: r.ts }));
+    } catch (_) {
+      return [];   // table may not exist yet (pre-migration) - don't break /api/stats
+    }
   }
+}
+
+// Lazily add the wave/cause columns to an existing scores table (idempotent;
+// "duplicate column" errors are swallowed). Lets a new deploy self-migrate
+// without a manual `wrangler d1 execute` step.
+async function ensureScoreColumns(env) {
+  for (const col of ['wave INTEGER', 'cause TEXT']) {
+    try { await env.DB.prepare('ALTER TABLE scores ADD COLUMN ' + col).run(); } catch (_) { /* already present */ }
+  }
+}
+
+// Normalise the "final blow" tag: a file extension like '.pdf' or the literal
+// 'nuke'. Lowercased, restricted to a small safe charset, length-capped. Returns
+// null when empty/unusable (an older or skipped client just omits it).
+function cleanCause(raw) {
+  const c = String(raw == null ? '' : raw).toLowerCase().replace(/[^a-z0-9.+_-]/g, '').slice(0, 24);
+  return c || null;
 }
 
 async function readTotals(env) {
@@ -211,13 +238,25 @@ async function handleScore(request, env) {
   if (!Number.isFinite(score) || score <= 0 || score > SCORE_MAX) {
     return json({ ok: false, error: 'Invalid score.' }, 400);
   }
-  // One entry per device (keyed by hashed IP): a new submission replaces the
-  // device's previous one, so repeated submits don't pile up rows on the board.
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM scores WHERE iphash = ?').bind(ipHash),
-    env.DB.prepare('INSERT INTO scores (name, score, ts, iphash) VALUES (?, ?, ?, ?)')
-      .bind(name, score, Math.floor(Date.now() / 1000), ipHash),
-  ]);
+  // Run metadata, clamped/sanitised (a tampered or old client can't break the row).
+  const waveN = Math.floor(Number(body.wave));
+  const wave = Number.isFinite(waveN) && waveN >= 0 && waveN <= 100000 ? waveN : null;
+  const cause = cleanCause(body.cause);
+  await ensureScoreColumns(env);
+  // One entry per identity (hashed IP + chosen name), and only the player's best:
+  // look up the current row for this identity and replace it only when the new
+  // score beats it. A lower or equal resubmit leaves the board untouched, so
+  // repeats never pile up rows and never knock down a higher score.
+  const prev = await env.DB
+    .prepare('SELECT score FROM scores WHERE iphash = ? AND name = ? ORDER BY score DESC LIMIT 1')
+    .bind(ipHash, name).first();
+  if (!prev || score > Number(prev.score)) {
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM scores WHERE iphash = ? AND name = ?').bind(ipHash, name),
+      env.DB.prepare('INSERT INTO scores (name, score, ts, iphash, wave, cause) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(name, score, Math.floor(Date.now() / 1000), ipHash, wave, cause),
+    ]);
+  }
   return json({ ok: true, top: await topScores(env) });
 }
 

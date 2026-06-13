@@ -1,7 +1,15 @@
 ﻿/* Analyser - service worker
    Precache the app shell; stale-while-revalidate the rest. */
 
-const VERSION = 'analyser-v112';
+const VERSION = 'analyser-v113';
+
+// Local dev (server.bat on localhost, or a LAN IP for phone testing) skips all
+// caching: the SW becomes a network pass-through so a single refresh shows the
+// latest edits, with no manual cache clearing. Production (lab.valjdakosta.com)
+// is none of these hosts, so it keeps the full offline-first behaviour below.
+const HOST = self.location.hostname;
+const DEV = HOST === 'localhost' || HOST === '127.0.0.1' || HOST === '0.0.0.0' ||
+  /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(HOST);
 const SHELL = [
   './',
   './about',
@@ -51,6 +59,9 @@ const SHELL = [
   './assets/js/lib/libarchive-loader.js',
   './assets/js/lib/openjpeg-loader.js',
   './assets/js/lib/xz-loader.js',
+  './assets/js/lib/lzma-loader.js',
+  './assets/js/lib/legacy-decompress.js',
+  './assets/js/lib/nrbf.js',
   './assets/js/lib/ghostscript-loader.js',
   './assets/js/parsers/parsers-dev.js',
   './assets/js/parsers/parsers-archive.js',
@@ -74,6 +85,12 @@ const SHELL = [
   './assets/js/renderers/paged.js',
   './assets/js/renderers/odf.js',
   './assets/js/renderers/legacy-office.js',
+  './assets/js/renderers/textdoc.js',
+  './assets/js/renderers/notebook.js',
+  './assets/js/renderers/email.js',
+  './assets/js/renderers/dataview.js',
+  './assets/js/renderers/diagram.js',
+  './assets/js/renderers/iwork.js',
   './assets/js/renderers/stl.js',
   './assets/js/renderers/model3d.js',
   './assets/js/renderers/timeline.js',
@@ -103,6 +120,8 @@ function precacheTurnstile(cache) {
 }
 
 self.addEventListener('install', (e) => {
+  // Dev: don't precache anything, just take over immediately.
+  if (DEV) { self.skipWaiting(); return; }
   // Cache each shell entry independently (allSettled) instead of cache.addAll's
   // all-or-nothing: a single transient miss (a file mid-regeneration, a OneDrive
   // sync lock, a stale dev server) used to reject the WHOLE install, leaving the
@@ -131,6 +150,11 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // Dev: never intercept - let every request go straight to the network so edits
+  // appear on a single refresh. The activate handler above already deleted any
+  // pre-existing cache, so there's nothing stale left to serve.
+  if (DEV) return;
+
   const req = e.request;
   if (req.method !== 'GET') return;
 

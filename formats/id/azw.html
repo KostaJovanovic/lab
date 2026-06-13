@@ -27,7 +27,7 @@
   <link rel="apple-touch-icon" href="/assets/img/icon.png">
   <link rel="manifest" href="/manifest.json">
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .AZW file?","acceptedAnswer":{"@type":"Answer","text":"AZW is Amazon’s original Kindle e-book format, based on MOBI. Opened by Amazon Kindle. AZW arrived with the very first Amazon Kindle in 2007. AZW is a proprietary variant of the Mobipocket e-book format, which Amazon gained by buying the French firm Mobipocket in 2005. It wrapped that format in a new DRM scheme that tied a purchased book to a particular device."}},{"@type":"Question","name":"How do I open a .AZW file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .AZW file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Identify e-book files: Kindle (MOBI, AZW, AZW3), FictionBook (FB2), and DjVu."}}]}
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .AZW file?","acceptedAnswer":{"@type":"Answer","text":"AZW is Amazon’s original Kindle e-book format, based on MOBI. Opened by Amazon Kindle. AZW arrived with the very first Amazon Kindle in 2007. AZW is a proprietary variant of the Mobipocket e-book format, which Amazon gained by buying the French firm Mobipocket in 2005. It wrapped that format in a new DRM scheme that tied a purchased book to a particular device."}},{"@type":"Question","name":"How do I open a .AZW file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .AZW file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Identify e-book files: Kindle (MOBI, AZW, AZW3) and DjVu. FictionBook (FB2) now opens in a full reader (see Text & markup above)."}}]}
   </script>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Analyser","item":"https://lab.valjdakosta.com/"},{"@type":"ListItem","position":2,"name":"Supported file types","item":"https://lab.valjdakosta.com/formats"},{"@type":"ListItem","position":3,"name":".AZW","item":"https://lab.valjdakosta.com/formats/id/azw"}]}
@@ -79,6 +79,9 @@
 </nav>
 
 <main class="site-main about-page patch-page format-page">
+  <div class="format-cta">
+    <a href="/" class="format-cta-btn">Click here to analyse any file <span aria-hidden="true">&rarr;</span></a>
+  </div>
   <section class="section">
     <div class="grid">
       <div class="section-content">
@@ -89,10 +92,10 @@
         <div class="about-block">
           <dl class="about-caps">
             <div class="didyouknow"><dt>Did you know</dt><dd><ul class="dyk-list"><li>AZW arrived with the very first Amazon Kindle in 2007.</li><li>AZW is a proprietary variant of the Mobipocket e-book format, which Amazon gained by buying the French firm Mobipocket in 2005.</li><li>It wrapped that format in a new DRM scheme that tied a purchased book to a particular device.</li></ul></dd></div>
-            <div><dt>What Analyser reads</dt><dd>Identify e-book files: Kindle (MOBI, AZW, AZW3), FictionBook (FB2), and DjVu.</dd></div>
+            <div><dt>What Analyser reads</dt><dd>Identify e-book files: Kindle (MOBI, AZW, AZW3) and DjVu. FictionBook (FB2) now opens in a full reader (see Text &amp; markup above).</dd></div>
             <div><dt>Depth of analysis</dt><dd>.AZW is an identification-grade format: Analyser recognises it from its bytes and decodes the header metadata it carries, rather than opening it in a full viewer. Formats that do get a full viewer are marked "Full" on the <a href="/formats">formats page</a>.</dd></div>
             <div><dt>Open a .AZW file</dt><dd>Drag a .AZW file onto <a href="/">the Analyser home page</a> (or tap to pick one). It is identified entirely in your browser - nothing is uploaded, there is no account, and it works offline once installed.</dd></div>
-            <div><dt>Related formats</dt><dd><a href="/formats/id/mobi">.MOBI</a> &middot; <a href="/formats/id/azw3">.AZW3</a> &middot; <a href="/formats/id/fb2">.FB2</a> &middot; <a href="/formats/id/djvu">.DJVU</a>. See <a href="/formats">all supported file types</a>.</dd></div>
+            <div><dt>Related formats</dt><dd><a href="/formats/id/mobi">.MOBI</a> &middot; <a href="/formats/id/azw3">.AZW3</a> &middot; <a href="/formats/id/djvu">.DJVU</a>. See <a href="/formats">all supported file types</a>.</dd></div>
           </dl>
         </div>
       </div>

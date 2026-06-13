@@ -28,14 +28,22 @@ CREATE TABLE IF NOT EXISTS visitor_seen (
 -- Asteroids easter-egg leaderboard: one row per submitted run. `name` is 5 chars
 -- of [A-Z0-9], validated + profanity-checked server-side before insert. The /stats
 -- page and the game's end screen show the top 5 by score.
+-- `wave` is how far the run got; `cause` is the final blow (a file extension like
+-- '.pdf', or 'nuke'). Both are shown on the /stats board alongside the date (ts).
 CREATE TABLE IF NOT EXISTS scores (
   id     INTEGER PRIMARY KEY AUTOINCREMENT,
   name   TEXT NOT NULL,
   score  INTEGER NOT NULL,
   ts     INTEGER NOT NULL,
-  iphash TEXT
+  iphash TEXT,
+  wave   INTEGER,
+  cause  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC);
 CREATE INDEX IF NOT EXISTS idx_scores_iphash ON scores(iphash);
--- If the table predates the iphash column, add it once (ignore "duplicate column"):
+-- If the table predates a column, add it once (ignore "duplicate column"). The
+-- worker also self-migrates wave/cause on the next score submit, so these are
+-- only needed if you want them present before any new score is posted:
 --   ALTER TABLE scores ADD COLUMN iphash TEXT;
+--   ALTER TABLE scores ADD COLUMN wave INTEGER;
+--   ALTER TABLE scores ADD COLUMN cause TEXT;

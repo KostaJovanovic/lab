@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 112;
+const COMMIT_COUNT = 113;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -37,8 +37,14 @@ import { renderDocx } from '../renderers/docx.js';
 import { renderXlsx } from '../renderers/xlsx.js';
 import { renderEpub } from '../renderers/epub.js';
 import { renderPptx } from '../renderers/pptx.js';
-import { renderOdt, renderOds, renderOdp } from '../renderers/odf.js';
+import { renderOdt, renderOds, renderOdp, renderOdg } from '../renderers/odf.js';
 import { renderDoc, renderXls, renderPpt } from '../renderers/legacy-office.js';
+import { renderRtf, renderAbw, renderFb2, renderHwpx, renderMhtml, renderMarkup } from '../renderers/textdoc.js';
+import { renderNotebook } from '../renderers/notebook.js';
+import { renderEml, renderMbox } from '../renderers/email.js';
+import { renderHar, renderJsonData, renderNfo } from '../renderers/dataview.js';
+import { renderDrawio, renderDxf } from '../renderers/diagram.js';
+import { renderIwork } from '../renderers/iwork.js';
 import { renderStl } from '../renderers/stl.js';
 import { renderModel3d } from '../renderers/model3d.js';
 import { renderTimeline } from '../renderers/timeline.js';
@@ -233,10 +239,23 @@ async function sniffFileType(file) {
   if (m([0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C])) return { kind: 'proprietary', ext: '7z', label: '7-Zip archive' };
   if (a(0, 6) === 'SQLite') return { kind: 'proprietary', ext: 'sqlite', label: 'SQLite database' };
   if (m([0x1F, 0x8B])) return { kind: 'proprietary', ext: 'gz', label: 'GZip archive' };
+  if (m([0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00])) return { kind: 'proprietary', ext: 'xz', label: 'XZ archive' };
+  if (m([0x28, 0xB5, 0x2F, 0xFD])) return { kind: 'proprietary', ext: 'zst', label: 'Zstandard archive' };
+  if (m([0x42, 0x5A, 0x68]) && b[3] >= 0x31 && b[3] <= 0x39) return { kind: 'proprietary', ext: 'bz2', label: 'bzip2 archive' };
+  if (m([0x04, 0x22, 0x4D, 0x18])) return { kind: 'proprietary', ext: 'lz4', label: 'LZ4 archive' };
+  if (m([0x1F, 0x9D])) return { kind: 'proprietary', ext: 'z', label: 'compress (.Z) archive' };
   if (m([0x7F, 0x45, 0x4C, 0x46])) return { kind: 'proprietary', ext: 'elf', label: 'ELF executable' };
   if (m([0x4D, 0x5A])) return { kind: 'proprietary', ext: 'exe', label: 'Windows executable' };
   if (m([0xC5, 0xD0, 0xD3, 0xC7]) || a(0, 4) === '%!PS') return { kind: 'proprietary', ext: 'eps', label: 'PostScript / EPS' };
   if (b.length >= 132 && a(128, 4) === 'DICM') return { kind: 'proprietary', ext: 'dcm', label: 'DICOM medical image' };
+  if (a(257, 5) === 'ustar') return { kind: 'proprietary', ext: 'tar', label: 'TAR archive' };
+  // Legacy .lzma (LZMA alone) has no fixed magic - key off the default properties
+  // byte 0x5D plus a sane dictionary size in the 13-byte header. Last among the
+  // archive sniffs so stronger magics win first.
+  if (b.length >= 13 && b[0] === 0x5D) {
+    const dict = b[1] + b[2] * 256 + b[3] * 65536 + b[4] * 16777216;
+    if (dict >= 0x1000 && dict <= 0x40000000) return { kind: 'proprietary', ext: 'lzma', label: 'LZMA archive' };
+  }
   const start = a(0, Math.min(b.length, 220)).trimStart();
   if (start.startsWith('<svg') || (start.includes('<svg') && start.includes('xmlns'))) return { kind: 'svg', ext: 'svg', label: 'SVG image' };
   return null;
@@ -309,6 +328,12 @@ function showLinkConfirm(anchor, opts) {
 // Extension sets live in formats.js (the central catalog). See that file to
 // add a new type - the overlay, about page, and search update automatically.
 
+// Lightweight-markup / source document formats rendered as selectable text.
+const MARKUP_EXTS = new Set([
+  'dita', 'ditamap', 'tei', 'jats', 'nxml', 'rst', 'adoc', 'asciidoc',
+  'org', 'textile', 'tex', 'latex', 'ltx', 'sty', 'cls', 'bib',
+]);
+
 function classifyFile(file) {
   const t = (file.type || '').toLowerCase();
   const ext = fileExt(file.name);
@@ -318,16 +343,41 @@ function classifyFile(file) {
   if (t.startsWith('audio/')) return 'audio';
   if (t.startsWith('video/')) return 'video';
   if (CSV_EXTS.has(ext) || t === 'text/csv' || t === 'text/tab-separated-values') return 'csv';
-  if (ext === 'docx') return 'docx';
-  if (ext === 'xlsx') return 'xlsx';
+  // Word, Excel, PowerPoint OOXML and their template / macro-enabled / show
+  // siblings share the same package, so they reuse the same renderers.
+  if (ext === 'docx' || ext === 'docm' || ext === 'dotx' || ext === 'dotm') return 'docx';
+  if (ext === 'xlsx' || ext === 'xlsm' || ext === 'xltx' || ext === 'xltm') return 'xlsx';
+  if (ext === 'pptx' || ext === 'pptm' || ext === 'ppsx' || ext === 'ppsm' || ext === 'potx' || ext === 'potm') return 'pptx';
   if (ext === 'epub') return 'epub';
-  if (ext === 'pptx') return 'pptx';
-  if (ext === 'odt') return 'odt';
-  if (ext === 'ods') return 'ods';
-  if (ext === 'odp') return 'odp';
+  // OpenDocument, its template siblings (.ott/.ots/.otp/.otg), the flat
+  // single-XML variants (.fodt/.fods/.fodp/.fodg) and legacy StarOffice 1.x
+  // (.sxw/.sxc/.sxi/.sxd) all share the OpenDocument content model.
+  if (ext === 'odt' || ext === 'ott' || ext === 'fodt' || ext === 'sxw') return 'odt';
+  if (ext === 'ods' || ext === 'ots' || ext === 'fods' || ext === 'sxc') return 'ods';
+  if (ext === 'odp' || ext === 'otp' || ext === 'fodp' || ext === 'sxi') return 'odp';
+  if (ext === 'odg' || ext === 'otg' || ext === 'fodg' || ext === 'sxd') return 'odg';
   if (ext === 'doc') return 'doc';
   if (ext === 'xls') return 'xls';
   if (ext === 'ppt' || ext === 'pps') return 'ppt';
+  // Text / lightweight-markup documents (textdoc.js).
+  if (ext === 'rtf') return 'rtf';
+  if (ext === 'abw') return 'abw';
+  if (ext === 'fb2') return 'fb2';
+  if (ext === 'hwpx') return 'hwpx';
+  if (ext === 'mht' || ext === 'mhtml') return 'mhtml';
+  if (MARKUP_EXTS.has(ext)) return 'markup';
+  // Structured data / notebooks / email / diagrams - real viewers for what
+  // were identification-only formats.
+  if (ext === 'ipynb') return 'notebook';
+  if (ext === 'har') return 'har';
+  if (ext === 'json5' || ext === 'jsonc' || ext === 'hjson') return 'jsondata';
+  if (ext === 'nfo') return 'nfo';
+  if (ext === 'eml' || ext === 'emlx') return 'eml';
+  if (ext === 'mbox') return 'mbox';
+  if (ext === 'drawio') return 'drawio';
+  if (ext === 'dxf') return 'dxf';
+  // Apple iWork packages: render the embedded QuickLook preview (PDF or image).
+  if (ext === 'pages' || ext === 'numbers' || ext === 'key' || ext === 'keynote') return 'iwork';
   if (ext === 'stl') return 'stl';
   // 3D models with an interactive WebGL viewer. Native meshes: STL (above), OBJ,
   // PLY, OFF, 3MF, AMF. B-rep CAD via OpenCASCADE: STEP, IGES, BREP.
@@ -367,9 +417,25 @@ const ROUTES = {
   odt:         { render: renderOdt,         results: 'unknown', scroll: '#unknownResults' },
   ods:         { render: renderOds,         results: 'unknown', scroll: '#unknownResults' },
   odp:         { render: renderOdp,         results: 'unknown', scroll: '#unknownResults' },
+  odg:         { render: renderOdg,         results: 'unknown', scroll: '#unknownResults' },
   doc:         { render: renderDoc,         results: 'unknown', scroll: '#unknownResults' },
   xls:         { render: renderXls,         results: 'unknown', scroll: '#unknownResults' },
   ppt:         { render: renderPpt,         results: 'unknown', scroll: '#unknownResults' },
+  rtf:         { render: renderRtf,         results: 'unknown', scroll: '#unknownResults' },
+  abw:         { render: renderAbw,         results: 'unknown', scroll: '#unknownResults' },
+  fb2:         { render: renderFb2,         results: 'unknown', scroll: '#unknownResults' },
+  hwpx:        { render: renderHwpx,        results: 'unknown', scroll: '#unknownResults' },
+  mhtml:       { render: renderMhtml,       results: 'unknown', scroll: '#unknownResults' },
+  markup:      { render: renderMarkup,      results: 'unknown', scroll: '#unknownResults' },
+  notebook:    { render: renderNotebook,    results: 'unknown', scroll: '#unknownResults' },
+  har:         { render: renderHar,         results: 'unknown', scroll: '#unknownResults' },
+  jsondata:    { render: renderJsonData,    results: 'unknown', scroll: '#unknownResults' },
+  nfo:         { render: renderNfo,         results: 'unknown', scroll: '#unknownResults' },
+  eml:         { render: renderEml,         results: 'unknown', scroll: '#unknownResults' },
+  mbox:        { render: renderMbox,        results: 'unknown', scroll: '#unknownResults' },
+  drawio:      { render: renderDrawio,      results: 'unknown', scroll: '#unknownResults' },
+  dxf:         { render: renderDxf,         results: 'unknown', scroll: '#unknownResults' },
+  iwork:       { render: renderIwork,       results: 'unknown', scroll: '#unknownResults' },
   stl:         { render: renderStl,         results: 'unknown', scroll: '#unknownResults' },
   model3d:     { render: renderModel3d,     results: 'unknown', scroll: '#unknownResults' },
   timeline:    { render: renderTimeline,    results: 'unknown', scroll: '#unknownResults' },
@@ -492,14 +558,37 @@ async function setupStatsPage() {
       // ten more per click, "Show last N" at the tail, then the button hides.
       const SCORES_TOP = 5;
       const SCORES_STEP = 10;
-      const scoreRow = (s) => el('li', { class: 'stats-score-row' }, [
-        el('span', { class: 'stats-score-name' }, String(s.name)),
-        el('span', { class: 'stats-score-num' }, Number(s.score).toLocaleString()),
-      ]);
+      // Clicking the reigning #1 score launches the Asteroids easter egg - a
+      // "think you can beat it?" invitation on the highest high score.
+      const launchGame = () => { import('../games/asteroids.js').then((m) => m.launchAsteroids()).catch(() => {}); };
+      // The "final blow" tag: a file extension ('.pdf') or the literal 'nuke'.
+      const causeText = (c) => !c ? '' : (c === 'nuke' ? 'nuclear bomb' : c);
+      const scoreRow = (s, i) => {
+        const top = i === 0;
+        const num = el('span', { class: 'stats-score-num' + (top ? ' stats-score-num--play' : '') }, Number(s.score).toLocaleString());
+        // Only the reigning #1 score number launches Asteroids.
+        if (top) {
+          num.title = 'Play Asteroids - think you can beat it?';
+          num.setAttribute('role', 'button');
+          num.tabIndex = 0;
+          num.addEventListener('click', launchGame);
+          num.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); launchGame(); } });
+        }
+        const children = [el('span', { class: 'stats-score-name' }, String(s.name))];
+        // Inline next to the name: date, then wave survived, then the killing file / nuke.
+        const run = [];
+        if (s.ts) { const d = new Date(s.ts * 1000); if (!isNaN(d)) run.push(d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })); }
+        const waveN = Number(s.wave);
+        if (Number.isFinite(waveN) && waveN > 0) run.push('W' + waveN);
+        if (s.cause) run.push(causeText(s.cause));
+        if (run.length) children.push(el('span', { class: 'stats-score-run' }, run.join('  ·  ')));
+        children.push(num);
+        return el('li', { class: 'stats-score-row' }, children);
+      };
       let scoresShown = SCORES_TOP;
       const renderScores = () => {
         scoreList.innerHTML = '';
-        scores.slice(0, scoresShown).forEach((s) => scoreList.appendChild(scoreRow(s)));
+        scores.slice(0, scoresShown).forEach((s, i) => scoreList.appendChild(scoreRow(s, i)));
         if (!scoreToggle) return;
         const remaining = scores.length - scoresShown;
         if (remaining <= 0) { scoreToggle.hidden = true; return; }
@@ -594,6 +683,12 @@ async function setupStatsPage() {
 // When you add a patch: extend the newest group's notes, or - once that group holds
 // five versions - start a new group above it (and never fold 1.0 or 2.0 into a range).
 const PATCH_DIGEST = [
+  { range: '3.06 - 3.13', notes: [
+    'Old Office files (Word, Excel, PowerPoint 97-2003) and OpenDocument files now open as page-by-page previews.',
+    'Step through an animated GIF one frame at a time.',
+    'Industrial CAD models (STEP, IGES, BREP) now work fully offline.',
+    'High scores can now be seen on the Stats page.',
+  ] },
   { range: '3.01 - 3.05', notes: [
     'Export any analysis as a self-contained report, a JSON data file, or a CSV.',
     'SQLite write-ahead logs, git repository internals and Sigma Foveon RAW now open.',
@@ -1023,7 +1118,7 @@ function boot() {
         const sniff = await sniffFileType(file);
         if (token.cancelled) return;
         const noExt = !fileExt(file.name);
-        const zipFamily = new Set(['docx', 'xlsx', 'pptx', 'epub', 'zip', 'comic', 'odt', 'ods', 'odp']);
+        const zipFamily = new Set(['docx', 'xlsx', 'pptx', 'epub', 'zip', 'comic', 'odt', 'ods', 'odp', 'odg', 'hwpx', 'iwork']);
         const offerable = noExt || kind === 'unknown' || kind === 'proprietary'
           || kind === 'photo' || kind === 'audio' || kind === 'video';
         if (sniff && sniff.kind !== kind && !(sniff.kind === 'zip' && zipFamily.has(kind)) && offerable) {
@@ -1037,9 +1132,16 @@ function boot() {
           if (sniff.ext === 'zip') archiveEmbed = { mode: 'zip', label: 'ZIP' };
           else if (sniff.ext === 'rar') archiveEmbed = { mode: 'libarchive', label: 'RAR' };
           else if (sniff.ext === '7z') archiveEmbed = { mode: 'libarchive', label: '7-Zip' };
+          // TAR + the single-stream compressors: libarchive reads tar/tarballs,
+          // and a bare .gz/.xz/.zst/.lz4/.lzma/.Z stream is decompressed to open
+          // the file inside (bare .bz2 is identified only - no in-browser decoder).
+          else if (['tar', 'gz', 'xz', 'zst', 'bz2', 'lz4', 'lzma', 'z'].includes(sniff.ext)) {
+            const NICE = { gz: 'GZIP', zst: 'Zstandard', bz2: 'BZIP2', lzma: 'LZMA', z: 'compress (.Z)' };
+            archiveEmbed = { mode: 'compressed', label: NICE[sniff.ext] || sniff.ext.toUpperCase() };
+          }
         }
-        // Don't also pop the "analyse as ZIP/RAR/7z" suggestion - it's embedded now.
-        if (archiveEmbed && suggestion && (suggestion.ext === 'zip' || suggestion.ext === 'rar' || suggestion.ext === '7z')) {
+        // Don't also pop the "analyse as <archive>" suggestion - it's embedded now.
+        if (archiveEmbed && suggestion && ['zip', 'rar', '7z', 'tar', 'gz', 'xz', 'zst', 'bz2', 'lz4', 'lzma', 'z'].includes(suggestion.ext)) {
           suggestion = null;
         }
       } catch (_) {}
@@ -1548,7 +1650,7 @@ function boot() {
     // Console easter egg, printed once per session for anyone who opens devtools.
     try {
       console.log(
-        "%cyou are probably looking for a test page. there is one but i'm not telling you how to find it.",
+        "%cyou are probably looking for a secret page. there is one but i'm not telling you how to find it.",
         'font-family:monospace;font-size:13px;'
       );
     } catch (_) {}
@@ -1831,7 +1933,11 @@ function boot() {
       './assets/vendor/libarchive/wasm-gen/libarchive.wasm',
       './assets/vendor/openjpeg/openjpegwasm.js',
       './assets/vendor/openjpeg/openjpegwasm.wasm',
-      './assets/vendor/xzwasm/xzwasm.min.js'
+      './assets/vendor/xzwasm/xzwasm.min.js',
+      // OpenCASCADE (occt-import-js) for STEP/IGES/BREP CAD - CDN-hosted, like the
+      // ffmpeg core; keep the version in sync with OCCT_VERSION in occt-loader.js.
+      'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.js',
+      'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.wasm'
     ],
     // Only English is bundled (in the "everything" tier); every other OCR
     // language is pulled from the CDN (not hosted in the repo). They all land

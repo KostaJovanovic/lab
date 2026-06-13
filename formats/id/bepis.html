@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>.BEPIS file - what it is and how to identify it | Analyser</title>
-  <meta name="description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
+  <meta name="description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
   <link rel="canonical" href="https://lab.valjdakosta.com/formats/id/bepis">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
@@ -12,7 +12,7 @@
   <meta property="og:site_name" content="Analyser">
   <meta property="og:locale" content="en_GB">
   <meta property="og:title" content=".BEPIS file - what it is and how to identify it | Analyser">
-  <meta property="og:description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
+  <meta property="og:description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
   <meta property="og:url" content="https://lab.valjdakosta.com/formats/id/bepis">
   <meta property="og:image" content="https://lab.valjdakosta.com/assets/img/banner.jpg">
   <meta property="og:image:width" content="1200">
@@ -20,14 +20,14 @@
   <meta property="og:image:alt" content="The Analyser wordmark on a faint grid - a free, local, in-browser file metadata and forensics tool.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content=".BEPIS file - what it is and how to identify it | Analyser">
-  <meta name="twitter:description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
+  <meta name="twitter:description" content="BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score. Identify and inspect a .BEPIS file free in your browser with Analyser - nothing is uploaded.">
   <meta name="twitter:image" content="https://lab.valjdakosta.com/assets/img/banner.jpg">
   <link rel="icon" href="/assets/img/favicon.png" type="image/png">
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/assets/img/icon.png">
   <link rel="manifest" href="/manifest.json">
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .BEPIS file?","acceptedAnswer":{"@type":"Answer","text":"BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL. ULTRAKILL, released in 2020, gives its save files the joke extension .bepis. Under the joke extension, an ULTRAKILL save is actually a .NET binary serialisation stream (MS-NRBF) with its bytes in little-endian order. ULTRAKILL was made by Arsi “Hakita” Patala and published by New Blood Interactive."}},{"@type":"Question","name":"How do I open a .BEPIS file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .BEPIS file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Identify game save files, including ULTRAKILL saves (BEPIS), and read their stored progress."}}]}
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a .BEPIS file?","acceptedAnswer":{"@type":"Answer","text":"BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score. ULTRAKILL, released in 2020, gives its save files the joke extension .bepis. Under the joke extension, an ULTRAKILL save is actually a .NET binary serialisation stream (MS-NRBF) with its bytes in little-endian order. ULTRAKILL was made by Arsi “Hakita” Patala and published by New Blood Interactive."}},{"@type":"Question","name":"How do I open a .BEPIS file?","acceptedAnswer":{"@type":"Answer","text":"Drop a .BEPIS file onto Analyser at https://lab.valjdakosta.com/ and it is identified directly in your browser - no upload, no account and no software to install. Read ULTRAKILL save files (BEPIS) - decoding the .NET BinaryFormatter stream into your actual progress: money and unlocked weapon variants, furthest level and difficulty reached, per-level ranks, secrets and best kills/style/time, and your Cyber Grind high score (wave, kills, style and time)."}}]}
   </script>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Analyser","item":"https://lab.valjdakosta.com/"},{"@type":"ListItem","position":2,"name":"Supported file types","item":"https://lab.valjdakosta.com/formats"},{"@type":"ListItem","position":3,"name":".BEPIS","item":"https://lab.valjdakosta.com/formats/id/bepis"}]}
@@ -79,17 +79,20 @@
 </nav>
 
 <main class="site-main about-page patch-page format-page">
+  <div class="format-cta">
+    <a href="/" class="format-cta-btn">Click here to analyse any file <span aria-hidden="true">&rarr;</span></a>
+  </div>
   <section class="section">
     <div class="grid">
       <div class="section-content">
         <p class="format-crumbs"><a href="/">Home</a> &rsaquo; <a href="/formats">Formats</a> &rsaquo; <span>.BEPIS</span><span class="fmt-item-badge format-crumb-badge is-id" title="Identified + header metadata">ID</span></p>
         <h2 class="section-head">What is a .BEPIS file?</h2>
-        <p class="section-lede">BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL.</p>
+        <p class="section-lede">BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score.</p>
 
         <div class="about-block">
           <dl class="about-caps">
             <div class="didyouknow"><dt>Did you know</dt><dd><ul class="dyk-list"><li>ULTRAKILL, released in 2020, gives its save files the joke extension .bepis.</li><li>Under the joke extension, an ULTRAKILL save is actually a .NET binary serialisation stream (MS-NRBF) with its bytes in little-endian order.</li><li>ULTRAKILL was made by Arsi “Hakita” Patala and published by New Blood Interactive.</li></ul></dd></div>
-            <div><dt>What Analyser reads</dt><dd>Identify game save files, including ULTRAKILL saves (BEPIS), and read their stored progress.</dd></div>
+            <div><dt>What Analyser reads</dt><dd>Read ULTRAKILL save files (BEPIS) - decoding the .NET BinaryFormatter stream into your actual progress: money and unlocked weapon variants, furthest level and difficulty reached, per-level ranks, secrets and best kills/style/time, and your Cyber Grind high score (wave, kills, style and time).</dd></div>
             <div><dt>Depth of analysis</dt><dd>.BEPIS is an identification-grade format: Analyser recognises it from its bytes and decodes the header metadata it carries, rather than opening it in a full viewer. Formats that do get a full viewer are marked "Full" on the <a href="/formats">formats page</a>.</dd></div>
             <div><dt>Open a .BEPIS file</dt><dd>Drag a .BEPIS file onto <a href="/">the Analyser home page</a> (or tap to pick one). It is identified entirely in your browser - nothing is uploaded, there is no account, and it works offline once installed.</dd></div>
             <div><dt>Related formats</dt><dd>Browse the <a href="/formats">full list of supported file types</a>.</dd></div>

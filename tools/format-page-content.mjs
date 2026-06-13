@@ -149,6 +149,22 @@ export const EXT_PAGES = {
   doc:  { name: 'Word 97-2003 document', blurb: 'DOC is the legacy binary Microsoft Word format used before Office 2007, stored in an OLE2 compound file rather than zipped XML.', fact: 'The .doc binary format dates to Word for Windows in 1989 and was Word’s default until DOCX arrived in 2007.' },
   xls:  { name: 'Excel 97-2003 spreadsheet', blurb: 'XLS is the legacy binary Microsoft Excel format used before Office 2007, storing cells in BIFF records inside an OLE2 compound file.', fact: 'The BIFF8 .xls format was Excel’s default from 1997 until XLSX replaced it in Office 2007.' },
   ppt:  { name: 'PowerPoint 97-2003 presentation', blurb: 'PPT is the legacy binary Microsoft PowerPoint format used before Office 2007, stored as records inside an OLE2 compound file.', fact: 'The binary .ppt format was PowerPoint’s default until PPTX replaced it with Office 2007.' },
+  docm: { name: 'Word macro-enabled document', blurb: 'DOCM is a macro-enabled Microsoft Word document - the same zipped XML package as DOCX, but allowed to carry VBA macros.', fact: 'Office uses the M suffix (DOCM/XLSM/PPTM) to mark macro-enabled files so they are not silently trusted.' },
+  dotx: { name: 'Word template', blurb: 'DOTX is a Microsoft Word template - the same zipped XML package as DOCX, used as the starting point for new documents.' },
+  dotm: { name: 'Word macro-enabled template', blurb: 'DOTM is a macro-enabled Microsoft Word template - a DOTX template that may also contain VBA macros.' },
+  xlsm: { name: 'Excel macro-enabled workbook', blurb: 'XLSM is a macro-enabled Microsoft Excel workbook - the same zipped XML package as XLSX, but allowed to carry VBA macros.' },
+  xltx: { name: 'Excel template', blurb: 'XLTX is a Microsoft Excel template - the same zipped XML package as XLSX, used as the starting point for new workbooks.' },
+  xltm: { name: 'Excel macro-enabled template', blurb: 'XLTM is a macro-enabled Microsoft Excel template - an XLTX template that may also contain VBA macros.' },
+  pptm: { name: 'PowerPoint macro-enabled presentation', blurb: 'PPTM is a macro-enabled Microsoft PowerPoint presentation - the same zipped XML package as PPTX, but allowed to carry VBA macros.' },
+  ppsx: { name: 'PowerPoint slideshow', blurb: 'PPSX is a PowerPoint slideshow - the same zipped XML package as PPTX, set to open straight into the presentation.' },
+  ppsm: { name: 'PowerPoint macro-enabled slideshow', blurb: 'PPSM is a macro-enabled PowerPoint slideshow - a PPSX that may also contain VBA macros.' },
+  potx: { name: 'PowerPoint template', blurb: 'POTX is a Microsoft PowerPoint template - the same zipped XML package as PPTX, used as the starting point for new presentations.' },
+  potm: { name: 'PowerPoint macro-enabled template', blurb: 'POTM is a macro-enabled Microsoft PowerPoint template - a POTX that may also contain VBA macros.' },
+  ott:  { name: 'OpenDocument text template', blurb: 'OTT is an OpenDocument text template - the same package as ODT, used by LibreOffice and OpenOffice as the basis for new documents.' },
+  ots:  { name: 'OpenDocument spreadsheet template', blurb: 'OTS is an OpenDocument spreadsheet template - the same package as ODS, used as the basis for new spreadsheets.' },
+  otp:  { name: 'OpenDocument presentation template', blurb: 'OTP is an OpenDocument presentation template - the same package as ODP, used as the basis for new presentations.' },
+  odg:  { name: 'OpenDocument graphics', blurb: 'ODG is the OpenDocument graphics format used by LibreOffice Draw and OpenOffice for vector drawings and diagrams - a zipped XML package.', fact: 'ODG shares the OpenDocument container with ODT, ODS and ODP; its body is an office:drawing of draw:page shapes.' },
+  otg:  { name: 'OpenDocument graphics template', blurb: 'OTG is an OpenDocument graphics template - the same package as ODG, used as the basis for new drawings.' },
 
   // ---- Data ----
   csv:  { name: 'CSV table', blurb: 'CSV is a plain-text table format storing rows of comma-separated values. Opened in Excel, Google Sheets and any text editor.', fact: 'CSV has been used since the earliest days of computing but was only formally documented in 2005, as RFC 4180.' },
@@ -367,7 +383,7 @@ export const EXT_PAGES = {
   umap:         { name: 'Unreal Engine map', blurb: 'UMAP is an Unreal Engine level (map) file. Created and opened by Unreal Engine.', fact: 'In classic Unreal Tournament a map’s filename declared its game mode, with prefixes such as DM- for Deathmatch and CTF- for Capture the Flag.' },
 
   // ---- Game saves ----
-  bepis: { name: 'ULTRAKILL save', blurb: 'BEPIS is a save file from the game ULTRAKILL, storing your progress. Created by ULTRAKILL.', fact: 'ULTRAKILL, released in 2020, gives its save files the joke extension .bepis.' },
+  bepis: { name: 'ULTRAKILL save', blurb: 'BEPIS is a save file from the game ULTRAKILL, storing your progress as a .NET BinaryFormatter stream. Analyser decodes it into your money, weapons, level and difficulty progress, per-level ranks and Cyber Grind high score.', fact: 'ULTRAKILL, released in 2020, gives its save files the joke extension .bepis.' },
 
   // ---- Valve / Steam ----
   vdf: { name: 'Valve KeyValues', blurb: 'VDF is Valve’s KeyValues text format, used throughout Steam and Source-engine games. Read by Steam.', fact: 'VDF files store everything from Steam settings to Source-engine game data.' },
@@ -494,8 +510,9 @@ export const EXT_PAGES = {
   rwz:  { name: 'Rawzor raw photo', blurb: 'RWZ is a camera raw photo compressed by the Rawzor tool.', fact: 'Rawzor losslessly compressed camera raw files to save storage space.' },
 
   // ---- Archives (packages) ----
-  lz4:    { name: 'LZ4 stream', blurb: 'LZ4 is an extremely fast compression format, used where speed matters more than ratio.', fact: 'LZ4, released in 2011, powers fast compression in databases, filesystems and game engines.' },
-  lzma:   { name: 'LZMA stream', blurb: 'LZMA is a high-ratio compression format, the algorithm behind 7-Zip and XZ.', fact: 'LZMA was developed by Igor Pavlov for 7-Zip in the late 1990s.' },
+  lz4:    { name: 'LZ4 stream', blurb: 'LZ4 is an extremely fast compression format, used where speed matters more than ratio. Analyser decompresses it in the browser so you can open the file inside.', fact: 'LZ4, released in 2011, powers fast compression in databases, filesystems and game engines.' },
+  lzma:   { name: 'LZMA stream', blurb: 'LZMA is a high-ratio compression format, the algorithm behind 7-Zip and XZ. Analyser decompresses the legacy .lzma stream in the browser so you can open the file inside.', fact: 'LZMA was developed by Igor Pavlov for 7-Zip in the late 1990s.' },
+  z:      { name: 'compress (.Z) archive', blurb: 'Z is a file squeezed with classic Unix compress, the LZW tool that predates gzip. Analyser decompresses it in the browser so you can open the file inside.', fact: 'Unix compress and its .Z files date to 1984; patent worries over its LZW algorithm spurred the creation of gzip.' },
   z:      { name: 'Unix compress', blurb: 'A .Z file is compressed with the classic Unix compress tool.', fact: 'Unix compress and its .Z files date from 1984 but were largely replaced by gzip.' },
   cpio:   { name: 'cpio archive', blurb: 'CPIO is a Unix archive stream, used in Linux boot images and RPM packages.', fact: 'cpio is one of the oldest Unix archivers and still lives inside Linux initramfs images.' },
   a:      { name: 'Static library (ar)', blurb: 'A .a file is a Unix static library - an ar archive of compiled object files.', fact: 'The ar archiver is among the oldest Unix tools, used to bundle compiled code into libraries.' },
@@ -956,6 +973,8 @@ export const EXT_PAGES = {
   sxc:    { name: 'OpenOffice.org Calc', blurb: 'SXC was the OpenOffice.org 1 spreadsheet format before ODF.', fact: 'SXC was OpenOffice’s early spreadsheet format, replaced by ODS.' },
   fodt:   { name: 'Flat ODF Text', blurb: 'FODT is an OpenDocument text file stored as a single flat XML file.', fact: 'FODT keeps a whole word-processor document in one readable XML file.' },
   fods:   { name: 'Flat ODF Spreadsheet', blurb: 'FODS is an OpenDocument spreadsheet stored as flat XML.', fact: 'FODS is a spreadsheet saved as one plain XML file rather than a zipped package.' },
+  fodp:   { name: 'Flat ODF Presentation', blurb: 'FODP is an OpenDocument presentation stored as a single flat XML file rather than a zipped package.' },
+  fodg:   { name: 'Flat ODF Graphics', blurb: 'FODG is an OpenDocument graphics/drawing stored as a single flat XML file rather than a zipped package.' },
   ott:    { name: 'ODF text template', blurb: 'OTT is the OpenDocument template for word-processor documents.', fact: 'OTT is the OpenDocument equivalent of a Word .dotx template.' },
   dotx:   { name: 'Word template', blurb: 'DOTX is the modern Microsoft Word template format.', fact: 'A DOTX provides the starting layout and styles for new Word documents.' },
   dotm:   { name: 'Word macro template', blurb: 'DOTM is a Microsoft Word template that can carry macros.', fact: 'DOTM is a Word template allowed to contain automation macros.' },

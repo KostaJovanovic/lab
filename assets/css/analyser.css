@@ -5002,6 +5002,8 @@ a.fmt-item-ext:hover { color: var(--accent); text-decoration: underline; text-un
 .anr-pptx-body { font-size: clamp(8px, 1.6cqw, 15px); line-height: 1.5; }
 .anr-pptx-body p { margin: 0 0 0.6cqw; }
 .anr-pptx-img { max-width: 60%; height: auto; margin: 1cqw 0; border: 1px solid var(--rule); }
+/* Apple iWork embedded preview image (Pages/Numbers/Keynote). */
+.anr-iwork-preview { display: block; max-width: 100%; height: auto; margin: 10px 0; border: 1px solid var(--rule); }
 .anr-pptx-notes { margin-top: 14px; font-size: 13px; color: var(--muted); }
 .anr-pptx-notes summary { cursor: pointer; }
 /* Speaker notes are noise in a thumbnail - only show them in the open lightbox. */
@@ -5443,12 +5445,25 @@ a.stats-ext-link:hover { color: var(--accent); text-decoration: none; }
   counter-increment: anr-rank;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 9px 0;
   border-bottom: 1px solid var(--hairline);
 }
+/* Wave / final blow / date sit inline right after the name; the score is pushed
+   to the right edge. */
+.stats-score-run {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.stats-score-num { margin-left: auto; }
 .stats-score-row:last-child { border-bottom: 0; }
+/* The reigning #1 score number launches Asteroids - underline on hover/focus. */
+.stats-score-num--play { cursor: pointer; }
+.stats-score-num--play:hover,
+.stats-score-num--play:focus-visible { text-decoration: underline; outline: none; }
 .stats-score-name {
   font-family: var(--font-mono);
   letter-spacing: 0.22em;
@@ -5651,3 +5666,131 @@ a.stats-ext-link:hover { color: var(--accent); text-decoration: none; }
   .anr-page { padding: 28px; min-height: 0; }
   .anr-page--slide { padding: 24px; }
 }
+
+/* ============================================================================
+   Backlog viewers: Jupyter notebooks, email, HAR, JSON supersets, NFO art,
+   draw.io / DXF diagrams. Swiss-minimal, theme-token driven.
+   ============================================================================ */
+
+/* Shared small subheading inside a card (attachments, message body, ...) */
+.anr-subhead {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 22px 0 10px;
+}
+
+/* ---------- Jupyter notebook ---------- */
+.anr-nb-flow { display: flex; flex-direction: column; gap: 18px; }
+.anr-nb-cell { border-left: 2px solid var(--rule); padding-left: 14px; }
+.anr-nb-cell--code { border-left-color: var(--accent); }
+.anr-nb-prompt {
+  font-family: var(--font-mono); font-size: var(--t-tiny);
+  color: var(--accent); margin-bottom: 4px; letter-spacing: 0.05em;
+}
+.anr-nb-code, .anr-nb-out {
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+  user-select: text; -webkit-user-select: text;
+}
+.anr-nb-code { background: var(--surface); padding: 12px 14px; border-radius: 4px; }
+.anr-nb-out { margin-top: 8px; padding: 8px 14px; border-left: 2px solid var(--rule); color: var(--muted); }
+.anr-nb-out--result { color: var(--fg); }
+.anr-nb-out--err { color: var(--accent); border-left-color: var(--accent); }
+.anr-nb-img { max-width: 100%; height: auto; margin-top: 8px; border: 1px solid var(--rule); }
+.anr-nb-md { line-height: 1.6; }
+.anr-nb-md h1, .anr-nb-md h2, .anr-nb-md h3 { margin: 0.5em 0 0.3em; }
+.anr-nb-mdcode { background: var(--surface); padding: 12px 14px; border-radius: 4px; font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; }
+
+/* ---------- Email ---------- */
+.anr-email-html {
+  border: 1px solid var(--rule); padding: 16px; border-radius: 4px;
+  max-height: 640px; overflow: auto; background: var(--bg);
+  user-select: text; -webkit-user-select: text;
+}
+.anr-email-html img { max-width: 100%; height: auto; }
+
+/* ---------- HAR request table ---------- */
+.anr-har-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+.anr-har-table th {
+  text-align: left; font-weight: 500; color: var(--muted);
+  border-bottom: 1px solid var(--hairline); padding: 6px 8px;
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--t-tiny);
+}
+.anr-har-table td { padding: 5px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.anr-har-num { text-align: right; white-space: nowrap; }
+.anr-har-url { word-break: break-all; max-width: 0; }
+.anr-har-2xx { color: #1a8a3a; }
+.anr-har-3xx { color: #b07d00; }
+.anr-har-4xx, .anr-har-5xx { color: var(--accent); }
+
+/* ---------- JSON value tree ---------- */
+.anr-json-tree { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7; user-select: text; -webkit-user-select: text; }
+.anr-json-children { padding-left: 18px; border-left: 1px solid var(--rule); margin-left: 4px; }
+.anr-json-sum { cursor: pointer; list-style: none; }
+.anr-json-sum::-webkit-details-marker { display: none; }
+.anr-json-sum::before { content: "\25B8"; color: var(--muted); display: inline-block; width: 1em; transition: transform var(--dur-snappy) ease; }
+details[open] > .anr-json-sum::before { transform: rotate(90deg); }
+.anr-json-key { color: var(--accent); }
+.anr-json-brace { color: var(--muted); }
+.anr-json-leaf { padding-left: 1em; }
+.anr-json-string { color: #1a8a3a; }
+.anr-json-number { color: #2d6fd6; }
+.anr-json-boolean, .anr-json-null { color: #b07d00; }
+
+.anr-code-src { max-height: 560px; overflow: auto; background: var(--surface); padding: 14px; border-radius: 4px; }
+
+/* ---------- NFO scene art ---------- */
+.anr-nfo-art {
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.2;
+  white-space: pre; overflow-x: auto; tab-size: 8;
+  background: var(--surface); padding: 18px; border-radius: 4px;
+  user-select: text; -webkit-user-select: text;
+}
+
+/* ---------- Diagram preview (draw.io / DXF) ---------- */
+.anr-diagram-stage {
+  border: 1px solid var(--rule); border-radius: 4px; background: var(--bg);
+  max-height: 70vh; overflow: auto; padding: 12px;
+}
+.anr-diagram-svg { display: block; width: 100%; height: auto; max-height: 68vh; }
+.anr-dg-shape { fill: var(--surface); stroke: var(--fg); stroke-width: 1.5; }
+.anr-dg-edge { stroke: var(--muted); stroke-width: 1.5; }
+.anr-dg-label { fill: var(--fg); font-family: var(--font-sans); font-size: 12px; text-anchor: middle; dominant-baseline: middle; }
+.anr-dg-elabel { fill: var(--muted); font-family: var(--font-sans); font-size: 10px; text-anchor: middle; }
+.anr-dxf-svg { background: var(--bg); }
+.anr-dxf-line { fill: none; stroke: var(--fg); stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+.anr-dxf-shape { fill: none; stroke: var(--fg); stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+.anr-dxf-text { fill: var(--accent); font-family: var(--font-sans); }
+
+/* Per-format page CTA - sits between the nav strip and the content card,
+   inviting a visitor who landed on a "what is a .X file" page to actually
+   analyse one. */
+.format-cta {
+  padding: 28px var(--pad-x) 0;
+  display: flex;
+  justify-content: center;
+}
+/* The CTA already gives breathing room under the nav, so collapse the big
+   default section top-padding (--pad-y) that would otherwise leave a huge gap
+   beneath the button. */
+.format-cta + .section { padding-top: 28px; }
+/* Same visual language as .header-btn (surface fill, hairline border, invert on
+   hover) - just scaled up for a primary call to action. */
+.format-cta-btn {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  padding: 11px 24px;
+  transition: background var(--dur-base) ease, color var(--dur-base) ease;
+}
+.format-cta-btn:hover { background: var(--fg); color: var(--bg); }
+.format-cta-btn span { transition: transform var(--dur-snappy) ease; display: inline-block; }
+.format-cta-btn:hover span { transform: translateX(4px); }

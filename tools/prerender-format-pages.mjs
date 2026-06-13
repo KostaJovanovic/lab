@@ -355,6 +355,9 @@ function page(key, e, depth) {
 ${siteNav(key)}
 
 <main class="site-main about-page patch-page format-page">
+  <div class="format-cta">
+    <a href="/" class="format-cta-btn">Click here to analyse any file <span aria-hidden="true">&rarr;</span></a>
+  </div>
   <section class="section">
     <div class="grid">
       <div class="section-content">
