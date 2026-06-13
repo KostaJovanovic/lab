@@ -102,6 +102,13 @@ export function launchAsteroids() {
   canvas.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; display:block;';
   overlay.appendChild(canvas);
 
+  // Nuclear flash as a DOM layer (not a canvas fill) so it sits above EVERYTHING in
+  // the overlay - controls, close button, end panel. Its opacity is driven per frame
+  // by nukeFlash(); pointer-events:none so it never traps input.
+  const nukeEl = document.createElement('div');
+  nukeEl.style.cssText = 'position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:2147483647;';
+  overlay.appendChild(nukeEl);
+
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'anr-game-btn';
@@ -995,27 +1002,54 @@ export function launchAsteroids() {
     ctx.restore();
   }
 
-  // Nuclear flash: full-screen white over everything (HUD included). Holds opaque
-  // for NUKE_WHITE, fades out over NUKE_FADE, then nothing for the NUKE_GAP beat.
+  // Nuclear flash: drives the top-most DOM layer's opacity. Holds opaque for
+  // NUKE_WHITE, fades out over NUKE_FADE, then nothing for the NUKE_GAP beat.
   function nukeFlash() {
-    if (nuke <= 0) return;
-    const elapsed = NUKE_TOTAL - nuke;
-    let a;
-    if (elapsed < NUKE_WHITE) a = 1;
-    else if (elapsed < NUKE_WHITE + NUKE_FADE) a = 1 - (elapsed - NUKE_WHITE) / NUKE_FADE;
-    else a = 0;
-    if (a <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
+    let a = 0;
+    if (nuke > 0) {
+      const elapsed = NUKE_TOTAL - nuke;
+      if (elapsed < NUKE_WHITE) a = 1;
+      else if (elapsed < NUKE_WHITE + NUKE_FADE) a = 1 - (elapsed - NUKE_WHITE) / NUKE_FADE;
+    }
+    const v = String(Math.max(0, a));
+    if (nukeEl.style.opacity !== v) nukeEl.style.opacity = v;
   }
 
   // ---- End-of-game leaderboard panel (DOM, overlaid on the canvas) ----
   function clearEndPanel() {
     if (endPanel) { endPanel.remove(); endPanel = null; }
     nameEntry = false;
+  }
+
+  // Local memory for the leaderboard, kept under non-anr keys so app.js's anrSweep
+  // (which refreshes anr-* timestamps and would defeat a 1-day TTL) doesn't touch
+  // them. The remembered name expires after a day; submissions are capped at one
+  // per device per day. Both are best-effort client-side only.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const MAX_PER_DAY = 10;     // submissions allowed per device per day
+  const NAME_KEY = 'asteroids-name';
+  const SUBMIT_KEY = 'asteroids-submits';
+  function rememberedName() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(NAME_KEY) || 'null');
+      if (raw && raw.name && Date.now() - raw.ts < DAY_MS) return String(raw.name);
+    } catch (_) {}
+    return '';
+  }
+  function rememberName(name) {
+    try { localStorage.setItem(NAME_KEY, JSON.stringify({ name, ts: Date.now() })); } catch (_) {}
+  }
+  const dayBucket = () => Math.floor(Date.now() / DAY_MS);
+  function submitsToday() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SUBMIT_KEY) || 'null');
+      if (raw && raw.day === dayBucket()) return raw.count || 0;
+    } catch (_) {}
+    return 0;
+  }
+  function canSubmitToday() { return submitsToday() < MAX_PER_DAY; }
+  function markSubmitted() {
+    try { localStorage.setItem(SUBMIT_KEY, JSON.stringify({ day: dayBucket(), count: submitsToday() + 1 })); } catch (_) {}
   }
 
   // Game-over headline shown at the top of the end card: GAME OVER + score + high.
@@ -1103,6 +1137,8 @@ export function launchAsteroids() {
         return;
       }
       scoreDone = true;
+      rememberName(name);   // prefill next time (1-day memory)
+      markSubmitted();      // one submission per device per day
       leaderboard = data.top || leaderboard;
       showLeaderboardView(data.top, name);
     } catch (_) {
@@ -1125,6 +1161,7 @@ export function launchAsteroids() {
     input.type = 'text'; input.className = 'anr-score-input';
     input.maxLength = 5; input.autocomplete = 'off'; input.spellcheck = false;
     input.setAttribute('aria-label', 'Leaderboard name, 5 letters or numbers');
+    input.value = rememberedName();   // prefill with the name used in the last day
     input.addEventListener('input', () => {
       input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     });
@@ -1151,10 +1188,9 @@ export function launchAsteroids() {
     setTimeout(() => input.focus(), 30);   // focus once it's in the DOM (helps on mobile)
   }
 
-  // End the run. Only prompt to post a score if the player got far enough to be
-  // worth recording - at least wave SUBMIT_MIN_WAVE. A quick early death just shows
-  // the board (and play again), no name entry.
-  const SUBMIT_MIN_WAVE = 7;
+  // End the run. Prompt to post the score unless it's zero, already sent this run,
+  // or this device has already submitted today (one per device per day). Otherwise
+  // just show the board (and play again).
   function endGame() {
     if (gameOver) return;
     gameOver = true;
@@ -1163,7 +1199,7 @@ export function launchAsteroids() {
     mobileControls.forEach((elm) => { elm.style.display = 'none'; });
     input.left = input.right = input.thrust = input.fire = false;
     joy.active = false; joy.mag = 0;
-    if (score > 0 && !scoreDone && wave >= SUBMIT_MIN_WAVE) showSubmitView();
+    if (score > 0 && !scoreDone && canSubmitToday()) showSubmitView();
     else { endPanel = document.createElement('div'); endPanel.className = 'anr-score-panel'; overlay.appendChild(endPanel); skipToLeaderboard(); }
   }
 

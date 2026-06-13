@@ -197,8 +197,8 @@ async function handleStats(env) {
 // inserts it, and returns the new top 5. Rate-limited like /api/analysed so a
 // script can't flood the board.
 async function handleScore(request, env) {
+  const ipHash = await clientIpHash(request, env);
   if (env.ANALYSED_LIMIT) {
-    const ipHash = await clientIpHash(request, env);
     const { success } = await env.ANALYSED_LIMIT.limit({ key: ipHash });
     if (!success) return json({ ok: false, error: 'Too many submissions, try again shortly.' }, 429);
   }
@@ -211,8 +211,13 @@ async function handleScore(request, env) {
   if (!Number.isFinite(score) || score <= 0 || score > SCORE_MAX) {
     return json({ ok: false, error: 'Invalid score.' }, 400);
   }
-  await env.DB.prepare('INSERT INTO scores (name, score, ts) VALUES (?, ?, ?)')
-    .bind(name, score, Math.floor(Date.now() / 1000)).run();
+  // One entry per device (keyed by hashed IP): a new submission replaces the
+  // device's previous one, so repeated submits don't pile up rows on the board.
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM scores WHERE iphash = ?').bind(ipHash),
+    env.DB.prepare('INSERT INTO scores (name, score, ts, iphash) VALUES (?, ?, ?, ?)')
+      .bind(name, score, Math.floor(Date.now() / 1000), ipHash),
+  ]);
   return json({ ok: true, top: await topScores(env) });
 }
 

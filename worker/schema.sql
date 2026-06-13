@@ -29,9 +29,13 @@ CREATE TABLE IF NOT EXISTS visitor_seen (
 -- of [A-Z0-9], validated + profanity-checked server-side before insert. The /stats
 -- page and the game's end screen show the top 5 by score.
 CREATE TABLE IF NOT EXISTS scores (
-  id    INTEGER PRIMARY KEY AUTOINCREMENT,
-  name  TEXT NOT NULL,
-  score INTEGER NOT NULL,
-  ts    INTEGER NOT NULL
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  name   TEXT NOT NULL,
+  score  INTEGER NOT NULL,
+  ts     INTEGER NOT NULL,
+  iphash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC);
+CREATE INDEX IF NOT EXISTS idx_scores_iphash ON scores(iphash);
+-- If the table predates the iphash column, add it once (ignore "duplicate column"):
+--   ALTER TABLE scores ADD COLUMN iphash TEXT;
