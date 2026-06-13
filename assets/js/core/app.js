@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 106;
+const COMMIT_COUNT = 107;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -1394,7 +1394,9 @@ function boot() {
       var now = Date.now();
       for (var i = localStorage.length - 1; i >= 0; i--) {
         var k = localStorage.key(i);
-        if (!k || !k.startsWith('anr-') || k.endsWith(':ts')) continue;
+        // anr-asteroids-hi is a permanent high score with no :ts companion - skip it,
+        // or the sweep's "no timestamp" branch would delete it on every page load.
+        if (!k || !k.startsWith('anr-') || k.endsWith(':ts') || k === 'anr-asteroids-hi') continue;
         var ts = parseInt(localStorage.getItem(k + ':ts'), 10);
         if (!ts || now - ts > ANR_TTL) {
           localStorage.removeItem(k);
@@ -1495,6 +1497,22 @@ function boot() {
         'font-family:monospace;font-size:13px;'
       );
     } catch (_) {}
+
+    // Konami code (↑↑↓↓←→←→ B A) anywhere on the site launches the Asteroids
+    // easter egg - a vector Asteroids clone played in a circular scope where the
+    // asteroids are supported file types. Lazy-imported so it costs nothing until
+    // the sequence is entered.
+    const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+    let konamiPos = 0;
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const k = (e.key || '').toLowerCase();
+      konamiPos = (k === KONAMI[konamiPos]) ? konamiPos + 1 : (k === KONAMI[0] ? 1 : 0);
+      if (konamiPos === KONAMI.length) {
+        konamiPos = 0;
+        import('../games/asteroids.js').then((m) => m.launchAsteroids()).catch(() => {});
+      }
+    });
 
     boot._once = true;
   } // end one-time guard
@@ -1671,7 +1689,8 @@ function boot() {
       './assets/js/renderers/csv.js', './assets/js/renderers/unknown.js', './assets/js/renderers/proprietary.js',
       './assets/js/renderers/folder.js', './assets/js/renderers/folder-archive-shared.js',
       './assets/js/renderers/treemap.js', './assets/js/core/navigate.js',
-      './assets/js/renderers/photo-convert.js', './assets/js/renderers/audio-player.js', './assets/js/renderers/video-avi.js',
+      './assets/js/renderers/photo-convert.js', './assets/js/renderers/gif-frames.js', './assets/js/renderers/audio-player.js', './assets/js/renderers/video-avi.js',
+      './assets/js/games/asteroids.js',
       './assets/js/renderers/docx.js', './assets/js/renderers/xlsx.js', './assets/js/renderers/epub.js',
       './assets/js/renderers/pptx.js', './assets/js/renderers/stl.js', './assets/js/renderers/zip.js',
       './assets/js/renderers/lrc.js', './assets/js/renderers/midi.js', './assets/js/renderers/subtitles.js',
@@ -2049,17 +2068,14 @@ function boot() {
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
       clearBtn.textContent = 'Clearing…';
-      // 1. Preserve the dark-mode state, then wipe localStorage + sessionStorage.
-      const theme = localStorage.getItem('anr-theme');
-      const themeTs = localStorage.getItem('anr-theme:ts');
+      // 1. Preserve the dark-mode state and the Asteroids high score, then wipe
+      //    localStorage + sessionStorage and restore the kept keys.
+      const KEEP = ['anr-theme', 'anr-theme:ts', 'anr-asteroids-hi'];
+      const kept = {};
+      for (const k of KEEP) { const v = localStorage.getItem(k); if (v !== null) kept[k] = v; }
       try { localStorage.clear(); } catch (_) {}
       try { sessionStorage.clear(); } catch (_) {}
-      if (theme !== null) {
-        try {
-          localStorage.setItem('anr-theme', theme);
-          if (themeTs !== null) localStorage.setItem('anr-theme:ts', themeTs);
-        } catch (_) {}
-      }
+      for (const k in kept) { try { localStorage.setItem(k, kept[k]); } catch (_) {} }
       // 2. Delete every Cache Storage bucket (offline tiers + the SW app shell).
       try {
         const keys = await caches.keys();

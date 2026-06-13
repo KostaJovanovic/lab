@@ -11,6 +11,7 @@ import { el, row, rowHelp, fmtBytes, h3help, wireInfoToggle, fileExt, sha256Row,
 import { HEIC_EXTS, RAW_EXTS } from '../core/formats.js';
 import { convertHeic, extractRawPreview, convertWithImageMagick, demosaicRaw, extractRawJpegs, extractX3fPreview } from './photo-convert.js';
 import { ascii, latin1, utf8, inflate } from '../core/binutil.js';
+import { decodeGifFrames } from './gif-frames.js';
 
 // ---------- Browser-undecodable images ----------
 // Some image formats a web browser has no decoder for, so an <img> can't paint
@@ -1919,7 +1920,210 @@ export function revealPhotoSection() {
   return photoResults;
 }
 
+// Build the animated-GIF frame viewer: a still-canvas stage plus the site's
+// stylised transport (play / draggable scrub / time), Prev/Next stepping, and
+// Analyse frame / Frame grab / contact-sheet actions - the photo-side counterpart
+// of the AVI MJPEG viewer. `decoded` comes from decodeGifFrames(); `signal` aborts
+// the playback loop on teardown.
+function buildGifFrameCard(file, decoded, resultsEl, signal) {
+  const { width, height, frames, loop, anyTransparency, truncated } = decoded;
+  const n = frames.length;
+  const lastIdx = n - 1;
+
+  // Per-frame delay in ms, with the browser-style clamp: a 0 or very small delay
+  // is rendered as 100ms (how browsers treat under-spec'd GIFs). Then the start
+  // time of each frame and the total loop duration.
+  const delaysMs = frames.map((f) => { const ms = f.delay * 10; return ms < 20 ? 100 : ms; });
+  const startTimes = new Float64Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) { startTimes[i] = acc / 1000; acc += delaysMs[i]; }
+  const totalTime = acc / 1000;
+  const fmtTc = (sec) => sec < 60 ? sec.toFixed(2) + 's'
+    : Math.floor(sec / 60) + ':' + (sec % 60).toFixed(1).padStart(4, '0');
+  // Binary search for the frame whose interval contains time t.
+  const frameAtTime = (t) => {
+    if (t <= 0) return 0;
+    if (t >= totalTime) return lastIdx;
+    let lo = 0, hi = lastIdx;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (startTimes[mid] <= t) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+
+  // Display stage: a canvas at the GIF's real resolution, scaled by CSS. A
+  // checkerboard sits behind it when the animation has transparency.
+  const cv = document.createElement('canvas');
+  cv.width = width; cv.height = height;
+  cv.style.cssText = 'max-width:100%; max-height:480px; height:auto; display:block;';
+  const ctx = cv.getContext('2d');
+  const draw = (idx) => ctx.putImageData(new ImageData(frames[idx].data, width, height), 0, 0);
+  const stage = el('div', {
+    class: 'anr-gif-stage' + (anyTransparency ? ' anr-checkerboard' : ''),
+    style: 'display:inline-block; max-width:100%; border:1px solid var(--hairline); background:'
+      + (anyTransparency ? 'transparent' : '#0a0a0a') + ';'
+  }, [cv]);
+
+  let currentFrame = 0;
+  let onFrameShown = null;
+  const frameLabel = el('span', { class: 'anr-hint' }, `Frame 1 / ${n}`);
+  const showFrame = (idx) => {
+    idx = Math.max(0, Math.min(lastIdx, idx));
+    currentFrame = idx;
+    draw(idx);
+    frameLabel.textContent = `Frame ${idx + 1} / ${n}`;
+    if (onFrameShown) onFrameShown(idx);
+  };
+  draw(0);
+
+  // Composite a frame to a standalone PNG blob, for Analyse frame / Frame grab.
+  const frameToBlob = (idx) => new Promise((res) => {
+    const c = document.createElement('canvas');
+    c.width = width; c.height = height;
+    c.getContext('2d').putImageData(new ImageData(frames[idx].data, width, height), 0, 0);
+    c.toBlob(res, 'image/png');
+  });
+  const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+
+  // ---- Transport (variable per-frame delay, wall-clock driven, infinite loop) ----
+  const playBtn = el('button', { type: 'button', class: 'anr-player-play', 'aria-label': 'Play' }, '▶');
+  const fillEl = el('div', { class: 'anr-player-fill' });
+  const trackEl = el('div', { class: 'anr-player-track' }, [fillEl]);
+  const timeEl = el('span', { class: 'anr-player-time' }, `${fmtTc(0)} / ${fmtTc(totalTime)}`);
+  const playerBar = el('div', { class: 'anr-player', style: 'margin-top:10px;' }, [playBtn, trackEl, timeEl]);
+
+  onFrameShown = (idx) => {
+    const t = startTimes[idx];
+    fillEl.style.width = (totalTime > 0 ? Math.min(1, t / totalTime) * 100 : 0) + '%';
+    timeEl.textContent = `${fmtTc(t)} / ${fmtTc(totalTime)}`;
+  };
+
+  let playing = false, rafId = 0, playStart = 0, baseTime = 0;
+  const stop = () => {
+    if (!playing) return;
+    playing = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    playBtn.textContent = '▶';
+    playBtn.setAttribute('aria-label', 'Play');
+  };
+  const tick = (ts) => {
+    if (!playing) return;
+    let t = baseTime + (ts - playStart) / 1000;
+    if (t >= totalTime) { t = totalTime > 0 ? t % totalTime : 0; baseTime = t; playStart = ts; }
+    showFrame(frameAtTime(t));
+    rafId = requestAnimationFrame(tick);
+  };
+  playBtn.addEventListener('click', () => {
+    if (playing) { stop(); return; }
+    playing = true;
+    baseTime = currentFrame >= lastIdx ? 0 : startTimes[currentFrame];
+    playBtn.textContent = '❚❚';
+    playBtn.setAttribute('aria-label', 'Pause');
+    rafId = requestAnimationFrame((ts) => { playStart = ts; tick(ts); });
+  });
+
+  // Click or drag the track to scrub (stops playback, like the AVI/audio scrubber).
+  const seekFromX = (clientX) => {
+    const rect = trackEl.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    showFrame(frameAtTime(frac * totalTime));
+  };
+  let dragging = false;
+  const onMove = (e) => { if (dragging) seekFromX(e.clientX); };
+  const onUp = () => { dragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  trackEl.addEventListener('mousedown', (e) => {
+    dragging = true; stop(); seekFromX(e.clientX); e.preventDefault();
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+  });
+  const onTMove = (e) => { if (dragging && e.touches[0]) { e.preventDefault(); seekFromX(e.touches[0].clientX); } };
+  const onTEnd = () => { dragging = false; window.removeEventListener('touchmove', onTMove); window.removeEventListener('touchend', onTEnd); };
+  trackEl.addEventListener('touchstart', (e) => {
+    dragging = true; stop(); seekFromX(e.touches[0].clientX); e.preventDefault();
+    window.addEventListener('touchmove', onTMove, { passive: false }); window.addEventListener('touchend', onTEnd);
+  }, { passive: false });
+
+  // Tearing down the render (new file / navigation) must kill the loop.
+  signal.addEventListener('abort', stop);
+
+  const prevBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => { stop(); showFrame(currentFrame - 1); } }, '← Prev');
+  const nextBtn = el('button', { type: 'button', class: 'anr-btn', onclick: () => { stop(); showFrame(currentFrame + 1); } }, 'Next →');
+  const analyseBtn = el('button', { type: 'button', class: 'anr-btn', onclick: async () => {
+    analyseBtn.disabled = true; analyseBtn.textContent = 'Analysing…';
+    const blob = await frameToBlob(currentFrame);
+    analyseBtn.disabled = false; analyseBtn.textContent = 'Analyse frame';
+    if (!blob) return;
+    const frameFile = new File([blob], `${base}_frame_${currentFrame + 1}.png`, { type: 'image/png' });
+    renderPhoto(frameFile, resultsEl, { sourceNote: `Frame ${currentFrame + 1} of ${n} extracted from ${file.name} (animated GIF).` });
+  } }, 'Analyse frame');
+  const grabBtn = el('button', { type: 'button', class: 'anr-btn', onclick: async () => {
+    const blob = await frameToBlob(currentFrame);
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${base}_frame_${currentFrame + 1}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } }, 'Frame grab');
+
+  // Contact sheet (>= 8 frames): a 4×2 grid sampled evenly across the animation.
+  let sheetBtn = null;
+  const sheetOut = el('div');
+  if (n >= 8) {
+    sheetBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Generate contact sheet');
+    sheetBtn.addEventListener('click', () => {
+      sheetBtn.disabled = true; sheetBtn.textContent = 'Generating…';
+      const cols = 4, rows = 2, total = cols * rows;
+      const scale = 320 / Math.max(width, height);
+      const tw = Math.max(1, Math.round(width * scale)), th = Math.max(1, Math.round(height * scale));
+      const pad = 4;
+      const g = document.createElement('canvas');
+      g.width = cols * tw + (cols + 1) * pad;
+      g.height = rows * th + (rows + 1) * pad;
+      const gctx = g.getContext('2d');
+      gctx.fillStyle = '#111'; gctx.fillRect(0, 0, g.width, g.height);
+      const tmp = document.createElement('canvas');
+      tmp.width = width; tmp.height = height;
+      const tctx = tmp.getContext('2d');
+      for (let i = 0; i < total; i++) {
+        const fi = Math.floor(i * (n - 1) / (total - 1));
+        tctx.putImageData(new ImageData(frames[fi].data, width, height), 0, 0);
+        const c = i % cols, r = Math.floor(i / cols);
+        gctx.drawImage(tmp, pad + c * (tw + pad), pad + r * (th + pad), tw, th);
+      }
+      sheetOut.innerHTML = '';
+      sheetOut.appendChild(el('img', { src: g.toDataURL('image/png'),
+        style: 'max-width:100%; margin-top:10px; border:1px solid var(--hairline);' }));
+      sheetBtn.disabled = false; sheetBtn.textContent = 'Generate contact sheet';
+    });
+  }
+
+  // ---- Assemble ----
+  const card = el('div', { class: 'anr-card' });
+  card.appendChild(el('h3', {}, 'Frames'));
+  const avgFps = totalTime > 0 ? n / totalTime : 0;
+  card.appendChild(el('p', { class: 'anr-hint' },
+    `${n} frames decoded · ${fmtTc(totalTime)} total` + (loop != null ? ` · loop ${loop === 0 ? '∞' : loop}` : '')));
+  card.appendChild(stage);
+  card.appendChild(playerBar);
+  card.appendChild(el('p', { class: 'anr-hint', style: 'margin-top:4px; text-align:center;' },
+    [frameLabel, document.createTextNode(` · ${avgFps.toFixed(1)} fps avg`)]));
+  card.appendChild(el('div', { class: 'anr-frame-grid', style: 'margin-top:10px;' }, [prevBtn, nextBtn]));
+  const actionBtns = [analyseBtn, grabBtn];
+  if (sheetBtn) actionBtns.push(sheetBtn);
+  card.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:10px;' }, actionBtns));
+  if (truncated) card.appendChild(el('p', { class: 'anr-hint', style: 'margin-top:8px; color: var(--accent);' },
+    `⚠ Large animation - only the first ${n} frames were decoded to stay within memory limits.`));
+  card.appendChild(sheetOut);
+  return card;
+}
+
+// Tears down the previous photo's persistent loops (the GIF frame player's
+// requestAnimationFrame loop) when a new file is analysed or the page navigates.
+let photoRenderAbort = null;
+
 export async function renderPhoto(file, resultsEl, opts = {}) {
+  if (photoRenderAbort) photoRenderAbort.abort();
+  photoRenderAbort = new AbortController();
+  const renderSignal = photoRenderAbort.signal;
   // Inline mode (e.g. embedded cover art analysed inside the audio section):
   // the preview, histogram, and OCR normally target fixed photo-section slots
   // (#photoPreview / #photoHistSlot / #photoOcrSlot). When rendering inline,
@@ -2267,6 +2471,20 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
   }
 
   resultsEl.appendChild(infoCard);
+
+  // ---- Animated GIF: frame-by-frame viewer ----
+  // A browser plays a GIF in the <img> preview above but won't let you step
+  // through it. Decode the frames ourselves and offer the same transport the AVI
+  // viewer does (play / scrub / Prev / Next / grab / analyse). Only for true GIFs
+  // in the main photo section - skipped for inline cover-art renders.
+  if (!inline && (fileExt(file.name) === 'gif' || file.type === 'image/gif') && file.size <= 200 * 1024 * 1024) {
+    try {
+      const decoded = decodeGifFrames(await file.arrayBuffer());
+      if (decoded && decoded.frames.length > 1) {
+        resultsEl.appendChild(buildGifFrameCard(file, decoded, resultsEl, renderSignal));
+      }
+    } catch (_) { /* malformed GIF - leave the normal photo view untouched */ }
+  }
 
   // ---- EXIF sections ----
   // Sony/Nikon RAW/JPEG: recover the shutter-actuation count from the maker-note
