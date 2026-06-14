@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 115;
+const COMMIT_COUNT = 116;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -1735,7 +1735,20 @@ function boot() {
   }
 
   // /stats page: fetch + render the public counters (no-op on every other page).
+  // The same call also fills the leaderboard on the hidden /atari page, which
+  // reuses the #statsRoot / #statsScores markup.
   setupStatsPage();
+
+  // Hidden /atari page: the "Play game" button launches the Asteroids easter egg.
+  // Guarded by element presence (a no-op everywhere else) and by a flag so a
+  // repeated boot on SPA navigation doesn't double-bind.
+  const atariPlay = $('atariPlay');
+  if (atariPlay && !atariPlay._wired) {
+    atariPlay._wired = true;
+    atariPlay.addEventListener('click', () => {
+      import('../games/asteroids.js').then((m) => m.launchAsteroids()).catch(() => {});
+    });
+  }
 
   // link.valjdakosta.com links open in this tab - except the "Other stuff" one,
   // which keeps its confirm popup -> new tab (bound below). Runs every navigation

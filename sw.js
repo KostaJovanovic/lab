@@ -1,7 +1,7 @@
 ﻿/* Analyser - service worker
    Precache the app shell; stale-while-revalidate the rest. */
 
-const VERSION = 'analyser-v115';
+const VERSION = 'analyser-v116';
 
 // Local dev (server.bat on localhost, or a LAN IP for phone testing) skips all
 // caching: the SW becomes a network pass-through so a single refresh shows the
@@ -32,6 +32,10 @@ const SHELL = [
   './assets/js/renderers/gif-frames.js',
   './assets/js/renderers/webp-frames.js',
   './assets/js/renderers/gif-encode.js',
+  './assets/js/renderers/ico.js',
+  './assets/js/renderers/embedded-images.js',
+  './assets/js/renderers/mpo.js',
+  './assets/js/renderers/tiff.js',
   './assets/js/renderers/media-reverse.js',
   './assets/js/games/asteroids.js',
   './assets/js/renderers/audio.js',

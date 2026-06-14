@@ -14,6 +14,9 @@ import { ascii, latin1, utf8, inflate } from '../core/binutil.js';
 import { decodeGifFrames } from './gif-frames.js';
 import { decodeWebpFrames } from './webp-frames.js';
 import { encodeAnimatedGif } from './gif-encode.js';
+import { buildIcoImagesCard } from './ico.js';
+import { buildMpoImagesCard } from './mpo.js';
+import { buildTiffPagesCard } from './tiff.js';
 
 // ---------- Browser-undecodable images ----------
 // Some image formats a web browser has no decoder for, so an <img> can't paint
@@ -2282,6 +2285,23 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
       try { await file.arrayBuffer(); } catch (re) { unreadable = true; }
       if (unreadable) {
         resultsEl.appendChild(cloudFileWarning(file));
+      } else if (!inline && (ext === 'tif' || ext === 'tiff')) {
+        // Browsers can't decode TIFF, but a TIFF can hold many pages. Render them
+        // all with ImageMagick (only if there are 2+; single-page falls through to
+        // the normal undecodable-info card).
+        resultsEl.innerHTML = '';
+        resultsEl.appendChild(el('div', { class: 'anr-info' }, 'Reading TIFF pages…'));
+        let pagesCard = null;
+        try { pagesCard = await buildTiffPagesCard(file, renderSignal, resultsEl); } catch (_) { pagesCard = null; }
+        if (renderSignal.aborted) return;
+        resultsEl.innerHTML = '';
+        if (pagesCard) {
+          resultsEl.appendChild(pagesCard);
+          await renderUndisplayableImage(file, ext, resultsEl,
+            el('div', { class: 'anr-info' }, 'Multi-page TIFF - every page is decoded above. The metadata below is read straight from the file.'));
+        } else {
+          await renderUndisplayableImage(file, ext, resultsEl);
+        }
       } else {
         // Readable, but the browser has no decoder for this image format. Show a
         // clear browser-limitation banner (like the ProRes video path) plus any
@@ -2550,6 +2570,21 @@ export async function renderPhoto(file, resultsEl, opts = {}) {
           { kindLabel: 'animated WebP', delaysMs: decoded.delaysMs }));
       }
     } catch (_) { /* not animated / no ImageDecoder - leave the normal photo view */ }
+  } else if (!inline && (fileExt(file.name) === 'ico' || fileExt(file.name) === 'cur' ||
+      file.type === 'image/x-icon' || file.type === 'image/vnd.microsoft.icon')) {
+    // An icon container holds several images; the <img> above paints only one, so
+    // pull out and show every embedded size/depth.
+    try {
+      const icoCard = await buildIcoImagesCard(file, renderSignal);
+      if (icoCard && !renderSignal.aborted) resultsEl.appendChild(icoCard);
+    } catch (_) { /* malformed ICO - leave the normal photo view untouched */ }
+  } else if (!inline && (/^(jpe?g|jpe|jfif|mpo)$/.test(fileExt(file.name)) || file.type === 'image/jpeg')) {
+    // A JPEG / MPO can carry several full images via Multi-Picture Format (stereo
+    // 3D pairs, multi-angle sets). The <img> paints only the first - show them all.
+    try {
+      const mpoCard = await buildMpoImagesCard(file, renderSignal);
+      if (mpoCard && !renderSignal.aborted) resultsEl.appendChild(mpoCard);
+    } catch (_) { /* not a multi-picture JPEG - leave the normal photo view */ }
   }
 
   // ---- EXIF sections ----

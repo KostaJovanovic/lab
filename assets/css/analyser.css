@@ -5483,6 +5483,27 @@ a.stats-ext-link:hover { color: var(--accent); text-decoration: none; }
   font-weight: 600;
 }
 
+/* Hidden /atari page: the "Play game" call to action under the leaderboard. */
+.atari-play-row {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+}
+.atari-play-btn.anr-btn {
+  font-size: var(--t-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 14px 40px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.atari-play-btn.anr-btn:hover {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+
 /* ============================================================================
    Document "page preview" sheets (paged.js) - shared by DOCX/ODT/ODS/ODP and
    the legacy DOC/XLS/PPT viewers. Pages render as paper sheets regardless of

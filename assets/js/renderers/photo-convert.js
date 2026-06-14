@@ -225,6 +225,51 @@ export async function convertWithImageMagick(file, container) {
   });
 }
 
+// Decode EVERY frame/page of a multi-image file (multi-page TIFF, etc.) to PNG via
+// ImageMagick-WASM. Returns [{ width, height, blob /* image/png */ }, ...] in file
+// order, or [] on failure. Renders the same ASCII load bar into `container`.
+export async function readImagesAsPngs(file, container) {
+  const barEl = el('div', { class: 'anr-progress-bar' }, '[                    ]');
+  const labelEl = el('div', { class: 'anr-progress-label' }, 'loading imagemagick');
+  const wrap = el('div', { class: 'anr-progress' }, [barEl, labelEl]);
+  if (container) container.appendChild(wrap);
+  function setBar(frac) {
+    const ch = parseFloat(getComputedStyle(barEl).fontSize) * 0.6 || 8;
+    const total = Math.max(10, Math.floor((barEl.parentElement.clientWidth - ch * 2) / ch));
+    const filled = Math.round(Math.max(0, Math.min(1, frac)) * total);
+    barEl.innerHTML = '[<span class="anr-bar-fill">' + '/'.repeat(filled) + '</span>' + ' '.repeat(total - filled) + ']';
+  }
+  try {
+    if (!magickReady) {
+      setBar(0);
+      const mod = await import(MAGICK_WASM_URL);
+      const wasmBytes = await fetchWithProgress(MAGICK_WASM_DIR + 'magick.wasm', (p) => setBar(p * 0.9));
+      setBar(0.95); labelEl.textContent = 'initialising';
+      await mod.initializeImageMagick(wasmBytes);
+      magickReady = mod;
+    }
+    setBar(1); labelEl.textContent = 'decoding pages';
+    const { ImageMagick, MagickFormat } = magickReady;
+    const data = new Uint8Array(await file.arrayBuffer());
+    const out = [];
+    // The collection and its images are only valid inside this callback, so encode
+    // every page to PNG (copying the bytes out) before it returns.
+    ImageMagick.readCollection(data, (images) => {
+      for (const image of images) {
+        const width = image.width, height = image.height;
+        image.write(MagickFormat.Png, (png) => {
+          out.push({ width, height, blob: new Blob([png.slice()], { type: 'image/png' }) });
+        });
+      }
+    });
+    return out;
+  } catch (_) {
+    return [];
+  } finally {
+    wrap.remove();
+  }
+}
+
 let librawMod = null;
 
 // True RAW demosaic via libraw WASM (lazy-loaded, ~MBs). Unlike the embedded-JPEG

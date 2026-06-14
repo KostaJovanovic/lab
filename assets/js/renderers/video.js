@@ -271,7 +271,7 @@ function showFfmpegLoader(label, indeterminate) {
     _ffLoaderEl._label = labelEl;
     document.body.appendChild(_ffLoaderEl);
   }
-  _ffLoaderEl._label.textContent = label || 'Loading FFmpeg… (≈31 MB, first time only)';
+  _ffLoaderEl._label.textContent = label || 'Loading FFmpeg…';
   if (indeterminate) _ffLoaderEl._bar.indeterminate();
   else _ffLoaderEl._bar.set(0);
   requestAnimationFrame(() => _ffLoaderEl.classList.add('is-open'));
@@ -306,7 +306,7 @@ async function loadFFmpeg(onProgress) {
 
 async function ffmpegExtractAudio(file, container) {
   const barEl = el('div', { class: 'anr-progress-bar' }, '[                    ]');
-  const labelEl = el('div', { class: 'anr-progress-label' }, 'loading ffmpeg (~30 mb)');
+  const labelEl = el('div', { class: 'anr-progress-label' }, 'loading ffmpeg');
   const wrap = el('div', { class: 'anr-progress' }, [barEl, labelEl]);
   container.appendChild(wrap);
 
@@ -333,32 +333,161 @@ async function ffmpegExtractAudio(file, container) {
   return await ac.decodeAudioData(buf);
 }
 
-// Re-encode a video playing backwards (picture + sound) with FFmpeg WASM. The
-// `reverse`/`areverse` filters buffer every frame/sample in memory, so this is an
-// on-demand action and can fail (out of memory) on long clips. Output is H.264 +
-// AAC in MP4 (yuv420p) so the result plays in any browser. `onLoad` reports 0..1
-// core-download progress; `onEnc` reports 0..1 encode progress. Returns a
-// video/mp4 Blob, or null if nothing could be produced.
+// Re-encode a video playing backwards (picture + sound) with FFmpeg WASM.
+//
+// The naive `-vf reverse` buffers EVERY decoded frame in memory, so it blows the
+// 32-bit WASM heap (~2 GB) on any real HD clip - a 1080p clip OOMs after ~15 s,
+// 4K after ~3 s - which is why a one-shot reverse failed on essentially every
+// normal video. Instead we bound memory by working in chunks:
+//   1. normalise the source to H.264 with a forced keyframe every SEG seconds
+//      (a plain transcode - streaming, flat memory - which also makes a codec the
+//      browser can't decode, e.g. HEVC, usable from here on);
+//   2. losslessly split it at those keyframes into SEG-second segments;
+//   3. reverse each segment on its own (only SEG seconds of frames in RAM);
+//   4. concat the reversed segments in REVERSE order -> the whole clip reversed.
+// SEG is sized from the resolution so a single segment's raw frames stay well
+// under the heap. Output is H.264 + AAC MP4 (yuv420p) so it plays anywhere.
+// `onLoad` reports 0..1 core-download progress; `onEnc` reports 0..1 progress.
+// Returns a video/mp4 Blob, or null if nothing could be produced.
 async function ffmpegReverseVideo(file, onLoad, onEnc, signal) {
   const ff = await loadFFmpeg(onLoad);
   if (signal && signal.aborted) return null;
+  const aborted = () => signal && signal.aborted;
   const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
-  const inName = 'rev_in', outName = 'rev_out.mp4';
-  await ff.writeFile(inName, await fetchFile(file));
+
+  let log = '';
+  const onLog = ({ message }) => { log += message + '\n'; };
+  const onProg = ({ progress }) => { if (onEnc && isFinite(progress)) onEnc(Math.max(0, Math.min(1, progress))); };
+  ff.on('log', onLog);
+  ff.on('progress', onProg);
+  const detachAll = () => { try { ff.off('log', onLog); } catch (_) {} try { ff.off('progress', onProg); } catch (_) {} };
+  const exec = async (args) => { log = ''; try { await ff.exec(args); return true; } catch (_) { return false; } };
+  const read = async (name) => { try { const d = await ff.readFile(name); return d && d.length ? d : null; } catch (_) { return null; } };
+  const rm = async (name) => { try { await ff.deleteFile(name); } catch (_) {} };
+
+  const src = 'rev_src';
+  try { await ff.writeFile(src, await fetchFile(file)); }
+  catch (_) { detachAll(); return null; }
+
+  // Reverse one elementary clip whole (video + audio, retry video-only). Used per
+  // segment and as the single-segment fast path.
+  const reverseWhole = async (inName, outName, audio) => {
+    const a = audio ? ['-af', 'areverse', '-c:a', 'aac'] : ['-an'];
+    await exec(['-i', inName, '-vf', 'reverse', ...a,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-y', outName]);
+    if (await read(outName)) return true;
+    if (audio) {                       // areverse fails when there is no audio track
+      await rm(outName);
+      await exec(['-i', inName, '-vf', 'reverse', '-an',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-y', outName]);
+      return !!(await read(outName));
+    }
+    return false;
+  };
+
+  try {
+    // Probe resolution/fps from the demux log (a bare `-i` errors out fast without
+    // decoding) to size the chunk so one segment's raw frames stay under ~280 MB.
+    await exec(['-i', src]);
+    const res = log.match(/, (\d{2,5})x(\d{2,5})[ ,]/);
+    const fpsM = log.match(/(\d+(?:\.\d+)?) fps/);
+    const w = res ? +res[1] : 1920, h = res ? +res[2] : 1080;
+    const fps = fpsM ? Math.min(120, Math.max(1, parseFloat(fpsM[1]))) : 30;
+    const perSec = w * h * 1.5 * fps;
+    const SEG = Math.max(1, Math.min(5, Math.round(280e6 / Math.max(1, perSec)))) || 2;
+    const hadAudio = /Audio:/.test(log);
+    if (aborted()) { await rm(src); detachAll(); return null; }
+
+    // 1) Normalise to H.264 with a keyframe exactly every SEG seconds.
+    const norm = 'rev_norm.mp4';
+    const kf = 'expr:gte(t,n_forced*' + SEG + ')';
+    let audio = hadAudio;
+    await exec(['-i', src, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+      '-force_key_frames', kf, '-c:a', 'aac', '-y', norm]);
+    if (!await read(norm)) {           // no audio / unsupported audio -> video only
+      audio = false; await rm(norm);
+      await exec(['-i', src, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+        '-force_key_frames', kf, '-an', '-y', norm]);
+    }
+    await rm(src);
+    if (aborted() || !await read(norm)) { await rm(norm); detachAll(); return null; }
+
+    // 2) Split losslessly at those keyframes.
+    await exec(['-i', norm, '-c', 'copy', '-map', '0', '-f', 'segment',
+      '-segment_time', String(SEG), '-reset_timestamps', '1', 'rev_seg_%03d.mp4']);
+    let segs = [];
+    try { segs = (await ff.listDir('/')).map((n) => n.name).filter((n) => /^rev_seg_\d+\.mp4$/.test(n)).sort(); }
+    catch (_) {}
+
+    // Short clip (one chunk, or the splitter produced nothing) - reverse it whole.
+    if (segs.length <= 1) {
+      for (const s of segs) await rm(s);
+      const out = 'rev_out.mp4';
+      const ok = await reverseWhole(norm, out, audio);
+      const data = ok ? await read(out) : null;
+      await rm(norm); await rm(out); detachAll();
+      return data ? new Blob([data.buffer || data], { type: 'video/mp4' }) : null;
+    }
+    await rm(norm);
+
+    // 3) Reverse each segment (bounded memory).
+    const revs = [];
+    for (let i = 0; i < segs.length; i++) {
+      if (aborted()) { for (const n of [...segs.slice(i), ...revs]) await rm(n); detachAll(); return null; }
+      const rev = 'rev_out_' + String(i).padStart(3, '0') + '.mp4';
+      const ok = await reverseWhole(segs[i], rev, audio);
+      await rm(segs[i]);
+      if (!ok) { for (const n of [...segs.slice(i + 1), ...revs, rev]) await rm(n); detachAll(); return null; }
+      revs.push(rev);
+      if (onEnc) onEnc((i + 1) / segs.length);
+    }
+
+    // 4) Concat the reversed segments in reverse order. Stream-copy first; if the
+    //    per-segment encoder params differ enough to refuse a copy, re-encode.
+    const listName = 'rev_list.txt';
+    const ordered = revs.slice().reverse();
+    await ff.writeFile(listName, new TextEncoder().encode(ordered.map((n) => "file '" + n + "'").join('\n') + '\n'));
+    const out = 'rev_out.mp4';
+    await exec(['-f', 'concat', '-safe', '0', '-i', listName, '-c', 'copy', '-y', out]);
+    if (!await read(out)) {
+      await rm(out);
+      const a = audio ? ['-c:a', 'aac'] : ['-an'];
+      await exec(['-f', 'concat', '-safe', '0', '-i', listName,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', ...a, '-y', out]);
+    }
+    const data = await read(out);
+    for (const n of [...revs, listName, out]) await rm(n);
+    detachAll();
+    return data ? new Blob([data.buffer || data], { type: 'video/mp4' }) : null;
+  } catch (_) {
+    detachAll();
+    return null;
+  }
+}
+
+// Transcode any FFmpeg-decodable video to browser-playable H.264 + AAC MP4. Used
+// to rescue files whose codec the browser can't decode (HEVC, ProRes, 10-bit /
+// 4:2:2, ...) so they can be played and fully analysed. Plain streaming transcode
+// (no whole-video buffering), so memory stays flat regardless of length. Returns a
+// video/mp4 Blob, or null. `onLoad`/`onEnc` report 0..1 progress.
+async function ffmpegTranscodeToH264(file, onLoad, onEnc, signal) {
+  const ff = await loadFFmpeg(onLoad);
+  if (signal && signal.aborted) return null;
+  const { fetchFile } = await import(new URL('../../vendor/ffmpeg/ffmpeg-util.js', import.meta.url).href);
+  const inName = 'conv_in', outName = 'conv_out.mp4';
+  try { await ff.writeFile(inName, await fetchFile(file)); } catch (_) { return null; }
   const onProg = ({ progress }) => { if (onEnc && isFinite(progress)) onEnc(Math.max(0, Math.min(1, progress))); };
   ff.on('progress', onProg);
   const run = async (args) => {
     try { await ff.exec(args); } catch (_) {}
     try { return await ff.readFile(outName); } catch (_) { return null; }
   };
-  // First reverse video + audio; if there's no audio track areverse yields no
-  // output, so retry video-only.
-  let data = await run(['-i', inName, '-vf', 'reverse', '-af', 'areverse',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-y', outName]);
+  let data = await run(['-i', inName, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', '-y', outName]);
   if (!data || !data.length) {
     try { await ff.deleteFile(outName); } catch (_) {}
-    data = await run(['-i', inName, '-vf', 'reverse', '-an',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-y', outName]);
+    data = await run(['-i', inName, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', '-y', outName]);
   }
   ff.off('progress', onProg);
   try { await ff.deleteFile(inName); } catch (_) {}
@@ -374,11 +503,11 @@ function buildReverseVideoCard(file, signal) {
   const card = el('div', { class: 'anr-card' });
   card.appendChild(el('h3', {}, 'Reverse'));
   card.appendChild(el('p', { class: 'anr-hint' },
-    'Re-encode this video playing backwards - picture and sound - in your browser with FFmpeg (~30 MB, downloaded once then cached). The reverse filter holds every frame in memory, so a long clip can be slow or run out of memory.'));
+    'Re-encode this video playing backwards - picture and sound - in your browser with FFmpeg. A long or high-resolution clip can take a while, but it is processed in chunks so it will not run out of memory.'));
   const btn = el('button', { type: 'button', class: 'anr-btn' }, '↺ Reverse video');
   const out = el('div');
   const barEl = el('div', { class: 'anr-progress-bar' }, '[                    ]');
-  const labelEl = el('div', { class: 'anr-progress-label' }, 'loading ffmpeg (~30 mb)');
+  const labelEl = el('div', { class: 'anr-progress-label' }, 'loading ffmpeg');
   const wrap = el('div', { class: 'anr-progress', style: 'display:none;' }, [barEl, labelEl]);
   const setBar = (frac) => {
     const ch = parseFloat(getComputedStyle(barEl).fontSize) * 0.6 || 8;
@@ -392,7 +521,7 @@ function buildReverseVideoCard(file, signal) {
     let blob = null;
     try {
       blob = await ffmpegReverseVideo(file,
-        (p) => { labelEl.textContent = 'loading ffmpeg (~30 mb)'; setBar(p); },
+        (p) => { labelEl.textContent = 'loading ffmpeg'; setBar(p); },
         (p) => { labelEl.textContent = 'reversing'; setBar(p); },
         signal);
     } catch (_) { blob = null; }
@@ -1569,12 +1698,60 @@ async function renderUnplayableVideoInfo(file, header, resultsEl, signal) {
   infoCard.appendChild(tbl);
   resultsEl.appendChild(infoCard);
 
+  // Convert to H.264 in-browser. The browser can't decode this codec, but FFmpeg
+  // can, so re-encoding to H.264 / AAC MP4 makes the file playable AND unlocks the
+  // full analysis (player, frame tools, scene detection, reverse, audio). On
+  // success we hand the converted MP4 straight back to renderVideo, which restarts
+  // the whole section through the normal playable path.
+  const convName = (v && v.codecName) || (v && v.codec) || 'this codec';
+  const convCard = el('div', { class: 'anr-card' });
+  convCard.appendChild(el('h3', {}, 'Convert to H.264'));
+  convCard.appendChild(el('p', { class: 'anr-hint' },
+    'Re-encode this video to H.264 (MP4) with FFmpeg so it plays here and can be analysed in full. The conversion is lossy and runs in your browser - a long or high-resolution clip can take a while.'));
+  const convBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Convert to H.264 and play');
+  const convBar = el('div', { class: 'anr-progress-bar' }, '[                    ]');
+  const convLabel = el('div', { class: 'anr-progress-label' }, 'loading ffmpeg');
+  const convWrap = el('div', { class: 'anr-progress', style: 'display:none;' }, [convBar, convLabel]);
+  const convSetBar = (frac) => {
+    const ch = parseFloat(getComputedStyle(convBar).fontSize) * 0.6 || 8;
+    const total = Math.max(10, Math.floor((convBar.parentElement.clientWidth - ch * 2) / ch));
+    const filled = Math.round(Math.max(0, Math.min(1, frac)) * total);
+    convBar.innerHTML = '[<span class="anr-bar-fill">' + '/'.repeat(filled) + '</span>' + ' '.repeat(total - filled) + ']';
+  };
+  const convErr = el('div');
+  convBtn.addEventListener('click', async () => {
+    convBtn.disabled = true; convBtn.textContent = 'Converting…';
+    convWrap.style.display = ''; convErr.innerHTML = '';
+    let blob = null;
+    try {
+      blob = await ffmpegTranscodeToH264(file,
+        (p) => { convLabel.textContent = 'loading ffmpeg'; convSetBar(p); },
+        (p) => { convLabel.textContent = 'converting'; convSetBar(p); },
+        signal);
+    } catch (_) { blob = null; }
+    convWrap.style.display = 'none';
+    if (signal && signal.aborted) return;
+    if (!blob) {
+      convBtn.disabled = false; convBtn.textContent = 'Convert to H.264 and play';
+      convErr.appendChild(el('p', { class: 'anr-hint', style: 'color:var(--accent);' },
+        'Could not convert this video - it may be corrupt, or too large to hold in memory.'));
+      return;
+    }
+    const base = (file.name || 'video').replace(/\.[^/.]+$/, '');
+    const mp4File = new File([blob], base + ' (H.264).mp4', { type: 'video/mp4' });
+    renderVideo(mp4File, resultsEl, { remuxed: true, converted: true, sourceFile: file, sourceCodec: convName });
+  });
+  convCard.appendChild(el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [convBtn]));
+  convCard.appendChild(convWrap);
+  convCard.appendChild(convErr);
+  resultsEl.appendChild(convCard);
+
   // Preview on demand. Decoding even a single frame from a codec the browser
   // can't play needs the ~31 MB FFmpeg WASM core and a single-threaded decode -
   // slow for big masters - so put it behind a button instead of auto-running.
   const prevCard = el('div', { class: 'anr-card' });
   prevCard.appendChild(el('h3', {}, 'Preview'));
-  const prevHint = el('p', { class: 'anr-hint' }, 'No preview by default - the browser can’t decode this video. Extracting the first frame uses FFmpeg (~31 MB, downloaded once then cached).');
+  const prevHint = el('p', { class: 'anr-hint' }, 'No preview by default - the browser can’t decode this video. Extracting the first frame uses FFmpeg.');
   prevCard.appendChild(prevHint);
   const grabBtn = el('button', { type: 'button', class: 'anr-btn' }, 'Extract first frame');
   const grabRow = el('div', { class: 'anr-btn-row', style: 'margin-top:8px;' }, [grabBtn]);
@@ -1809,9 +1986,6 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
   playerCard.appendChild(sceneBadge);
   resultsEl.appendChild(playerCard);
 
-  // ---- Reverse playback (re-encode the video backwards, on demand) ----
-  resultsEl.appendChild(buildReverseVideoCard(file, signal));
-
   const loaded = await new Promise((resolve) => {
     let done = false;
     const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
@@ -1820,7 +1994,14 @@ async function renderVisibleVideoFallback(file, url, header, resultsEl, signal) 
     if (signal) signal.addEventListener('abort', () => finish(false));
     setTimeout(() => finish(false), 12000);
   });
+  // Only keep the player (and offer reverse) if it actually decoded - otherwise
+  // bail so the caller can fall through to the unplayable / convert path. Mounting
+  // the reverse card here, AFTER the load check, stops it lingering above the
+  // "can't play this codec" info when the player failed.
   if (!loaded) { playerCard.remove(); return false; }
+
+  // ---- Reverse playback (re-encode the video backwards, on demand) ----
+  resultsEl.appendChild(buildReverseVideoCard(file, signal));
 
   const vw = playerEl.videoWidth, vh = playerEl.videoHeight, dur = playerEl.duration;
 
@@ -2689,14 +2870,20 @@ export async function renderVideo(file, resultsEl, opts = {}) {
   tbl.appendChild(row('Name', infoFile.name));
   tbl.appendChild(row('Size', `${fmtBytes(infoFile.size)}   (${infoFile.size.toLocaleString()} bytes)`));
   tbl.appendChild(rowHelp('MIME', infoFile.type || '-', "The MIME type is the standard label for the file's format (for example image/jpeg or audio/mpeg). The browser reads it from the extension or the operating system, so it's a hint rather than proof of the real format."));
-  if (opts.sourceFile)
+  if (opts.sourceFile && opts.converted)
+    tbl.appendChild(rowHelp('Source', opts.sourceCodec || 'Original codec',
+      'Your browser could not decode the original codec, so Analyser re-encoded it to H.264 (MP4) in-browser with FFmpeg to make it playable. The re-encode is lossy, so this is for viewing and analysis, not an archival copy.'));
+  else if (opts.sourceFile)
     tbl.appendChild(rowHelp('Source', 'Raw ' + (opts.sourceKind || 'H.264') + ' (Annex B)',
       'A raw ' + (opts.sourceKind || 'H.264') + ' elementary stream has no container, so Analyser stream-copied it into an MP4 in-browser (no re-encode) to play it. The stream carries no timing, so the frame rate and duration are assumed at 25 fps.'));
   if (header.container)
-    tbl.appendChild(row('Container', (opts.sourceFile ? 'Raw ' + (opts.sourceKind || 'H.264') + ' → MP4 (remuxed)' : header.container + (header.brand ? '  (' + header.brand + ')' : ''))));
+    tbl.appendChild(row('Container', (
+      opts.sourceFile && opts.converted ? (opts.sourceCodec || 'Original') + ' → H.264 / MP4 (converted)'
+        : opts.sourceFile ? 'Raw ' + (opts.sourceKind || 'H.264') + ' → MP4 (remuxed)'
+          : header.container + (header.brand ? '  (' + header.brand + ')' : ''))));
   tbl.appendChild(row('Resolution', vw && vh ? `${vw} × ${vh} px` : '-'));
   tbl.appendChild(row('Aspect ratio', aspectRatio(vw, vh)));
-  tbl.appendChild(row('Duration', isFinite(dur) ? formatDuration(dur) + (opts.sourceFile ? ' (assumed 25 fps)' : '') : '-'));
+  tbl.appendChild(row('Duration', isFinite(dur) ? formatDuration(dur) + (opts.sourceFile && !opts.converted ? ' (assumed 25 fps)' : '') : '-'));
   const bitrate = isFinite(dur) && dur > 0
     ? (infoFile.size * 8 / dur / 1000).toFixed(0) + ' kbps  (' + (infoFile.size * 8 / dur / 1_000_000).toFixed(2) + ' Mbps)'
     : '-';
