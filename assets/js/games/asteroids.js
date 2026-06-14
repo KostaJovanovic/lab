@@ -396,6 +396,9 @@ export function launchAsteroids() {
   // Sandbox power-up modifiers: infinite freezes the active weapon/shield countdown;
   // instant applies a power-up straight to the player instead of dropping a pickup.
   let sbInfinite = false, sbInstant = false;
+  // setInterval id for the held "Asteroid" sandbox button (spawns 10/sec while pressed);
+  // tracked here so teardown can clear it if the overlay closes mid-hold.
+  let sbAsteroidHold = null;
   // Assigned when the sandbox UI is built; the in-game Konami code calls it to reveal
   // the (otherwise hidden) SB button and switch sandbox on.
   let revealSandbox = null;
@@ -827,21 +830,25 @@ export function launchAsteroids() {
         }
         if (!fired) { d.angle = ship.angle; d.fireCd = 0.15; }
       }
-      for (let ai = asteroids.length - 1; ai >= 0; ai--) {
-        const a = asteroids[ai];
-        if (a.grace > 0) continue;
-        const dx = a.x - d.x, dy = a.y - d.y, rr = a.radius + dr;
-        if (dx * dx + dy * dy < rr * rr) { destroyAsteroid(ai); droneHurt(d); break; }
-      }
-      if (!d.dead) {
-        for (let ui = ufos.length - 1; ui >= 0; ui--) {
-          const u = ufos[ui];
-          if (u.appear < 1) continue;
-          const dx = u.x - d.x, dy = u.y - d.y, rr = u.radius + dr;
-          if (dx * dx + dy * dy < rr * rr) { if (u.kind === 'reward') damageUfo(ui, 1); droneHurt(d); break; }
+      // Contact damage only when not invulnerable: with sandbox invuln on, wingmen have no
+      // hitbox at all - everything passes through them (and they don't smash it either).
+      if (!immortal()) {
+        for (let ai = asteroids.length - 1; ai >= 0; ai--) {
+          const a = asteroids[ai];
+          if (a.grace > 0) continue;
+          const dx = a.x - d.x, dy = a.y - d.y, rr = a.radius + dr;
+          if (dx * dx + dy * dy < rr * rr) { destroyAsteroid(ai); droneHurt(d); break; }
         }
+        if (!d.dead) {
+          for (let ui = ufos.length - 1; ui >= 0; ui--) {
+            const u = ufos[ui];
+            if (u.appear < 1) continue;
+            const dx = u.x - d.x, dy = u.y - d.y, rr = u.radius + dr;
+            if (dx * dx + dy * dy < rr * rr) { if (u.kind === 'reward') damageUfo(ui, 1); droneHurt(d); break; }
+          }
+        }
+        if (d.dead) drones.splice(di, 1);
       }
-      if (d.dead) drones.splice(di, 1);
     }
   }
 
@@ -990,7 +997,7 @@ export function launchAsteroids() {
         if (dx * dx + dy * dy >= rr * rr) continue;
         if (ramming) {
           if (ramHitCd <= 0 && bossNodeVulnerable(b, n) && ship.vx * dx + ship.vy * dy > 0) {
-            damageBossNode(b, n, 2, nx, ny); ramHitCd = 0.5; ship.invuln = Math.max(ship.invuln, 0.5);
+            damageBossNode(b, n, 2, nx, ny); ramHitCd = 0.2; ship.invuln = Math.max(ship.invuln, 0.2);
           }
           continue;
         }
@@ -1301,7 +1308,7 @@ export function launchAsteroids() {
           if (weapon === 'ram') {
             if (ramHitCd <= 0 && u.kind === 'reward' && ship.vx * dx + ship.vy * dy > 0) {
               damageUfo(i, 1);
-              ramHitCd = 0.5; ship.invuln = Math.max(ship.invuln, 0.5);
+              ramHitCd = 0.2; ship.invuln = Math.max(ship.invuln, 0.2);
             }
           } else if (ship.invuln <= 0 && shield <= 0 && !immortal()) {
             cause = 'ufo'; loseLife();
@@ -1406,46 +1413,47 @@ export function launchAsteroids() {
       if (ship.invuln > 0) ship.invuln -= dt;
       fireCd -= dt;
       if (weapon === 'lightning') {
-        // Auto-target: lock the closest asteroid in the cone and tick it at the
-        // normal gun's cadence (one-hit kills since asteroids have no HP). The lock
-        // is recomputed every frame, so the bolt stays drawn continuously - we keep
-        // the (just-destroyed) target this frame so the strike shows on the kill.
-        lightningTarget = findLightningTarget();
-        // The mid kink and (when firing into air) the strike angle re-roll together on
-        // a fast cadence, for a lively searching arc.
-        lightningMidTimer -= dt;
-        const reroll = lightningMidTimer <= 0;
-        if (reroll || lightningAirAngle === null) lightningAirAngle = rand(-LIGHTNING_HALF, LIGHTNING_HALF);
-        // The bolt's far end: a locked target, or - when firing into empty space - a
-        // random point on the range arc within the aim cone (clamped to the rim).
-        if (lightningTarget) {
-          lightningEnd = { x: lightningTarget.x, y: lightningTarget.y };
-        } else if (input.fire) {
-          const ang = ship.angle + lightningAirAngle;
-          const c = Math.cos(ang), s = Math.sin(ang);
-          const reach = Math.min(LIGHTNING_RANGE, rayToRim(ship.x, ship.y, c, s));
-          lightningEnd = { x: ship.x + c * reach, y: ship.y + s * reach };
+        // Only active while the fire button is held: lock the closest target in the cone
+        // and tick it at the normal gun's cadence (one-hit kills since asteroids have no
+        // HP). Releasing fire drops the lock and the bolt entirely.
+        if (input.fire) {
+          lightningTarget = findLightningTarget();
+          // The mid kink and (when firing into air) the strike angle re-roll together on
+          // a fast cadence, for a lively searching arc.
+          lightningMidTimer -= dt;
+          const reroll = lightningMidTimer <= 0;
+          if (reroll || lightningAirAngle === null) lightningAirAngle = rand(-LIGHTNING_HALF, LIGHTNING_HALF);
+          // The bolt's far end: a locked target, or - firing into empty space - a random
+          // point on the range arc within the aim cone (clamped to the rim).
+          if (lightningTarget) {
+            lightningEnd = { x: lightningTarget.x, y: lightningTarget.y };
+          } else {
+            const ang = ship.angle + lightningAirAngle;
+            const c = Math.cos(ang), s = Math.sin(ang);
+            const reach = Math.min(LIGHTNING_RANGE, rayToRim(ship.x, ship.y, c, s));
+            lightningEnd = { x: ship.x + c * reach, y: ship.y + s * reach };
+          }
+          // Re-roll the mid kink (a point ~30-70% of the way to the end with a
+          // perpendicular kick), stored in the ship's rotating frame so it tracks the
+          // player's heading rather than sticking in world space.
+          if (lightningEnd && (reroll || !lightningMid)) {
+            const dx = lightningEnd.x - ship.x, dy = lightningEnd.y - ship.y;
+            const len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+            const t = rand(0.3, 0.7), j = rand(-1, 1) * len * 0.18;
+            const mox = dx * t + nx * j, moy = dy * t + ny * j;   // world-space offset from the ship
+            const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle);
+            lightningMid = { lx: mox * ca + moy * sa, ly: -mox * sa + moy * ca };   // -> ship-local frame
+          }
+          if (reroll) lightningMidTimer = 0.1;
+          if (lightningTarget && fireCd <= 0) {
+            const ai = asteroids.indexOf(lightningTarget);
+            if (ai >= 0) destroyAsteroid(ai);
+            else if (lightningTarget._bossNode) { if (boss) damageBossNode(boss, lightningTarget._bossNode, 1, lightningTarget.x, lightningTarget.y); }
+            else { const ui = ufos.indexOf(lightningTarget); if (ui >= 0) damageUfo(ui, 1); }
+            fireCd = 0.18;
+          }
         } else {
-          lightningEnd = null;
-        }
-        // Re-roll the mid kink (a point ~30-70% of the way to the end with a
-        // perpendicular kick), stored in the ship's rotating frame so it tracks the
-        // player's heading rather than sticking in world space.
-        if (lightningEnd && (reroll || !lightningMid)) {
-          const dx = lightningEnd.x - ship.x, dy = lightningEnd.y - ship.y;
-          const len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
-          const t = rand(0.3, 0.7), j = rand(-1, 1) * len * 0.18;
-          const mox = dx * t + nx * j, moy = dy * t + ny * j;   // world-space offset from the ship
-          const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle);
-          lightningMid = { lx: mox * ca + moy * sa, ly: -mox * sa + moy * ca };   // -> ship-local frame
-        }
-        if (reroll) lightningMidTimer = 0.1;
-        if (lightningTarget && fireCd <= 0) {
-          const ai = asteroids.indexOf(lightningTarget);
-          if (ai >= 0) destroyAsteroid(ai);
-          else if (lightningTarget._bossNode) { if (boss) damageBossNode(boss, lightningTarget._bossNode, 1, lightningTarget.x, lightningTarget.y); }
-          else { const ui = ufos.indexOf(lightningTarget); if (ui >= 0) damageUfo(ui, 1); }
-          fireCd = 0.18;
+          lightningTarget = null; lightningEnd = null;   // not firing: no lock, no bolt
         }
       } else if (weapon === 'ultrasound') {
         // Auto AoE: a sonar pulse that destroys everything within the radius every
@@ -1568,7 +1576,7 @@ export function launchAsteroids() {
           // whole cluster in a single frame.
           if (ramHitCd <= 0 && ship.vx * dx + ship.vy * dy > 0) {
             destroyAsteroid(ai);
-            ramHitCd = 0.5; ship.invuln = Math.max(ship.invuln, 0.5);
+            ramHitCd = 0.2; ship.invuln = Math.max(ship.invuln, 0.2);
             break;
           }
           continue;   // ram never harms the ship; can't hit while on cooldown
@@ -2294,7 +2302,7 @@ export function launchAsteroids() {
     ctx.strokeRect(cx - HW + 5, cy - HH + 5, 2 * HW - 10, 2 * HH - 10);
 
     if (!gameOver) {
-      let graceLeft = asteroids.reduce((m, a) => Math.max(m, a.grace), 0);
+      let graceLeft = asteroids.reduce((m, a) => (a.solo ? m : Math.max(m, a.grace)), 0);   // solo (sandbox-spawned) asteroids don't flash the wave number
       if (boss && boss.grace > 0) graceLeft = Math.max(graceLeft, boss.grace);   // boss waves get the banner too
       if (graceLeft > 0) waveBanner(graceLeft);
     }
@@ -2478,7 +2486,7 @@ export function launchAsteroids() {
       do { x = cx + rand(-HW, HW) * 0.9; y = cy + rand(-HH, HH) * 0.9; }
       while (Math.hypot(x - ship.x, y - ship.y) < 120 * S && ++tries < 20);
       const a = makeAsteroid(x, y, size, label);
-      a.grace = WAVE_GRACE;
+      a.grace = WAVE_GRACE; a.solo = true;   // solo: keep the spawn-grace but don't flash the wave number
       asteroids.push(a);
     };
 
@@ -2568,9 +2576,17 @@ export function launchAsteroids() {
       mkBtn('Segmented', () => { boss = null; spawnBoss('segmented'); })
     ]));
     panel.appendChild(head('FIELD'));
+    // Asteroid: tap spawns one; keep holding and after 1s it streams at 35/sec until released.
+    const astStop = () => { if (sbAsteroidHold) { clearTimeout(sbAsteroidHold); clearInterval(sbAsteroidHold); sbAsteroidHold = null; } };
+    const astBtn = mkBtn('Asteroid', () => {});   // spawning is driven by the hold handlers below
+    astBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); astStop(); sbSpawnAsteroid();
+      sbAsteroidHold = setTimeout(() => { sbAsteroidHold = setInterval(sbSpawnAsteroid, 1000 / 35); }, 1000);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => astBtn.addEventListener(ev, astStop));
     panel.appendChild(gridOf([
-      mkBtn('Asteroid', () => sbSpawnAsteroid()),
-      mkBtn('Clear', () => { asteroids = []; bullets = []; ufos = []; powerups = []; particles = []; lasers = []; missiles = []; boss = null; })
+      astBtn,
+      mkBtn('Clear', () => { astStop(); asteroids = []; bullets = []; ufos = []; powerups = []; particles = []; lasers = []; missiles = []; boss = null; })
     ]));
 
     panel.appendChild(head('WAVE'));
@@ -2645,6 +2661,7 @@ export function launchAsteroids() {
     document.removeEventListener('webkitfullscreenchange', onResize);
     if (window.visualViewport) window.visualViewport.removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVis);
+    if (sbAsteroidHold) { clearTimeout(sbAsteroidHold); clearInterval(sbAsteroidHold); sbAsteroidHold = null; }
     // Drop out of fullscreen if we put ourselves there.
     try {
       if (document.fullscreenElement) { const r = (document.exitFullscreen || document.webkitExitFullscreen).call(document); if (r && r.catch) r.catch(() => {}); }
