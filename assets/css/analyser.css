@@ -5488,6 +5488,22 @@ a.stats-ext-link:hover { color: var(--accent); text-decoration: none; }
   margin-top: 32px;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+/* Dev-only "reset cache" button: a small square arrow button sitting next to Play,
+   matching the in-game hard-reload (square corners, hairline border, invert on hover -
+   all from .anr-btn). Fixed square so it never renders rectangular. */
+.atari-reset-btn.anr-btn {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .atari-play-btn.anr-btn {
   font-size: var(--t-body);

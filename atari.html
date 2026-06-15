@@ -70,6 +70,10 @@
 
         <div class="atari-play-row">
           <button type="button" class="anr-btn atari-play-btn" id="atariPlay">Play game</button>
+          <!-- Dev-only hard reload (clears the cache so code edits show up). Small square
+               arrow button matching the in-game one. Revealed by app.js only on dev hosts;
+               stays hidden in production. -->
+          <button type="button" class="anr-btn atari-reset-btn" id="atariReset" title="Clear cache and reload (dev)" aria-label="Clear cache and reload" hidden>⟳</button>
         </div>
       </div>
     </div>

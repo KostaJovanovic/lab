@@ -4,7 +4,7 @@
    - Classifies dropped files into photo / audio / video / unknown
    - Renders a basic dump for unknown formats */
 
-const COMMIT_COUNT = 120;
+const COMMIT_COUNT = 122;
 // Versioning: every commit is its own version. Pre-1.0 commits read 0.01, 0.02,
 // 0.03 … (the part after the dot is the commit's 1-based position, zero-padded to
 // two digits - 0.09, 0.10, 0.11). Each commit listed in RELEASE_COMMITS bumps the
@@ -1614,19 +1614,9 @@ function boot() {
 
     setInterval(anrSweep, ANR_REFRESH);
 
-    // Live connectivity → header "Status" line (Online / Offline). The OS events
-    // are unreliable (navigator.onLine ignores real internet reach), so we also
-    // re-probe when the tab regains focus and on a modest interval while visible -
-    // that catches the internet dropping while the page just sits open.
-    window.addEventListener('online', updateNetStatus);
-    window.addEventListener('offline', updateNetStatus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') updateNetStatus();
-    });
-    window.addEventListener('focus', updateNetStatus);
-    setInterval(() => {
-      if (document.visibilityState === 'visible') updateNetStatus();
-    }, 20000);
+    // Live connectivity → header "Status" line (Online / Offline). The probe runs only
+    // on page load (the updateNetStatus() call below) - no interval, focus, visibility or
+    // online/offline re-probes, so the network ping happens once per (re)load and no more.
 
     // Deep-links in the patch notes (and anywhere else) jump to an #anchor, then
     // quietly clean the hash out of the address bar a few seconds later so the URL
@@ -1748,6 +1738,33 @@ function boot() {
     atariPlay.addEventListener('click', () => {
       import('../games/asteroids.js').then((m) => m.launchAsteroids()).catch(() => {});
     });
+  }
+
+  // Dev-only "Reset cache" button on /atari - mirrors the in-game hard-reload: unregister
+  // the service worker and delete every cache bucket, then reload so all modules refetch.
+  // Hidden in production; shown only on localhost, a private LAN IP, or the :3000 dev server.
+  const atariReset = $('atariReset');
+  if (atariReset && !atariReset._wired) {
+    atariReset._wired = true;
+    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ||
+      /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname) || location.port === '3000';
+    if (isDev) {
+      atariReset.hidden = false;
+      atariReset.addEventListener('click', async () => {
+        atariReset.disabled = true;
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (_) {}
+        location.reload();
+      });
+    }
   }
 
   // link.valjdakosta.com links open in this tab - except the "Other stuff" one,
